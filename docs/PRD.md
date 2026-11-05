@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| **Status** | Draft v0.1 – for review |
+| **Status** | Draft v0.2 – open questions answered, for review |
 | **Product** | ToDoness – a simple to-do list web app |
 | **Related docs** | [TechStack.md](./TechStack.md), [DBModel.md](./DBModel.md) |
 
-> Items marked **[?]** are my assumptions. Please confirm or correct them.
+> Items marked **[?]** are still my assumptions. Please confirm or correct them.
 
 ---
 
@@ -27,12 +27,16 @@ never lost, whether online or offline.
 
 **Success looks like:**
 
-| Measure | Target **[?]** |
-|---------|----------------|
-| Time to add a task (open app → task saved) | under 5 seconds |
-| App loads with no connection | 100% of the time after the first visit |
-| Offline changes lost after reconnecting | 0 |
-| Changes appear on another device after reconnecting | within 1 minute |
+**Initial goal:** 5 users with 2 tasks each. This is a small target and should be
+easy to meet. There are no numeric performance targets for now.
+
+| Measure | Target |
+|---------|--------|
+| Registered users who can log in and use the app | 5 |
+| Tasks created and kept per user | 2 |
+| App loads with no connection after the first visit | Always |
+| Offline changes lost after reconnecting | None |
+| Changes made on one device appear on another device after reconnecting | Yes, without user action |
 
 ## 3. Target users
 
@@ -48,14 +52,17 @@ never lost, whether online or offline.
 2. Organize tasks into lists.
 3. Due date and priority on tasks.
 4. Full offline use, with automatic sync when back online.
-5. User accounts, so data is available on several devices.
+5. User accounts with e-mail and password. **Login is required**: there is no
+   anonymous or local-only use. Data is available on several devices.
 6. Installable web app (PWA) for phone and desktop.
+7. English only.
 
 ### Out of scope (v1)
 
 Sharing or collaboration, subtasks, tags, recurring tasks, reminders and push
 notifications, file attachments, native mobile apps, third-party integrations,
-and a task calendar view. See section 9 for later ideas.
+a task calendar view, social login (Google, Apple), data export, and languages
+other than English. See section 9 for later ideas.
 
 ## 5. User stories
 
@@ -141,7 +148,7 @@ and a task calendar view. See section 9 for later ideas.
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| FR-22 | Sign up, log in and log out with e-mail and password. | Must |
+| FR-22 | Sign up, log in and log out with e-mail and password. No other login method. The app cannot be used without being logged in. | Must |
 | FR-23 | Sessions stay valid offline. If the login has expired when the connection returns, the app refreshes it before syncing. | Must |
 | FR-24 | Each user can only access their own data. | Must |
 | FR-25 | Logging out clears local data. If changes are still pending, the user is warned first. | Must |
@@ -150,17 +157,18 @@ and a task calendar view. See section 9 for later ideas.
 
 ## 7. Non-functional requirements
 
-| Area | Requirement **[?]** |
-|------|---------------------|
-| **Performance** | First load under 2 s on a mid-range phone on 4G. Actions show their result in under 100 ms (they only touch local data). |
-| **Offline** | Fully usable offline. Handles at least 5,000 tasks per user without noticeable slowdown. |
+| Area | Requirement |
+|------|-------------|
+| **Performance** | No numeric targets. The app should feel instant, because actions only touch local data. |
+| **Offline** | Fully usable offline after the user has logged in once on the device. |
+| **Scale** | Designed for 5 users with 2 tasks each. The chosen stack can grow well beyond this later. |
 | **Reliability** | No data loss on app crash, tab close or browser restart. Server data is backed up daily. |
 | **Security** | HTTPS only. Passwords hashed (argon2id). Server validates all input and checks ownership on every request. Rate limiting on login and sync endpoints. |
-| **Privacy** | Only e-mail and task data are stored. No third-party analytics in v1. Users can export and delete their data **[?]**. |
+| **Privacy** | Only e-mail and task data are stored. No third-party analytics in v1. No data export in v1. Users can delete their account and data (FR-27). |
 | **Accessibility** | Meets WCAG 2.2 AA: keyboard operable, screen-reader labels, sufficient contrast, respects reduced-motion setting. |
 | **Compatibility** | Latest two versions of Chrome, Edge, Firefox and Safari (desktop and mobile). Background Sync is Chromium-only; other browsers sync on app open, focus and reconnect. |
 | **Responsive design** | Works from 320 px wide phones to large desktop screens. |
-| **Languages** | English only in v1 **[?]**. Text kept in translation files for later. |
+| **Languages** | English only. Text kept in translation files for later. |
 | **Appearance** | Light and dark theme, following the system setting. |
 
 ## 8. Main screens
@@ -177,8 +185,8 @@ full screen.
 ## 9. Future ideas (not in v1)
 
 Tags, subtasks, recurring tasks, reminders and push notifications, shared lists,
-attachments, calendar view, import/export (CSV / JSON), keyboard shortcuts,
-widgets, and native apps.
+attachments, calendar view, import/export (CSV / JSON), social login, more
+languages, keyboard shortcuts, widgets, and native apps.
 
 ## 10. Release plan
 
@@ -207,8 +215,11 @@ Follows the roadmap in [TechStack.md](./TechStack.md#10-implementation-roadmap).
 |---|-------|-------|
 | 1 | **iOS / Safari storage limits** | Safari may clear site data after a period of no use. Mitigation: persistent storage request, sync often, warn users with long-pending changes. |
 | 2 | **Background Sync not available everywhere** | Sync on Safari and Firefox only happens while the app is open. Acceptable for v1. |
-| 3 | **Account requirement** | Should the app work without an account (local only) until the user signs up? **[?]** |
-| 4 | **Social login** | Add "Sign in with Google/Apple" in v1, or e-mail and password only? **[?]** |
+| 3 | **Who may sign up** | With only 5 users planned, should sign-up be open to anyone, or limited (invite only or a fixed list of e-mails)? Open sign-up invites spam accounts. **[?]** |
+| 4 | **E-mail sending** | Password reset (FR-26) needs a service that sends e-mail. Needed for v1, or skip reset until later? **[?]** |
 | 5 | **Hosting cost and plan** | Free for everyone, or a paid tier later? **[?]** |
-| 6 | **Data export** | Is export required for v1 (privacy regulation, user trust)? **[?]** |
-| 7 | **Languages** | English only, or more at launch? **[?]** |
+| 6 | **Privacy rules (GDPR)** | If users are in the EU, a privacy policy and the ability to delete an account are expected, even for a small app. **[?]** |
+
+**Decided:** login is required (no anonymous use), e-mail and password only, no
+data export, English only, and no numeric targets (goal is 5 users with 2 tasks
+each).
