@@ -1,0 +1,9 @@
+.git
+**/node_modules
+**/dist
+**/coverage
+backups
+*.db
+*.db-wal
+*.db-shm
+docs
