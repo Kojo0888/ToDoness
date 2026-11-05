@@ -62,6 +62,8 @@ export const t = {
     renameLabel: 'List name',
     save: 'Save',
     cancel: 'Cancel',
+    moveUp: 'Move list up',
+    moveDown: 'Move list down',
     deleteList: 'Delete list',
     deleteListTitle: 'Delete this list?',
     deleteListText: (name: string, n: number) =>

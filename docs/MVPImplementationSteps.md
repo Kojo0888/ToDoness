@@ -7,6 +7,98 @@
 
 ---
 
+## Implementation status
+
+*Last updated after the first full implementation.*
+
+How it was built: the logic (shared package, server, client data layer, sync
+engine and session handling) was written test-first, meaning the tests were
+written and run failing before the code. Two exceptions: the small shared API
+schemas were written together with their tests, and the screens were built
+before their browser tests (the e2e suite was written afterwards and found real
+problems, listed under FR-25 and the phone menu below).
+
+### Steps
+
+| Step | Status | Where / how it is tested |
+|------|--------|--------------------------|
+| 0 Project setup | Done | `pnpm dev`, lint, typecheck, build |
+| 1 Shared package | Done | `shared/test` (83 tests); three deliberate bugs were injected to check the tests catch them |
+| 2 Local-only app | Done | `client/test` repository and queries (34 tests), screens covered by the e2e suite |
+| 3 Server base | Done | `server/test` (config, migrations, static files, health) |
+| 4 Accounts and admin | Done | `server/test/auth.test.ts`, `rate-limit.test.ts` |
+| 5 Sync on the server | Done | `server/test/sync.test.ts` (39 tests, incl. isolation between users, rollback) |
+| 6 Sync on the client | Done | `client/test` engine, runner, backoff, session; `integration/` |
+| 7 Conflicts and edge cases | Done | `integration/test` (23 tests: every row of the table in Step 7 plus list reordering) |
+| 8 Login and admin screens | Done | session module (23 tests) and e2e scenarios 7 and 8 |
+| 9 Offline app (PWA) | Done | e2e scenarios 1, 2 and 6 (offline reload and cold start) |
+| 10 Deployment | Files written, **not run end to end** | see "Not verified" below |
+| 11 End-to-end tests | Done | `e2e/` (13 browser tests); run with `pnpm e2e` |
+| 12 Acceptance check | Done, see below | |
+
+### Acceptance check against the PRD "Must" requirements
+
+| Requirement | Result | Evidence |
+|-------------|--------|----------|
+| FR-1 task fields and limits | Met | shared schemas, repository tests, e2e |
+| FR-2 new tasks on top | Met | repository test, e2e |
+| FR-3 completion time, completed area | Met | repository test, e2e |
+| FR-4 delete with undo | Met | repository, integration (undo before/after sync), e2e. The 5-second timeout itself is not timed in a test |
+| FR-8 Inbox, cannot be deleted | Met | server, repository, integration, e2e |
+| FR-9 create, rename, **reorder**, delete lists | Met | reorder added during the acceptance check (it had been missed); repository, integration, e2e |
+| FR-10 confirm before deleting a list | Met | e2e |
+| FR-13 app loads offline | Met in Chromium | e2e scenarios 1 and 6 |
+| FR-14 all changes work offline | Met | integration, e2e scenario 1 |
+| FR-15 queue and automatic resend, no duplicates | Met | integration (lost answer), e2e scenario 3 |
+| FR-16 receive changes from other devices | Met | integration, e2e scenarios 2, 4, 5 |
+| FR-17 automatic conflict rules | Met | shared (all 5,040 orders converge), integration, e2e scenarios 4 and 5 |
+| FR-18 status indicator | Met | e2e (Offline, N changes pending, All changes saved) |
+| FR-22 sign up, log in, log out | Met | server, session module, e2e |
+| FR-23 session valid offline; expired session | Met, with a difference | works offline with no check; when the server says the login is no longer valid, the app asks for the password again and keeps all data (there are no refresh tokens) |
+| FR-24 own data only | Met | server tests for every endpoint |
+| FR-25 logout clears data, warns first | Met | session module, e2e scenario 7. A flaw found by the e2e test and fixed: logging out offline used to leave the server session alive, so the user was silently logged back in. |
+| FR-26 admin password reset | Met | server, integration, e2e scenario 8 |
+| FR-27 first user is admin, user list | Met | server, e2e |
+
+PRD scenarios 1 to 8 pass as automated browser tests. The success goal (5 users
+with 2 tasks each) was not run as a separate test; the e2e suite creates many
+more users and tasks than that.
+
+### Not verified
+
+- **The Docker image and Caddy.** There was no Docker daemon. The compose file
+  is valid, and the build and run steps of the Dockerfile were run by hand in
+  clean folders and the app worked, but `docker build`, `docker compose up`,
+  Caddy's internal certificates and the backup service have **not been run**.
+- **HTTPS on a real intranet name and installing Caddy's root certificate on
+  devices.** The offline tests ran on `http://localhost`, which browsers treat
+  as secure.
+- **Browsers other than Chromium** (Firefox, Safari, iPhone) and real phones.
+  The Safari storage risk from the PRD is untested.
+- **The "new version available" prompt (FR-21)** is implemented but not tested;
+  it needs two different builds.
+- **Accessibility** was built in (labels, focus outlines, native dialogs,
+  reduced motion, dark mode) but not audited against WCAG 2.2 AA with a tool.
+
+### Not built (PRD "Should" and "Could")
+
+FR-5 drag-and-drop reordering of tasks (lists can be reordered with buttons),
+FR-6 overdue highlighting, FR-7 search, FR-11 open-task counts, FR-12 Today and
+All tasks views, FR-19 a notice for changes the server rejected (they are kept
+in `deadLetter` but never shown), and the delete-user button in the admin
+screen (the endpoint exists and is tested). FR-20 (persistent storage) and
+FR-21 (update prompt) were built.
+
+### Other limits worth knowing
+
+- Only the first account is an admin; there is no screen to promote others.
+- A login lasts a fixed 90 days.
+- Moving a task to another list puts it on top there; there is no other way to
+  place a task between two others yet.
+
+
+---
+
 ## 1. What the MVP is
 
 The MVP contains every requirement marked **Must** in the PRD (FR-1 to FR-4,
@@ -241,9 +333,9 @@ everything; two devices' operations on different fields both end up in the row.
    time (a flag in the engine; the server is safe if two tabs overlap).
 2. **Push:** read the oldest operations from `outbox` (for example 50 at a
    time), send, delete the accepted ones, and move rejected ones to `deadLetter`.
-3. **Pull:** apply changes in one Dexie transaction using `applyPatch`, **skip
-   fields that still have pending operations** for that entity, then save
-   `lastServerSeq` in `meta`. Move the local HLC forward with `receive()`.
+3. **Pull:** apply changes in one Dexie transaction using the shared `applyOp`
+   (per-field last write wins; see DBModel 4.2), then save `lastServerSeq` in
+   `meta`. Move the local HLC forward with `receive()`.
 4. **Retry:** on network error or `5xx`, wait 1 s, 2 s, 4 s … up to 5 minutes,
    with a little random variation. A `4xx` validation error goes to `deadLetter`.
    A `401` stops syncing and tells the UI to show the login screen. **Local data

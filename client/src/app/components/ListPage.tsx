@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState, type FormEvent } from 'react';
 import { Redirect, useLocation } from 'wouter';
-import { getDoneTodos, getOpenTodos } from '../../data/queries';
+import { getDoneTodos, getLists, getOpenTodos } from '../../data/queries';
 import { db, repo } from '../services';
 import { t } from '../strings';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -16,6 +16,7 @@ export function ListPage({ listId, todoId }: { listId: string; todoId?: string }
     const l = await db.lists.get(listId);
     return l && l.deletedAt === null ? l : null;
   }, [listId]);
+  const lists = useLiveQuery(() => getLists(db), [], []);
   const open = useLiveQuery(() => getOpenTodos(db, listId), [listId], []);
   const done = useLiveQuery(() => getDoneTodos(db, listId), [listId], []);
 
@@ -26,6 +27,10 @@ export function ListPage({ listId, todoId }: { listId: string; todoId?: string }
 
   if (list === undefined) return null;
   if (list === null) return <Redirect to="/" replace />;
+
+  const position = lists.findIndex((l) => l.id === listId);
+  const canMoveUp = position > 0 && !lists[position - 1]!.isInbox;
+  const canMoveDown = position >= 0 && position < lists.length - 1;
 
   async function saveName(e: FormEvent) {
     e.preventDefault();
@@ -66,6 +71,20 @@ export function ListPage({ listId, todoId }: { listId: string; todoId?: string }
                     }}
                   >
                     {t.list.rename}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canMoveUp}
+                    onClick={() => void repo.moveList(listId, 'up')}
+                  >
+                    {t.list.moveUp}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canMoveDown}
+                    onClick={() => void repo.moveList(listId, 'down')}
+                  >
+                    {t.list.moveDown}
                   </button>
                   <button type="button" onClick={() => setConfirmDelete(true)}>
                     {t.list.deleteList}

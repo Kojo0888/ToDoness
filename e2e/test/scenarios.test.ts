@@ -122,6 +122,20 @@ describe('tasks and lists', () => {
     await page.getByRole('link', { name: 'Work' }).click();
     await task(page, 'first').waitFor();
 
+    // Reorder lists
+    await page.getByLabel('New list name').fill('Home');
+    await page.getByRole('button', { name: 'Add list' }).click();
+    await page.getByRole('heading', { level: 2, name: 'Home' }).waitFor();
+    expect(await page.locator('.nav-lists a').allTextContents()).toEqual(['Inbox', 'Work', 'Home']);
+    await page.getByRole('button', { name: 'Move list up' }).click();
+    await expect
+      .poll(() => page.locator('.nav-lists a').allTextContents())
+      .toEqual(['Inbox', 'Home', 'Work']);
+    await page.getByRole('button', { name: 'Move list up' }).waitFor({ state: 'attached' });
+    expect(await page.getByRole('button', { name: 'Move list up' }).isDisabled()).toBe(true); // right below the Inbox
+    await page.getByRole('link', { name: 'Work' }).click();
+    await task(page, 'first').waitFor();
+
     await page.getByRole('button', { name: 'Rename' }).click();
     await page.getByLabel('List name', { exact: true }).fill('Job');
     await page.getByRole('button', { name: 'Save' }).click();

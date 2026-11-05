@@ -1,0 +1,56 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      COOKIE_SECURE: 'true' # cookies only over HTTPS (Caddy provides it)
+      TRUST_PROXY: 'true' # use the client IP that Caddy forwards (login rate limit)
+    volumes:
+      - todoness-data:/data
+    expose:
+      - '3000' # only visible to other containers, not published
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - '80:80' # redirects to HTTPS
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data # keeps the internal CA and certificates
+      - caddy-config:/config
+
+  backup: # optional: a copy of the database once a day, kept for 14 days
+    image: alpine:3.20
+    restart: unless-stopped
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        apk add --no-cache sqlite
+        while true; do
+          sqlite3 /data/todoness.db ".backup '/backups/todoness-$$(date +%F).db'"
+          find /backups -name 'todoness-*.db' -mtime +14 -delete
+          sleep 86400
+        done
+    volumes:
+      - todoness-data:/data
+      - ./backups:/backups
+
+volumes:
+  todoness-data:
+  caddy-data:
+  caddy-config:

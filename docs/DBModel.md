@@ -92,8 +92,8 @@ erDiagram
 
 ## 3. Server database (SQLite)
 
-Applied as numbered migration files in `server/src/db/migrations/`, for example
-`001_init.sql`. Run these pragmas when the connection opens:
+Applied as numbered migration files in `server/src/db/migrations/` (`001_init.sql`
+is the schema below; the build copies them to `server/dist/migrations/`). Run these pragmas when the connection opens:
 
 ```sql
 PRAGMA journal_mode = WAL;
@@ -244,12 +244,13 @@ server starts. Back up the database file every night with
 
 ```ts
 db.version(1).stores({
-  // primary key first, then indexed fields
-  lists:       'id, updatedAt, deletedAt, orderKey',
-  todos:       'id, listId, updatedAt, deletedAt, done, dueAt, [listId+orderKey]',
-  outbox:      'opId, createdAt, entityId',     // pending changes, oldest first
-  deadLetter:  'opId, failedAt',                // changes the server rejected (4xx)
-  meta:        'key',                           // clientId, lastServerSeq, schemaVersion, userId
+  // primary key first, then indexed fields. Only strings and numbers can be
+  // indexed, so `deletedAt` (null) and the booleans are filtered in code.
+  lists:       'id, orderKey',
+  todos:       'id, listId, [listId+orderKey]',
+  outbox:      'opId, hlc, entityId',   // pending changes; sent in `hlc` order (oldest first)
+  deadLetter:  'opId, failedAt',        // changes the server rejected
+  meta:        'key',                   // see the list below
 });
 ```
 
@@ -300,10 +301,12 @@ interface DeadLetter extends OutboxOp {
 }
 
 // meta rows
-// { key: 'clientId',       value: string }   // random ID for this browser, sent in sync calls
-// { key: 'lastServerSeq',  value: number }
-// { key: 'schemaVersion',  value: number }
-// { key: 'userId',         value: string }
+// { key: 'clientId',        value: string }   // random ID for this browser, sent in sync calls
+// { key: 'lastHlc',         value: string }   // last clock value produced here (never goes backwards)
+// { key: 'lastServerSeq',   value: number }   // pull cursor
+// { key: 'user',            value: { id, email, role } }  // who is logged in on this device
+// { key: 'initialSyncDone', value: boolean }  // first full pull finished
+// { key: 'pendingLogout',   value: boolean }  // logged out offline; tell the server at next start
 ```
 
 ### 4.1 Mapping server ↔ client
@@ -322,8 +325,11 @@ interface DeadLetter extends OutboxOp {
 
 1. **A local change is one transaction:** update `todos` or `lists` **and** append
    to `outbox` together, so they never get out of step.
-2. **Applying pulled changes:** skip any field that still has a pending operation
-   in `outbox` for the same entity.
+2. **Applying pulled changes:** merge them field by field with the shared
+   `applyOp` ("last write wins" by clock). Local rows keep the clock of every
+   field, so a newer pending local edit stays and an older one gives way. Do
+   **not** skip fields that have pending operations: the server may keep the
+   remote value, and the browser would then be left with a stale one.
 3. **Queries hide deleted rows:** always filter `deletedAt === null` in the UI.
 4. **Schema changes:** bump `db.version(n)` and add a Dexie `upgrade()` step.
    Never edit an old version block.

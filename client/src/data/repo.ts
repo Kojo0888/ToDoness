@@ -52,6 +52,8 @@ export interface Repo {
   createList(name: string): Promise<List>;
   renameList(id: string, name: string): Promise<List>;
   deleteList(id: string): Promise<List>;
+  /** Moves a list one place up or down among the visible lists (never above the Inbox). */
+  moveList(id: string, direction: 'up' | 'down'): Promise<List>;
 }
 
 export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): Repo {
@@ -194,6 +196,36 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         const list = await liveList(id);
         if (list.isInbox) throw new RepoError('inbox_protected', 'The Inbox cannot be renamed');
         return commit<List>('list', 'update', id, { name });
+      }),
+
+    moveList: (id, direction) =>
+      inTx(async () => {
+        const list = await liveList(id);
+        if (list.isInbox) throw new RepoError('inbox_protected', 'The Inbox cannot be moved');
+
+        const all = (await db.lists.orderBy('orderKey').toArray()).filter(
+          (l) => l.deletedAt === null,
+        );
+        const i = all.findIndex((l) => l.id === id);
+        const neighbor = all[direction === 'up' ? i - 1 : i + 1];
+        if (!neighbor || neighbor.isInbox) return list; // already at the end
+
+        // A new key between the neighbour and the list after it (or before it).
+        let lo: string | null;
+        let hi: string | null;
+        if (direction === 'up') {
+          lo = all[i - 2]?.orderKey ?? null;
+          hi = neighbor.orderKey;
+        } else {
+          lo = neighbor.orderKey;
+          hi = all[i + 2]?.orderKey ?? null;
+        }
+        // Two devices can create lists with the same key; then just step past the neighbour.
+        if (lo !== null && hi !== null && lo >= hi) {
+          if (direction === 'down') hi = null;
+          else lo = null;
+        }
+        return commit<List>('list', 'update', id, { orderKey: generateKeyBetween(lo, hi) });
       }),
 
     deleteList: (id) =>

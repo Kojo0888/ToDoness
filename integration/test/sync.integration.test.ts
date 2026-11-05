@@ -336,6 +336,44 @@ describe('step 7: conflicts and edge cases', () => {
   });
 });
 
+describe('reordering lists', () => {
+  it('shows the same list order on every device', async () => {
+    const { a, b } = await twoBrowsers();
+    const x = await a.repo.createList('X');
+    await a.repo.createList('Y');
+    await a.repo.createList('Z');
+    await a.sync();
+    await b.sync();
+    await a.repo.moveList(x.id, 'down');
+    await a.sync();
+    await b.sync();
+    const names = async (br: Browser) => (await getLists(br.db)).map((l) => l.name);
+    expect(await names(b)).toEqual(['Inbox', 'Y', 'X', 'Z']);
+    expect(await names(a)).toEqual(await names(b));
+    await expectConverged(a, b);
+  });
+
+  it('two devices creating a list while offline both end up with both lists in the same order', async () => {
+    const { a, b } = await twoBrowsers();
+    a.online = b.online = false;
+    await a.repo.createList('From laptop');
+    await b.repo.createList('From phone');
+    a.online = b.online = true;
+    await a.sync();
+    await b.sync();
+    await a.sync();
+    const names = async (br: Browser) => (await getLists(br.db)).map((l) => l.name);
+    expect((await names(a)).sort()).toEqual(['From laptop', 'From phone', 'Inbox']);
+    expect(await names(a)).toEqual(await names(b));
+    // They can still be reordered although both got the same key.
+    const second = (await getLists(a.db))[2]!;
+    await a.repo.moveList(second.id, 'up');
+    await a.sync();
+    await b.sync();
+    expect(await names(a)).toEqual(await names(b));
+  });
+});
+
 describe('authentication during sync (admin reset)', () => {
   it('after an admin reset the browser asks for login, keeps its changes, and sends them after login', async () => {
     const server = startServer();

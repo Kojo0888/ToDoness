@@ -1,0 +1,18 @@
+# Use the internal DNS name of the server. Avoid ".local": it clashes with mDNS
+# on some devices. A name like todo.company.internal works well.
+todo.company.internal {
+	tls internal
+	encode zstd gzip
+
+	# The service worker file must never be cached for long, or app updates stall.
+	@sw path /sw.js
+	header @sw Cache-Control "no-cache"
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+	}
+
+	reverse_proxy app:3000
+}
