@@ -1,19 +1,524 @@
 :root {
   --bg: #ffffff;
-  --fg: #1a1a1a;
-  font-family: system-ui, sans-serif;
+  --surface: #f6f7f9;
+  --fg: #1a1c1f;
+  --muted: #5b6270;
+  --border: #d9dde3;
+  --accent: #2851d6;
+  --accent-fg: #ffffff;
+  --danger: #b3261e;
+  --ok: #1d7a3a;
+  --warn: #9a5b00;
+  --focus: #2851d6;
+  color-scheme: light dark;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
   color: var(--fg);
   background: var(--bg);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #121212;
-    --fg: #e8e8e8;
+  :root:not([data-theme='light']) {
+    --bg: #121316;
+    --surface: #1b1d22;
+    --fg: #e9ebef;
+    --muted: #a3a9b5;
+    --border: #343843;
+    --accent: #8aa8ff;
+    --accent-fg: #0c1330;
+    --danger: #ff8a80;
+    --ok: #6fd48c;
+    --warn: #f0b15a;
+    --focus: #8aa8ff;
   }
+}
+
+:root[data-theme='dark'] {
+  --bg: #121316;
+  --surface: #1b1d22;
+  --fg: #e9ebef;
+  --muted: #a3a9b5;
+  --border: #343843;
+  --accent: #8aa8ff;
+  --accent-fg: #0c1330;
+  --danger: #ff8a80;
+  --ok: #6fd48c;
+  --warn: #f0b15a;
+  --focus: #8aa8ff;
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
+  background: var(--bg);
+}
+
+h1,
+h2 {
+  margin: 0 0 0.5rem;
+  line-height: 1.2;
+}
+
+a {
+  color: var(--accent);
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* ---------- controls ---------- */
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+input[type='text'],
+input[type='email'],
+input[type='password'],
+input[type='date'],
+select,
+textarea {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+button {
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+button.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: transparent;
+}
+
+button.link {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  padding: 0.25rem 0;
+  text-decoration: underline;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+label {
+  display: block;
+  margin: 0.75rem 0;
+  font-weight: 600;
+}
+
+label > input,
+label > select,
+label > textarea {
+  display: block;
+  margin-top: 0.25rem;
+  font-weight: 400;
+}
+
+.error {
+  color: var(--danger);
+}
+
+.hint,
+.empty {
+  color: var(--muted);
+}
+
+.notice {
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+/* ---------- login and splash ---------- */
+
+.auth {
+  max-width: 26rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.card {
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.card button.primary {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+/* ---------- shell ---------- */
+
+.shell {
+  display: grid;
+  grid-template-columns: 16rem 1fr;
+  min-height: 100vh;
+}
+
+.menu-button {
+  display: none;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   padding: 1rem;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.brand {
+  font-size: 1.25rem;
+}
+
+.nav-lists,
+.todos {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nav-lists a,
+.nav-foot a {
+  display: block;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.nav-lists a:hover,
+.nav-foot a:hover {
+  background: var(--border);
+}
+
+.nav-lists a.active,
+.nav-foot a.active {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.new-list {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.new-list button {
+  white-space: nowrap;
+}
+
+.nav-foot {
+  margin-top: auto;
+}
+
+.sync-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.sync-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--ok);
+  flex: none;
+}
+
+.sync-busy .sync-dot {
+  background: var(--accent);
+}
+
+.sync-warn .sync-dot {
+  background: var(--warn);
+}
+
+.content {
+  padding: 1rem 1.25rem;
+  min-width: 0;
+}
+
+.page {
+  max-width: 40rem;
+}
+
+/* ---------- lists and tasks ---------- */
+
+.list-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.5rem;
+}
+
+.list-page.has-detail {
+  grid-template-columns: minmax(0, 1fr) 22rem;
+}
+
+.list-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.list-actions,
+.rename {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.rename input {
+  min-width: 12rem;
+}
+
+.quick-add {
+  margin: 0.5rem 0 1rem;
+}
+
+.todo {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.2rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.todo input[type='checkbox'] {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: none;
+}
+
+.todo-title {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: inherit;
+  text-decoration: none;
+}
+
+.todo-title:hover {
+  text-decoration: underline;
+}
+
+.is-done .todo-title {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.due {
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.priority {
+  font-weight: 700;
+  color: var(--warn);
+}
+
+.priority.p3 {
+  color: var(--danger);
+}
+
+.completed {
+  margin-top: 1.25rem;
+}
+
+.detail {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  align-self: start;
+}
+
+.detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* ---------- dialog, toast, tables ---------- */
+
+.dialog {
+  max-width: 28rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.toast-region {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 1rem;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 0.9rem;
+  border-radius: 10px;
+  background: var(--fg);
+  color: var(--bg);
+  pointer-events: auto;
+}
+
+.toast button {
+  background: transparent;
+  color: inherit;
+  border-color: currentColor;
+}
+
+.users {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.users th,
+.users td {
+  padding: 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.update-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.5rem;
+  background: var(--accent);
+  color: var(--accent-fg);
+  z-index: 10;
+}
+
+.facts {
+  margin: 0 0 1rem;
+}
+
+.facts dt {
+  font-weight: 600;
+}
+
+.facts dd {
+  margin: 0 0 0.5rem;
+}
+
+/* ---------- phones ---------- */
+
+@media (max-width: 760px) {
+  .shell {
+    display: block;
+  }
+
+  .menu-button {
+    display: block;
+    position: fixed;
+    top: 0.6rem;
+    left: 0.6rem;
+    z-index: 5;
+    padding: 0.4rem 0.7rem;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(18rem, 85vw);
+    transform: translateX(-100%);
+    transition: transform 0.2s;
+    z-index: 4;
+  }
+
+  .sidebar.open {
+    transform: none;
+  }
+
+  .content {
+    padding: 3.5rem 1rem 1rem;
+  }
+
+  .list-page.has-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* On a phone the task detail fills the screen. */
+  .list-page.has-detail .list-main {
+    display: none;
+  }
 }

@@ -1,23 +1,28 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import { InitialSync, OfflineNoSession, Splash } from './components/Splash';
+import { LoginScreen } from './components/LoginScreen';
+import { Shell } from './components/Shell';
+import { applyTheme, readTheme, useSession } from './hooks';
+import { session } from './services';
 
-type Health = 'checking' | 'ok' | 'unreachable';
-
-/** Placeholder page for Step 0: shows whether the API answers. */
 export function App() {
-  const [health, setHealth] = useState<Health>('checking');
+  const state = useSession();
 
   useEffect(() => {
-    fetch('/api/health')
-      .then((res) => setHealth(res.ok ? 'ok' : 'unreachable'))
-      .catch(() => setHealth('unreachable'));
+    applyTheme(readTheme());
+    void session.boot();
   }, []);
 
-  return (
-    <main>
-      <h1>ToDoness</h1>
-      <p>
-        Server: <strong data-testid="health">{health}</strong>
-      </p>
-    </main>
-  );
+  switch (state.status) {
+    case 'loading':
+      return <Splash />;
+    case 'login':
+      return <LoginScreen email={state.email} reason={state.reason} />;
+    case 'offline_no_session':
+      return <OfflineNoSession />;
+    case 'initial_sync':
+      return <InitialSync error={state.error} />;
+    case 'ready':
+      return <Shell user={state.user} />;
+  }
 }
