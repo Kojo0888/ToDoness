@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft v0.2 – open questions answered, for review |
+| **Status** | Draft v0.3 – internal intranet app, admin password reset, for review |
 | **Product** | ToDoness – a simple to-do list web app |
 | **Related docs** | [TechStack.md](./TechStack.md), [DBModel.md](./DBModel.md) |
 
@@ -53,16 +53,20 @@ easy to meet. There are no numeric performance targets for now.
 3. Due date and priority on tasks.
 4. Full offline use, with automatic sync when back online.
 5. User accounts with e-mail and password. **Login is required**: there is no
-   anonymous or local-only use. Data is available on several devices.
-6. Installable web app (PWA) for phone and desktop.
-7. English only.
+   anonymous or local-only use. **Sign-up is open** to anyone who can reach the
+   app. Data is available on several devices.
+6. An **admin** role. The admin can reset a user's password (no e-mail involved).
+7. Installable web app (PWA) for phone and desktop.
+8. English only.
+9. **Internal use only**: hosted on the company intranet, not on the public internet.
 
 ### Out of scope (v1)
 
 Sharing or collaboration, subtasks, tags, recurring tasks, reminders and push
 notifications, file attachments, native mobile apps, third-party integrations,
-a task calendar view, social login (Google, Apple), data export, and languages
-other than English. See section 9 for later ideas.
+a task calendar view, social login (Google, Apple), data export, sending
+e-mail (including password reset by e-mail), a privacy policy / public-site
+compliance features, and languages other than English. See section 9 for later ideas.
 
 ## 5. User stories
 
@@ -105,6 +109,8 @@ other than English. See section 9 for later ideas.
 | A2 | stay logged in on my device | I do not log in every time |
 | A3 | log out | I can protect a shared device |
 | A4 | install the app to my home screen or desktop | it feels like a normal app |
+| A5 | (as admin) reset a user's password | a user who forgot it can get back in without e-mail |
+| A6 | (as a user whose password was reset) just type a new password at my next login | I can get back in right away |
 
 ## 6. Functional requirements
 
@@ -152,8 +158,9 @@ other than English. See section 9 for later ideas.
 | FR-23 | Sessions stay valid offline. If the login has expired when the connection returns, the app refreshes it before syncing. | Must |
 | FR-24 | Each user can only access their own data. | Must |
 | FR-25 | Logging out clears local data. If changes are still pending, the user is warned first. | Must |
-| FR-26 | Password reset by e-mail. | Should |
-| FR-27 | Delete account and all data. | Should |
+| FR-26 | **Admin password reset:** the admin can reset a user's password. After a reset, the next time that user logs in, the password they type becomes their new password and they are logged in. No e-mail is sent. Reset also logs the user out of all devices. | Must |
+| FR-27 | The first account created becomes the admin. The admin sees a list of users. | Must |
+| FR-28 | The admin can delete a user and all of that user's data. | Could |
 
 ## 7. Non-functional requirements
 
@@ -163,10 +170,11 @@ other than English. See section 9 for later ideas.
 | **Offline** | Fully usable offline after the user has logged in once on the device. |
 | **Scale** | Designed for 5 users with 2 tasks each. The chosen stack can grow well beyond this later. |
 | **Reliability** | No data loss on app crash, tab close or browser restart. Server data is backed up daily. |
-| **Security** | HTTPS only. Passwords hashed (argon2id). Server validates all input and checks ownership on every request. Rate limiting on login and sync endpoints. |
-| **Privacy** | Only e-mail and task data are stored. No third-party analytics in v1. No data export in v1. Users can delete their account and data (FR-27). |
+| **Security** | HTTPS only, with a certificate the company devices trust (required for offline mode, see [TechStack.md](./TechStack.md#5-https-on-the-intranet-important)). Passwords hashed (argon2id). Server validates all input and checks ownership on every request. Simple rate limit on login attempts. |
+| **Hosting** | Internal server on the company intranet only. One container, one database file, nightly backup of that file. |
+| **Privacy** | Internal app: no public privacy policy needed. Only e-mail and task data are stored. No third-party analytics. No data export in v1. |
 | **Accessibility** | Meets WCAG 2.2 AA: keyboard operable, screen-reader labels, sufficient contrast, respects reduced-motion setting. |
-| **Compatibility** | Latest two versions of Chrome, Edge, Firefox and Safari (desktop and mobile). Background Sync is Chromium-only; other browsers sync on app open, focus and reconnect. |
+| **Compatibility** | Latest two versions of Chrome, Edge, Firefox and Safari (desktop and mobile). Sync runs while the app is open (on open, focus, reconnect and about every minute); there is no sync after the app is closed. |
 | **Responsive design** | Works from 320 px wide phones to large desktop screens. |
 | **Languages** | English only. Text kept in translation files for later. |
 | **Appearance** | Light and dark theme, following the system setting. |
@@ -208,18 +216,19 @@ Follows the roadmap in [TechStack.md](./TechStack.md#10-implementation-roadmap).
 5. **Delete vs. edit:** Delete a task on one device and edit it on another while offline. After sync the task is deleted on both.
 6. **First load offline:** After one online visit, close the browser, go offline and open the app. It loads and shows the user's tasks.
 7. **Logout safety:** Log out with pending changes. The app warns the user before clearing data.
+8. **Admin reset:** The admin resets a user's password. The user's open devices are logged out. At the next login the user types a new password, is logged in, and the password works from then on. Changes the user made offline in the meantime are still sent.
 
 ## 12. Risks and open questions
 
 | # | Topic | Notes |
 |---|-------|-------|
 | 1 | **iOS / Safari storage limits** | Safari may clear site data after a period of no use. Mitigation: persistent storage request, sync often, warn users with long-pending changes. |
-| 2 | **Background Sync not available everywhere** | Sync on Safari and Firefox only happens while the app is open. Acceptable for v1. |
-| 3 | **Who may sign up** | With only 5 users planned, should sign-up be open to anyone, or limited (invite only or a fixed list of e-mails)? Open sign-up invites spam accounts. **[?]** |
-| 4 | **E-mail sending** | Password reset (FR-26) needs a service that sends e-mail. Needed for v1, or skip reset until later? **[?]** |
-| 5 | **Hosting cost and plan** | Free for everyone, or a paid tier later? **[?]** |
-| 6 | **Privacy rules (GDPR)** | If users are in the EU, a privacy policy and the ability to delete an account are expected, even for a small app. **[?]** |
+| 2 | **No sync after the app is closed** | Changes wait on the device until the app is opened again. Acceptable for v1. |
+| 3 | **HTTPS certificate on the intranet** | Offline mode only works over HTTPS with a certificate the devices trust. Who provides it (company CA, Caddy with its root certificate installed on devices, or a public certificate for an internal name)? **[?]** |
+| 4 | **Admin password reset is not fully secure** | Between the reset and the user's next login, anyone who knows the e-mail could set the password. Acceptable on a closed intranet? Alternative: the admin types a temporary password. **[?]** |
+| 5 | **Who is the admin** | The first account created becomes admin. Is that acceptable, or should the admin be set in another way? **[?]** |
 
-**Decided:** login is required (no anonymous use), e-mail and password only, no
-data export, English only, and no numeric targets (goal is 5 users with 2 tasks
-each).
+**Decided:** login is required (no anonymous use), e-mail and password only, open
+sign-up, password reset only by the admin (no e-mail), no data export, English
+only, no numeric targets (goal is 5 users with 2 tasks each), and internal
+intranet hosting only (no privacy policy needed).
