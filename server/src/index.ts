@@ -3,11 +3,14 @@ import { createApp } from './app';
 import { loadConfig } from './config';
 import { openDatabase } from './db/connection';
 import { migrate, MIGRATIONS_DIR } from './db/migrate';
+import { deleteExpiredSessions } from './auth/sessions';
 
 const config = loadConfig();
 const db = openDatabase(config.databasePath);
 const applied = migrate(db, MIGRATIONS_DIR);
 if (applied > 0) console.log(`Applied ${applied} database migration(s)`);
+
+deleteExpiredSessions(db, Date.now());
 
 const app = createApp({ db, config, log: true });
 

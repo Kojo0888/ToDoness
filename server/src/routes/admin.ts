@@ -1,0 +1,64 @@
+import type Database from 'better-sqlite3';
+import { Hono } from 'hono';
+import { idSchema, type AdminUsersResponse } from '@todoness/shared';
+import { requireAdmin, requireAuth } from '../auth/middleware';
+import { deleteUserSessions } from '../auth/sessions';
+import type { AppEnv } from '../types';
+
+export function adminRoutes({ db, now }: { db: Database.Database; now: () => number }) {
+  const app = new Hono<AppEnv>();
+  app.use('*', requireAuth(db, now), requireAdmin);
+
+  app.get('/users', (c) => {
+    const rows = db
+      .prepare(
+        `SELECT id, email, role, created_at, password_hash IS NULL AS reset
+           FROM users ORDER BY rowid`,
+      )
+      .all() as {
+      id: string;
+      email: string;
+      role: 'admin' | 'user';
+      created_at: number;
+      reset: number;
+    }[];
+    const body: AdminUsersResponse = {
+      users: rows.map((r) => ({
+        id: r.id,
+        email: r.email,
+        role: r.role,
+        createdAt: r.created_at,
+        passwordReset: r.reset === 1,
+      })),
+    };
+    return c.json(body);
+  });
+
+  /** Clears the password. The user's next login sets the new one. */
+  app.post('/users/:id/reset-password', (c) => {
+    const id = idSchema.safeParse(c.req.param('id'));
+    if (!id.success) return c.json({ error: 'not_found' }, 404);
+    if (id.data === c.get('user').id) return c.json({ error: 'cannot_reset_self' }, 400);
+
+    const reset = db.transaction(() => {
+      const r = db
+        .prepare('UPDATE users SET password_hash = NULL, updated_at = ? WHERE id = ?')
+        .run(now(), id.data);
+      if (r.changes === 0) return false;
+      deleteUserSessions(db, id.data);
+      return true;
+    });
+    return reset() ? c.body(null, 204) : c.json({ error: 'not_found' }, 404);
+  });
+
+  /** Deletes the user; sessions, lists, todos and the change log go with them. */
+  app.delete('/users/:id', (c) => {
+    const id = idSchema.safeParse(c.req.param('id'));
+    if (!id.success) return c.json({ error: 'not_found' }, 404);
+    if (id.data === c.get('user').id) return c.json({ error: 'cannot_delete_self' }, 400);
+    const r = db.prepare('DELETE FROM users WHERE id = ?').run(id.data);
+    return r.changes === 0 ? c.json({ error: 'not_found' }, 404) : c.body(null, 204);
+  });
+
+  return app;
+}

@@ -10,8 +10,8 @@ export function testDb() {
   return db;
 }
 
-export function testApp(env: Record<string, string> = {}) {
+export function testApp(env: Record<string, string> = {}, extra: { now?: () => number } = {}) {
   const db = testDb();
   const config = loadConfig(env);
-  return { app: createApp({ db, config }), db, config };
+  return { app: createApp({ db, config, ...extra }), db, config };
 }
