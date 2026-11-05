@@ -189,6 +189,29 @@ describe('push: repeating is safe', () => {
   });
 });
 
+describe('push: operation ids', () => {
+  it('records every applied operation id', async () => {
+    const ops = [
+      todoCreate(newId(), c.inbox, 'A', hlcAt(1)),
+      todoCreate(newId(), c.inbox, 'B', hlcAt(2)),
+    ];
+    await c.ann.push(ops);
+    const ids = (c.db.prepare('SELECT op_id FROM processed_ops').all() as { op_id: string }[]).map(
+      (r) => r.op_id,
+    );
+    expect(ids.sort()).toEqual(ops.map((o) => o.opId).sort());
+  });
+
+  it('treats the operation id as the key: same id with different content is ignored', async () => {
+    const t = newId();
+    const first = op('todo', 'update', t, { title: 'A' }, hlcAt(5));
+    await c.ann.push([todoCreate(t, c.inbox, 'Base', hlcAt(1)), first]);
+    const replay = { ...first, patch: { title: 'B' }, hlc: hlcAt(9) };
+    expect((await c.ann.push([replay])).accepted).toEqual([first.opId]);
+    expect(row(c, 'todos', t)!.title).toBe('A');
+  });
+});
+
 describe('push: invalid and refused operations', () => {
   it('rejects the invalid ones and still applies the valid ones', async () => {
     const good1 = todoCreate(newId(), c.inbox, 'Good 1', hlcAt(1));
