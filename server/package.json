@@ -5,16 +5,20 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/index.js",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --external:better-sqlite3 --external:@node-rs/argon2 --banner:js=\"import{createRequire}from'node:module';const require=createRequire(import.meta.url);\" --outfile=dist/index.js && node scripts/postbuild.mjs",
     "start": "node dist/index.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.6",
+    "@node-rs/argon2": "^2.2.2",
+    "better-sqlite3": "^13.0.3",
     "hono": "^4.13.16"
   },
   "devDependencies": {
+    "@todoness/shared": "workspace:*",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.0.0",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
