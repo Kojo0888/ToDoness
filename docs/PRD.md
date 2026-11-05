@@ -2,11 +2,12 @@
 
 | | |
 |---|---|
-| **Status** | Draft v0.3 – internal intranet app, admin password reset, for review |
+| **Status** | Draft v0.4 – all open questions answered, ready for review |
 | **Product** | ToDoness – a simple to-do list web app |
 | **Related docs** | [TechStack.md](./TechStack.md), [DBModel.md](./DBModel.md) |
 
-> Items marked **[?]** are still my assumptions. Please confirm or correct them.
+> All earlier open questions are answered. Anything new that needs a decision is
+> marked **[?]**.
 
 ---
 
@@ -119,7 +120,7 @@ compliance features, and languages other than English. See section 9 for later i
 | ID | Requirement | Priority |
 |----|-------------|----------|
 | FR-1 | A task has: title (required, 1–500 characters), notes (optional), done flag, due date (optional), priority (none / low / medium / high), and belongs to exactly one list. | Must |
-| FR-2 | New tasks are added at the top of the chosen list **[?]**. | Must |
+| FR-2 | New tasks are added at the top of the chosen list. | Must |
 | FR-3 | Completing a task records the completion time and moves it to the "completed" area of its list. | Must |
 | FR-4 | Deleting a task removes it from view immediately and offers "Undo" for about 5 seconds. | Must |
 | FR-5 | Users can reorder tasks within a list by drag and drop (keyboard alternative required). | Should |
@@ -225,10 +226,11 @@ Follows the roadmap in [TechStack.md](./TechStack.md#10-implementation-roadmap).
 | 1 | **iOS / Safari storage limits** | Safari may clear site data after a period of no use. Mitigation: persistent storage request, sync often, warn users with long-pending changes. |
 | 2 | **No sync after the app is closed** | Changes wait on the device until the app is opened again. Acceptable for v1. |
 | 3 | **HTTPS certificate on the intranet** | **Decided:** Caddy with its own internal certificate authority. Its root certificate is installed once on every device (steps in [TechStack.md](./TechStack.md#13-deployment-example-docker-compose--caddy)). |
-| 4 | **Admin password reset is not fully secure** | Between the reset and the user's next login, anyone who knows the e-mail could set the password. Acceptable on a closed intranet? Alternative: the admin types a temporary password. **[?]** |
-| 5 | **Who is the admin** | The first account created becomes admin. Is that acceptable, or should the admin be set in another way? **[?]** |
+| 4 | **Admin password reset window** | **Accepted:** between the reset and the user's next login, anyone who knows the e-mail could set the password. This is fine because the app is internal with few users. |
+| 5 | **Who is the admin** | **Accepted:** the first account created becomes admin. |
 
 **Decided:** login is required (no anonymous use), e-mail and password only, open
 sign-up, password reset only by the admin (no e-mail), no data export, English
-only, no numeric targets (goal is 5 users with 2 tasks each), and internal
-intranet hosting only (no privacy policy needed).
+only, no numeric targets (goal is 5 users with 2 tasks each), internal
+intranet hosting only (no privacy policy needed), new tasks are added at the top
+of a list, and HTTPS through Caddy.
