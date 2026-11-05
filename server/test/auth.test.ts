@@ -5,6 +5,8 @@ import { TestClient } from './helpers/client';
 
 const PW = 'correct horse';
 
+type Row = Record<string, string>;
+
 async function register(c: TestClient, email = 'ann@corp.test', password = PW) {
   return c.post('/api/auth/register', { email, password });
 }
@@ -75,16 +77,10 @@ describe('POST /api/auth/register', () => {
   it('creates exactly one Inbox and a change-log entry so it syncs', async () => {
     const { app, db } = testApp();
     const me = await (await register(new TestClient(app))).json();
-    const lists = db.prepare('SELECT * FROM lists WHERE user_id = ?').all(me.id) as Record<
-      string,
-      any
-    >[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const lists = db.prepare('SELECT * FROM lists WHERE user_id = ?').all(me.id) as Row[];
     expect(lists).toHaveLength(1);
     expect(lists[0]).toMatchObject({ name: 'Inbox', is_inbox: 1, deleted_at: null });
-    const log = db.prepare('SELECT * FROM change_log WHERE user_id = ?').all(me.id) as Record<
-      string,
-      any
-    >[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+    const log = db.prepare('SELECT * FROM change_log WHERE user_id = ?').all(me.id) as Row[];
     expect(log).toHaveLength(1);
     expect(log[0]).toMatchObject({ entity: 'list', entity_id: lists[0]!.id, op_type: 'create' });
     expect(JSON.parse(log[0]!.patch)).toEqual({ name: 'Inbox', orderKey: 'a0', isInbox: true });
