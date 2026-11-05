@@ -297,6 +297,70 @@ describe('logout', () => {
   });
 });
 
+describe('logging out while offline', () => {
+  it('does not silently log the user back in at the next start', async () => {
+    const first = setup({
+      'GET /api/me': () => json(200, ANN),
+      'POST /api/auth/logout': () => 'network-error',
+      ...okSync,
+    });
+    await first.session.boot();
+    expect(await first.session.logout()).toBe(true);
+    expect(first.session.getState()).toEqual({ status: 'login', reason: 'logged_out' });
+    expect(await first.db.getMeta('pendingLogout')).toBe(true);
+
+    // Later, online again: the server session from before is still valid.
+    const routes: Router = {
+      'GET /api/me': () => json(200, ANN),
+      'POST /api/auth/logout': () => new Response(null, { status: 204 }),
+      ...okSync,
+    };
+    const f = fakeFetch((call) => routes[`${call.method} ${call.url.split('?')[0]}`]!(call));
+    const second = createSession({
+      db: first.db,
+      engine: createSyncEngine({ db: first.db, fetch: f }),
+      fetch: f,
+      resumeSync: vi.fn(),
+      stopSync: vi.fn(),
+      confirm: () => true,
+    });
+    await second.boot();
+
+    expect(f.calls.map((c) => c.url)).toEqual(['/api/auth/logout']); // finished the logout, never asked /api/me
+    expect(second.getState()).toEqual({ status: 'login', reason: 'logged_out' });
+    expect(await first.db.getMeta('pendingLogout')).toBeUndefined();
+  });
+
+  it('still shows the login screen if the server cannot be reached yet', async () => {
+    const { session, db } = setup({ 'POST /api/auth/logout': () => 'network-error' });
+    await db.setMeta('pendingLogout', true);
+    await session.boot();
+    expect(session.getState()).toEqual({ status: 'login', reason: 'logged_out' });
+    expect(await db.getMeta('pendingLogout')).toBe(true); // try again next time
+  });
+
+  it('an online logout leaves no flag behind', async () => {
+    const { session, db } = setup({
+      'GET /api/me': () => json(200, ANN),
+      'POST /api/auth/logout': () => new Response(null, { status: 204 }),
+      ...okSync,
+    });
+    await session.boot();
+    await session.logout();
+    expect(await db.getMeta('pendingLogout')).toBeUndefined();
+  });
+
+  it('logging in again removes the flag', async () => {
+    const { session, db } = setup({
+      'POST /api/auth/login': () => json(200, ANN),
+      ...okSync,
+    });
+    await db.setMeta('pendingLogout', true);
+    await session.login(ANN.email, 'secret pass');
+    expect(await db.getMeta('pendingLogout')).toBeUndefined();
+  });
+});
+
 describe('subscribe', () => {
   it('notifies listeners and supports unsubscribing', async () => {
     const { session } = setup({ 'GET /api/me': () => json(401, {}) });

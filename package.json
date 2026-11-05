@@ -9,11 +9,12 @@
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
-    "test": "pnpm -r test",
+    "test": "pnpm -r --filter '!@todoness/e2e' test",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "e2e": "pnpm build && pnpm --filter @todoness/e2e test"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.0",

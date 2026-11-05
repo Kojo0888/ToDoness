@@ -17,6 +17,7 @@ export type DeadLetter = OutboxOp & { failedAt: number; reason: string };
  *  - lastServerSeq   pull cursor
  *  - userId, user    who is logged in on this device (`user` = id, e-mail, role)
  *  - initialSyncDone true once the first full pull finished
+ *  - pendingLogout   the user logged out offline; the server still has to be told
  *
  * Only strings and numbers can be indexed, so `deletedAt` (null) and the
  * booleans have no index; they are filtered in code. The data is small.

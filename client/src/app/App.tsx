@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { InitialSync, OfflineNoSession, Splash } from './components/Splash';
+import { UpdateBanner } from './components/UpdateBanner';
 import { LoginScreen } from './components/LoginScreen';
 import { Shell } from './components/Shell';
 import { applyTheme, readTheme, useSession } from './hooks';
@@ -13,6 +14,21 @@ export function App() {
     void session.boot();
   }, []);
 
+  // Ask the browser not to clear our data when disk space runs low (FR-20).
+  const ready = state.status === 'ready';
+  useEffect(() => {
+    if (ready) void navigator.storage?.persist?.();
+  }, [ready]);
+
+  return (
+    <>
+      <UpdateBanner />
+      <Screen state={state} />
+    </>
+  );
+}
+
+function Screen({ state }: { state: ReturnType<typeof useSession> }) {
   switch (state.status) {
     case 'loading':
       return <Splash />;

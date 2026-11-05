@@ -2,6 +2,7 @@ packages:
   - client
   - server
   - integration
+  - e2e
   - shared
 
 # Packages allowed to run install scripts (pnpm 10 blocks them by default).

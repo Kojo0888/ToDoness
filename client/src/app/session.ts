@@ -107,6 +107,7 @@ export function createSession(deps: SessionDeps): Session {
   async function enter(me: StoredUser) {
     const stored = await storedUser();
     if (stored && stored.id !== me.id) await db.clearAll();
+    await db.meta.delete('pendingLogout');
     await db.setMeta('user', me);
     if (await db.getMeta<boolean>('initialSyncDone')) {
       setState({ status: 'ready', user: me });
@@ -174,6 +175,18 @@ export function createSession(deps: SessionDeps): Session {
 
     async boot() {
       setState({ status: 'loading' });
+
+      // The user logged out while offline: the server session is still valid, so
+      // finish the logout now instead of silently logging them back in.
+      if (await db.getMeta<boolean>('pendingLogout')) {
+        const sent = await post('/api/auth/logout').then(
+          () => true,
+          () => false,
+        );
+        if (sent) await db.meta.delete('pendingLogout');
+        return setState({ status: 'login', reason: 'logged_out' });
+      }
+
       const stored = await storedUser();
 
       let res: Response | undefined;
@@ -218,8 +231,12 @@ export function createSession(deps: SessionDeps): Session {
         return false;
       }
       stopSync();
-      await post('/api/auth/logout').catch(() => undefined);
+      const sent = await post('/api/auth/logout').then(
+        () => true,
+        () => false,
+      );
       await db.clearAll();
+      if (!sent) await db.setMeta('pendingLogout', true); // tell the server at the next start
       setState({ status: 'login', reason: 'logged_out' });
       return true;
     },
