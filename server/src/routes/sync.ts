@@ -1,0 +1,76 @@
+import type Database from 'better-sqlite3';
+import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
+import { pushEnvelopeSchema, type PullResponse } from '@todoness/shared';
+import { requireAuth } from '../auth/middleware';
+import { applyPush } from '../sync/apply-ops';
+import type { AppEnv } from '../types';
+
+const PULL_DEFAULT = 500;
+const PULL_MAX = 1000;
+const PUSH_BODY_MAX = 1024 * 1024;
+
+function wholeNumber(value: string | undefined, fallback: number): number | undefined {
+  if (value === undefined) return fallback;
+  return /^\d+$/.test(value) ? Number(value) : undefined;
+}
+
+export function syncRoutes({ db, now }: { db: Database.Database; now: () => number }) {
+  const app = new Hono<AppEnv>();
+  app.use('*', requireAuth(db, now));
+
+  app.post(
+    '/push',
+    bodyLimit({ maxSize: PUSH_BODY_MAX, onError: (c) => c.json({ error: 'too_large' }, 413) }),
+    async (c) => {
+      const parsed = pushEnvelopeSchema.safeParse(await c.req.json());
+      if (!parsed.success) return c.json({ error: 'invalid_request' }, 400);
+      const { clientId, ops } = parsed.data;
+      return c.json(applyPush(db, c.get('user').id, clientId, ops, now()));
+    },
+  );
+
+  app.get('/pull', (c) => {
+    const since = wholeNumber(c.req.query('since'), 0);
+    const limitRaw = wholeNumber(c.req.query('limit'), PULL_DEFAULT);
+    if (since === undefined || limitRaw === undefined || limitRaw < 1) {
+      return c.json({ error: 'invalid_request' }, 400);
+    }
+    const limit = Math.min(limitRaw, PULL_MAX);
+
+    const rows = db
+      .prepare(
+        `SELECT server_seq, entity, entity_id, op_type, patch, hlc
+           FROM change_log
+          WHERE user_id = ? AND server_seq > ?
+          ORDER BY server_seq
+          LIMIT ?`,
+      )
+      .all(c.get('user').id, since, limit + 1) as {
+      server_seq: number;
+      entity: 'todo' | 'list';
+      entity_id: string;
+      op_type: 'create' | 'update' | 'delete' | 'restore';
+      patch: string;
+      hlc: string;
+    }[];
+
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    const body = {
+      changes: page.map((r) => ({
+        serverSeq: r.server_seq,
+        entity: r.entity,
+        entityId: r.entity_id,
+        type: r.op_type,
+        patch: JSON.parse(r.patch),
+        hlc: r.hlc,
+      })),
+      nextSeq: page.at(-1)?.server_seq ?? since,
+      hasMore,
+    } as PullResponse;
+    return c.json(body);
+  });
+
+  return app;
+}

@@ -6,6 +6,7 @@ import { logger } from 'hono/logger';
 import type { Config } from './config';
 import { adminRoutes } from './routes/admin';
 import { authRoutes, meRoute } from './routes/auth';
+import { syncRoutes } from './routes/sync';
 import { staticMiddleware } from './static';
 import type { AppEnv } from './types';
 
@@ -37,6 +38,7 @@ export function createApp({ db, config, log = false, now = Date.now }: AppDeps) 
   app.route('/api/auth', authRoutes({ db, config, now, serverClock }));
   app.route('/api/me', meRoute({ db, now }));
   app.route('/api/admin', adminRoutes({ db, now }));
+  app.route('/api/sync', syncRoutes({ db, now }));
 
   if (config.clientDir) app.use('*', staticMiddleware(config.clientDir));
 
