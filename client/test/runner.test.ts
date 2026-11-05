@@ -38,7 +38,7 @@ function fakeEnv() {
     },
     random: () => 0.5,
     fire: (event: 'online' | 'visible') => handlers[event]!.forEach((h) => h()),
-    listeners: () => handlers.online.size + handlers.visible.size,
+    listeners: () => handlers.online!.size + handlers.visible!.size,
   };
   return env satisfies RunnerEnv & Record<string, unknown>;
 }
