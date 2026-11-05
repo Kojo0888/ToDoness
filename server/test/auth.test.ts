@@ -5,7 +5,7 @@ import { TestClient } from './helpers/client';
 
 const PW = 'correct horse';
 
-type Row = Record<string, string>;
+type Row = Record<string, string | undefined>;
 
 async function register(c: TestClient, email = 'ann@corp.test', password = PW) {
   return c.post('/api/auth/register', { email, password });
@@ -83,8 +83,8 @@ describe('POST /api/auth/register', () => {
     const log = db.prepare('SELECT * FROM change_log WHERE user_id = ?').all(me.id) as Row[];
     expect(log).toHaveLength(1);
     expect(log[0]).toMatchObject({ entity: 'list', entity_id: lists[0]!.id, op_type: 'create' });
-    expect(JSON.parse(log[0]!.patch)).toEqual({ name: 'Inbox', orderKey: 'a0', isInbox: true });
-    expect(Object.keys(JSON.parse(lists[0]!.field_hlc)).sort()).toEqual([
+    expect(JSON.parse(log[0]!.patch!)).toEqual({ name: 'Inbox', orderKey: 'a0', isInbox: true });
+    expect(Object.keys(JSON.parse(lists[0]!.field_hlc!)).sort()).toEqual([
       'isInbox',
       'name',
       'orderKey',
