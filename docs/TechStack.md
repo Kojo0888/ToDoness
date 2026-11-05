@@ -107,7 +107,11 @@ The certificate must also be trusted by the devices. A self-signed certificate
 with a browser warning is not enough, because the Service Worker fails to
 register.
 
-Pick one:
+**Decision for ToDoness: Caddy with `tls internal`** (full example in
+[section 13](#13-deployment-example-docker-compose--caddy)). The other options
+are kept below for reference.
+
+Options:
 
 | Option | Notes |
 |--------|-------|
@@ -222,6 +226,7 @@ Hybrid Logical Clocks avoid trusting device clocks that are set wrongly.
 
 | Endpoint | Purpose |
 |----------|---------|
+| `GET /api/health` | Health check for Docker (no login needed) |
 | `POST /api/auth/register` | Create account |
 | `POST /api/auth/login` | Log in (or set a new password after an admin reset) |
 | `POST /api/auth/logout` | Log out |
@@ -275,7 +280,9 @@ todoness/
 │   ├── PRD.md
 │   ├── TechStack.md
 │   └── DBModel.md
-├── Dockerfile
+├── Dockerfile                 # see section 13
+├── docker-compose.yml         # app + Caddy + backup
+├── Caddyfile
 ├── package.json
 ├── pnpm-workspace.yaml
 └── README.md
@@ -317,3 +324,177 @@ Keep this stack while the app stays small. Consider changes if:
 | Several people edit the same long text | Use a CRDT (Yjs or Automerge) for that field |
 | The company wants single sign-on | Replace the built-in login with the company's identity provider |
 | Sync after the app is closed is needed | Add the Background Sync API (Chromium only) |
+
+---
+
+## 13. Deployment example (Docker Compose + Caddy)
+
+Three containers on one internal server:
+
+| Service | Purpose |
+|---------|---------|
+| `app` | The Node.js server. Serves the web app and `/api/*`. Stores data in a volume. Not reachable from outside. |
+| `caddy` | HTTPS reverse proxy in front of `app`. Uses its own internal certificate authority (`tls internal`). |
+| `backup` | Optional. Copies the SQLite file once a day and keeps 14 days. |
+
+> **Status:** this is a starting point. The application code does not exist yet,
+> so the files below have not been run end to end. Adjust paths and the build
+> commands once the code is in place.
+
+### 13.1 `docker-compose.yml`
+
+```yaml
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_PATH: /data/todoness.db
+      CLIENT_DIR: /app/client/dist
+      COOKIE_SECURE: "true"      # cookies only over HTTPS
+      TRUST_PROXY: "true"        # use the client IP that Caddy forwards (login rate limit)
+    volumes:
+      - todoness-data:/data
+    expose:
+      - "3000"                   # only visible to other containers, not published
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"                  # redirects to HTTPS
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data         # keeps the internal CA and certificates
+      - caddy-config:/config
+
+  backup:                        # optional
+    image: alpine:3.20
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache sqlite
+        while true; do
+          sqlite3 /data/todoness.db ".backup '/backups/todoness-$$(date +%F).db'"
+          find /backups -name 'todoness-*.db' -mtime +14 -delete
+          sleep 86400
+        done
+    volumes:
+      - todoness-data:/data
+      - ./backups:/backups
+
+volumes:
+  todoness-data:
+  caddy-data:
+  caddy-config:
+```
+
+### 13.2 `Caddyfile`
+
+```caddyfile
+# Use the internal DNS name of the server. Avoid ".local": it clashes with mDNS
+# on some devices. A name like todo.company.internal works well.
+todo.company.internal {
+	tls internal
+	encode zstd gzip
+
+	# The service worker file must never be cached for long, or app updates stall.
+	@sw path /sw.js
+	header @sw Cache-Control "no-cache"
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+	}
+
+	reverse_proxy app:3000
+}
+```
+
+### 13.3 `Dockerfile`
+
+```dockerfile
+# ---- build ----
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+RUN corepack enable
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY shared/package.json shared/
+COPY client/package.json client/
+COPY server/package.json server/
+RUN pnpm install --frozen-lockfile
+COPY . .
+RUN pnpm -r build                # builds shared, client/dist and server/dist
+
+# ---- run ----
+FROM node:22-bookworm-slim
+ENV NODE_ENV=production
+WORKDIR /app
+RUN corepack enable
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY shared/package.json shared/
+COPY server/package.json server/
+RUN pnpm install --prod --frozen-lockfile --filter server...
+COPY --from=build /app/shared/dist shared/dist
+COPY --from=build /app/server/dist server/dist
+COPY --from=build /app/server/src/db/migrations server/dist/db/migrations
+COPY --from=build /app/client/dist client/dist
+RUN mkdir -p /data && chown node:node /data
+USER node
+EXPOSE 3000
+CMD ["node", "server/dist/index.js"]
+```
+
+### 13.4 Server settings (environment variables)
+
+| Variable | Meaning |
+|----------|---------|
+| `PORT` | Port the server listens on inside the container (`3000`) |
+| `DATABASE_PATH` | Location of the SQLite file (on the `todoness-data` volume) |
+| `CLIENT_DIR` | Folder with the built web app that the server serves |
+| `COOKIE_SECURE` | `true` in production, so the session cookie is only sent over HTTPS |
+| `TRUST_PROXY` | `true` when running behind Caddy, so the real client IP is used |
+
+The server must answer `GET /api/health` with status 200 when it can open the
+database (used by the health check).
+
+### 13.5 First start and daily use
+
+1. Point the internal DNS name (for example `todo.company.internal`) at the server.
+2. Put the name in the `Caddyfile`, then run `docker compose up -d --build`.
+3. Export Caddy's root certificate:
+   `docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.crt`
+4. Install `caddy-root.crt` as a trusted root certificate on every device
+   (company policy for laptops; on iPhone also switch on full trust for it in
+   Settings → General → About → Certificate Trust Settings).
+5. Open `https://todo.company.internal`, register the **first account** (it
+   becomes the admin), then let the others register.
+6. Check offline mode: install the app, switch the network off, reload.
+
+Keep the `caddy-data` volume. If it is lost, Caddy creates a **new** root
+certificate and every device has to trust it again.
+
+**Update the app:** `git pull && docker compose up -d --build`. Users see the
+"New version available, reload?" prompt.
+
+**Restore a backup:** stop the app (`docker compose stop app`), copy the backup
+file over `/data/todoness.db` in the volume, delete `todoness.db-wal` and
+`todoness.db-shm` there, and start the app again.

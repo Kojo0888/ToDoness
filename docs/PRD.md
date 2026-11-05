@@ -224,7 +224,7 @@ Follows the roadmap in [TechStack.md](./TechStack.md#10-implementation-roadmap).
 |---|-------|-------|
 | 1 | **iOS / Safari storage limits** | Safari may clear site data after a period of no use. Mitigation: persistent storage request, sync often, warn users with long-pending changes. |
 | 2 | **No sync after the app is closed** | Changes wait on the device until the app is opened again. Acceptable for v1. |
-| 3 | **HTTPS certificate on the intranet** | Offline mode only works over HTTPS with a certificate the devices trust. Who provides it (company CA, Caddy with its root certificate installed on devices, or a public certificate for an internal name)? **[?]** |
+| 3 | **HTTPS certificate on the intranet** | **Decided:** Caddy with its own internal certificate authority. Its root certificate is installed once on every device (steps in [TechStack.md](./TechStack.md#13-deployment-example-docker-compose--caddy)). |
 | 4 | **Admin password reset is not fully secure** | Between the reset and the user's next login, anyone who knows the e-mail could set the password. Acceptable on a closed intranet? Alternative: the admin types a temporary password. **[?]** |
 | 5 | **Who is the admin** | The first account created becomes admin. Is that acceptable, or should the admin be set in another way? **[?]** |
 
