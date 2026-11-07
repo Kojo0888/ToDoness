@@ -7,3 +7,6 @@ backups
 *.db-wal
 *.db-shm
 docs
+release
+release.new
+release.old
