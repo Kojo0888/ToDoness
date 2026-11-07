@@ -24,6 +24,8 @@ if [ -d ./release ]; then mv ./release ./release.old; fi
 mv ./release.new ./release
 rm -rf ./release.old
 
+# Recreate the app container: the release folder was swapped, and a plain
+# restart could keep the bind mount on the old directory.
+docker compose -f docker-compose.folder.yml up -d --force-recreate app
 docker compose -f docker-compose.folder.yml up -d
-docker compose -f docker-compose.folder.yml restart app
 echo "Updated. Logs: docker compose -f docker-compose.folder.yml logs -f app"
