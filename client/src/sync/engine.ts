@@ -49,12 +49,21 @@ export interface EngineOptions {
   now?: () => number;
   batchSize?: number;
   pullLimit?: number;
+  /** A request that gets no answer within this time counts as offline. */
+  requestTimeoutMs?: number;
 }
 
 const JSON_HEADERS = { 'content-type': 'application/json' };
 
 export function createSyncEngine(opts: EngineOptions): SyncEngine {
-  const { db, fetch, now = Date.now, batchSize = 50, pullLimit = 500 } = opts;
+  const {
+    db,
+    fetch,
+    now = Date.now,
+    batchSize = 50,
+    pullLimit = 500,
+    requestTimeoutMs = 30_000,
+  } = opts;
 
   let status: SyncStatus = { state: 'idle', lastSyncAt: null };
   const listeners = new Set<(s: SyncStatus) => void>();
@@ -67,10 +76,22 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
 
   async function request(url: string, init?: RequestInit): Promise<Response> {
     let res: Response;
+    // A connection that dies silently never answers. Without a time limit the sync
+    // would wait forever and the runner would never start another one.
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error('timeout'));
+      }, requestTimeoutMs);
+    });
     try {
-      res = await fetch(url, init);
+      res = await Promise.race([fetch(url, { ...init, signal: controller.signal }), timedOut]);
     } catch {
       throw new SyncError('offline', 'Cannot reach the server');
+    } finally {
+      clearTimeout(timer);
     }
     if (res.status === 401) throw new SyncError('auth', 'Login required');
     if (res.status >= 500 || res.status === 408 || res.status === 429) {
