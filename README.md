@@ -86,5 +86,19 @@ docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.
 
 Update: `git pull && docker compose up -d --build`. Back up the `todoness-data`
 volume (the optional `backup` service copies the database daily to `./backups`).
+### Folder-based variant (no image build for the app)
+
+`docker-compose.folder.yml` runs a stock `node:22-bookworm-slim` container on
+the built app in `./release`. `./update.sh` builds into that folder (using the
+Dockerfile's build stage) and restarts the app; `./update.sh --pull` runs
+`git pull` first. Dependencies are installed inside the container on start,
+so the native modules always match it. To roll back, keep a copy of `release/`.
+
+If the server is a separate machine, build locally and upload instead:
+`./deploy.sh user@server:/path/to/todoness/release` builds the app, then
+copies `release/` over with rsync (keeping the server's `node_modules`). It
+does not touch Docker; restart the `app` container on the server, or let it
+restart itself, to load the new files.
+
 Note: the Docker setup has not been run end to end yet (see the status section
 of the build plan).

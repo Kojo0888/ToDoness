@@ -8,3 +8,6 @@ coverage/
 .env.*
 !.env.example
 backups/
+release/
+release.new/
+release.old/

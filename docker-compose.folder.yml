@@ -1,0 +1,80 @@
+# Folder-based variant: a stock Node image runs the app from ./release, which
+# ./update.sh fills with the built server and web app. No app image is built.
+#
+#   ./update.sh                                  # build into ./release and restart
+#   docker compose -f docker-compose.folder.yml up -d
+#
+# The first start (and any start after a dependency change) runs `npm install`
+# inside the container, so the native modules (better-sqlite3, @node-rs/argon2)
+# match the container's Linux, whatever machine did the build.
+services:
+  app:
+    image: node:22-bookworm-slim
+    restart: unless-stopped
+    working_dir: /app
+    user: root # only for the setup below; the server itself runs as "node"
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      DATABASE_PATH: /data/todoness.db
+      CLIENT_DIR: /app/public
+      COOKIE_SECURE: 'true' # cookies only over HTTPS (Caddy provides it)
+      TRUST_PROXY: 'true' # use the client IP that Caddy forwards (login rate limit)
+    volumes:
+      - ./release:/app
+      - todoness-data:/data
+    expose:
+      - '3000' # only visible to other containers, not published
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        chown node:node /data
+        npm install --omit=dev --no-audit --no-fund
+        exec setpriv --reuid=node --regid=node --init-groups node index.js
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s # the first start installs dependencies
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - '80:80' # redirects to HTTPS
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data # keeps the internal CA and certificates
+      - caddy-config:/config
+
+  backup: # optional: a copy of the database once a day, kept for 14 days
+    image: alpine:3.20
+    restart: unless-stopped
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        apk add --no-cache sqlite
+        while true; do
+          sqlite3 /data/todoness.db ".backup '/backups/todoness-$$(date +%F).db'"
+          find /backups -name 'todoness-*.db' -mtime +14 -delete
+          sleep 86400
+        done
+    volumes:
+      - todoness-data:/data
+      - ./backups:/backups
+
+volumes:
+  todoness-data:
+  caddy-data:
+  caddy-config:
