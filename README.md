@@ -24,6 +24,43 @@ pnpm build
 
 The first account you create becomes the admin.
 
+## Launching the client
+
+Run `pnpm install` once first. There are two ways to open the client. Pick one.
+
+### A. Development: client and server separately
+
+Use this while changing the code (the page reloads when you save).
+
+```sh
+pnpm --filter @todoness/server dev    # terminal 1: API on http://localhost:3000
+pnpm --filter @todoness/client dev    # terminal 2: client on http://localhost:5173
+```
+
+If the server is already running, only start the client (terminal 2), then open
+**http://localhost:5173**. `pnpm dev` starts both together.
+
+The client forwards every `/api` request to `http://localhost:3000`, so the
+server has to listen on port 3000 (the default). If it uses another port, change
+`proxy` in `client/vite.config.ts`.
+
+In this mode the service worker is off, so **offline mode does not work**.
+
+### B. The built app, served by the server
+
+Use this to try the real thing, including offline mode and installing the app.
+
+```sh
+pnpm build
+CLIENT_DIR=client/dist node server/dist/index.js    # open http://localhost:3000
+```
+
+The server serves the built client itself, so there is no separate client to
+start. Other settings: `PORT` (default 3000) and `DATABASE_PATH` (default
+`./data/todoness.db`). Offline mode and installing need `http://localhost` or
+HTTPS; a plain `http://` address on another machine will not work (see
+[Deployment](#deployment)).
+
 `pnpm e2e` uses Playwright 1.63 with Chromium. If the browser is not installed:
 `pnpm --filter @todoness/e2e exec playwright install chromium`.
 
