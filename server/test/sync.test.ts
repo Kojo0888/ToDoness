@@ -494,3 +494,51 @@ describe('conflicts', () => {
     expect(last).toMatchObject({ type: 'restore', patch: { deletedAt: null } });
   });
 });
+
+describe('v1 fields (isPublic, remindBefore)', () => {
+  it('stores and returns isPublic on a list, and lets it be switched', async () => {
+    const id = newId();
+    await c.ann.push([
+      op('list', 'create', id, { name: 'Recipes', orderKey: 'a1', isPublic: true }, hlcAt(1)),
+    ]);
+    expect(row(c, 'lists', id)).toMatchObject({ is_public: 1 });
+
+    await c.ann.push([op('list', 'update', id, { isPublic: false }, hlcAt(2))]);
+    expect(row(c, 'lists', id)).toMatchObject({ is_public: 0 });
+
+    const changes = (await c.ann.pullAll()).filter((ch) => ch.entityId === id);
+    expect(changes.map((ch) => ch.patch)).toEqual([
+      { name: 'Recipes', orderKey: 'a1', isPublic: true },
+      { isPublic: false },
+    ]);
+  });
+
+  it('a list is private unless said otherwise', async () => {
+    const id = newId();
+    await c.ann.push([op('list', 'create', id, { name: 'Work', orderKey: 'a1' }, hlcAt(1))]);
+    expect(row(c, 'lists', id)).toMatchObject({ is_public: 0 });
+  });
+
+  it('stores and clears remindBefore on a todo, last write wins', async () => {
+    const id = newId();
+    await c.ann.push([
+      todoCreate(id, c.inbox, 'Call', hlcAt(1), { dueAt: T0 + 86_400_000, remindBefore: 'day' }),
+    ]);
+    expect(row(c, 'todos', id)).toMatchObject({ remind_before: 'day' });
+
+    await c.ann.push([op('todo', 'update', id, { remindBefore: 'hour' }, hlcAt(3))]);
+    await c.ann.push([op('todo', 'update', id, { remindBefore: 'week' }, hlcAt(2))]); // older
+    expect(row(c, 'todos', id)).toMatchObject({ remind_before: 'hour' });
+
+    await c.ann.push([op('todo', 'update', id, { remindBefore: null }, hlcAt(4))]);
+    expect(row(c, 'todos', id)).toMatchObject({ remind_before: null });
+  });
+
+  it('rejects invalid values', async () => {
+    const id = newId();
+    await c.ann.push([todoCreate(id, c.inbox, 'Call', hlcAt(1))]);
+    const bad = op('todo', 'update', id, { remindBefore: 'month' }, hlcAt(2));
+    const res = await c.ann.push([bad]);
+    expect(res.rejected).toEqual([{ opId: bad.opId, reason: 'invalid_operation' }]);
+  });
+});

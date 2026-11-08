@@ -36,11 +36,13 @@ const TODO_DEFAULTS = {
   completedAt: null,
   dueAt: null,
   priority: 0,
+  remindBefore: null,
   deletedAt: null,
 } as const satisfies Partial<Todo>;
 
 const LIST_DEFAULTS = {
   isInbox: false,
+  isPublic: false,
   deletedAt: null,
 } as const satisfies Partial<List>;
 

@@ -54,6 +54,7 @@ describe('applyOp – create', () => {
       completedAt: null,
       dueAt: null,
       priority: 0,
+      remindBefore: null,
       orderKey: 'a0',
       fieldHlc: { listId: hlc(T0), title: hlc(T0), orderKey: hlc(T0) },
       createdAt: T0,
@@ -75,6 +76,7 @@ describe('applyOp – create', () => {
       id: LIST_ID,
       name: 'Work',
       isInbox: false,
+      isPublic: false,
       orderKey: 'a0',
       fieldHlc: { name: hlc(T0), orderKey: hlc(T0) },
       createdAt: T0,
@@ -271,5 +273,56 @@ describe('applyOp – convergence', () => {
       deletedAt: null,
       updatedAt: T0 + 15,
     });
+  });
+});
+
+describe('v1 fields', () => {
+  it('a new todo starts without a reminder, a new list starts private', () => {
+    const todo = run([createTodo()]);
+    expect(todo.remindBefore).toBeNull();
+
+    const r = applyOp<List>(undefined, {
+      entity: 'list',
+      entityId: newId(T0),
+      type: 'create',
+      patch: { name: 'Recipes', orderKey: 'a1' },
+      hlc: hlc(T0),
+    });
+    expect(r.ok && r.row.isPublic).toBe(false);
+  });
+
+  it('remindBefore is merged per field, last write wins', () => {
+    const todo = run([
+      createTodo(),
+      updateTodo({ remindBefore: 'week' }, hlc(T0 + 10)),
+      updateTodo({ remindBefore: 'hour' }, hlc(T0 + 5)), // older: ignored
+    ]);
+    expect(todo.remindBefore).toBe('week');
+    expect(run([updateTodo({ remindBefore: null }, hlc(T0 + 20))], todo).remindBefore).toBeNull();
+  });
+
+  it('isPublic is merged per field and independent of the name', () => {
+    const create = applyOp<List>(undefined, {
+      entity: 'list',
+      entityId: newId(T0),
+      type: 'create',
+      patch: { name: 'Recipes', orderKey: 'a1' },
+      hlc: hlc(T0),
+    });
+    if (!create.ok) throw new Error('create failed');
+    const upd = (patch: Record<string, unknown>, at: string) => ({
+      entity: 'list' as const,
+      entityId: create.row.id,
+      type: 'update' as const,
+      patch,
+      hlc: at,
+    });
+    const a = applyOp<List>(create.row, upd({ isPublic: true }, hlc(T0 + 10)));
+    if (!a.ok) throw new Error('a failed');
+    const b = applyOp<List>(a.row, upd({ name: 'Food' }, hlc(T0 + 5)));
+    if (!b.ok) throw new Error('b failed');
+    expect(b.row).toMatchObject({ isPublic: true, name: 'Food' });
+    const c = applyOp<List>(b.row, upd({ isPublic: false }, hlc(T0 + 3))); // older: ignored
+    expect(c.ok && c.changed).toBe(false);
   });
 });

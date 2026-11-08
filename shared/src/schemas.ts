@@ -25,6 +25,8 @@ const epochMs = z.number().int().min(0);
 const nullableEpochMs = epochMs.nullable();
 const fieldHlcSchema = z.record(z.string(), hlcSchema);
 const orderKeySchema = z.string().min(1).max(ORDER_KEY_MAX);
+export const remindBeforeSchema = z.enum(['week', 'day', 'hour']);
+export type RemindBefore = z.infer<typeof remindBeforeSchema>;
 export const prioritySchema = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
 
 const todoFields = {
@@ -35,12 +37,14 @@ const todoFields = {
   completedAt: nullableEpochMs,
   dueAt: nullableEpochMs,
   priority: prioritySchema,
+  remindBefore: remindBeforeSchema.nullable(),
   orderKey: orderKeySchema,
 };
 
 const listFields = {
   name: z.string().trim().min(1).max(LIST_NAME_MAX),
   orderKey: orderKeySchema,
+  isPublic: z.boolean(),
 };
 
 const rowMeta = {
@@ -80,6 +84,7 @@ export const todoCreatePatchSchema = z.strictObject({
   completedAt: todoFields.completedAt.optional(),
   dueAt: todoFields.dueAt.optional(),
   priority: todoFields.priority.optional(),
+  remindBefore: todoFields.remindBefore.optional(),
 });
 export const todoUpdatePatchSchema = z
   .strictObject(todoFields)
@@ -87,7 +92,10 @@ export const todoUpdatePatchSchema = z
   .refine(notEmpty, NOT_EMPTY);
 export type TodoPatch = z.infer<typeof todoUpdatePatchSchema>;
 
-export const listCreatePatchSchema = z.strictObject(listFields);
+export const listCreatePatchSchema = z.strictObject({
+  ...listFields,
+  isPublic: listFields.isPublic.optional(),
+});
 export const listUpdatePatchSchema = z
   .strictObject(listFields)
   .partial()

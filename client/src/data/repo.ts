@@ -52,6 +52,13 @@ export interface Repo {
   createList(name: string): Promise<List>;
   renameList(id: string, name: string): Promise<List>;
   deleteList(id: string): Promise<List>;
+  /**
+   * Puts a task directly before another open task of the same list (`null` = at the
+   * end). One `orderKey` update; nothing happens if the position would not change.
+   */
+  reorderTodo(id: string, beforeId: string | null): Promise<Todo>;
+  /** Makes a list readable (or not) by every logged-in user. */
+  setListPublic(id: string, isPublic: boolean): Promise<List>;
   /** Moves a list one place up or down among the visible lists (never above the Inbox). */
   moveList(id: string, direction: 'up' | 'down'): Promise<List>;
 }
@@ -119,6 +126,15 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
     return l;
   }
 
+  /** Todos of a list that are not deleted, in key order. */
+  async function todosOfList(listId: string): Promise<Todo[]> {
+    const rows = await db.todos
+      .where('[listId+orderKey]')
+      .between([listId, Dexie.minKey], [listId, Dexie.maxKey])
+      .toArray();
+    return rows.filter((t) => t.deletedAt === null);
+  }
+
   /** A key that sorts before every todo of the list, so the new one lands on top. */
   async function topKey(listId: string): Promise<string> {
     const first = await db.todos
@@ -180,6 +196,38 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         await liveTodo(id);
         await liveList(listId);
         return commit<Todo>('todo', 'update', id, { listId, orderKey: await topKey(listId) });
+      }),
+
+    reorderTodo: (id, beforeId) =>
+      inTx(async () => {
+        const todo = await liveTodo(id);
+        if (beforeId === id) return todo;
+
+        const current = (await todosOfList(todo.listId)).filter((t) => !t.done);
+        const next = current[current.findIndex((t) => t.id === id) + 1]?.id ?? null;
+        if (beforeId === next) return todo; // already there
+
+        const open = current.filter((t) => t.id !== id);
+
+        let index = open.length;
+        if (beforeId !== null) {
+          index = open.findIndex((t) => t.id === beforeId);
+          if (index < 0) throw new RepoError('not_found', 'Target task not found');
+        }
+        const lo = open[index - 1]?.orderKey ?? null;
+        let hi = open[index]?.orderKey ?? null;
+        // Equal keys (two devices created tasks at once): step past the equal ones.
+        if (lo !== null && hi !== null && lo >= hi) {
+          hi = open.slice(index).find((t) => t.orderKey > lo)?.orderKey ?? null;
+        }
+        return commit<Todo>('todo', 'update', id, { orderKey: generateKeyBetween(lo, hi) });
+      }),
+
+    setListPublic: (id, isPublic) =>
+      inTx(async () => {
+        const list = await liveList(id);
+        if (list.isPublic === isPublic) return list;
+        return commit<List>('list', 'update', id, { isPublic });
       }),
 
     createList: (name) =>

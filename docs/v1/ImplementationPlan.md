@@ -21,8 +21,8 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | Step | Content | Status |
 |------|---------|--------|
 | 0 | Housekeeping: old docs to `docs/mvp/`, v1 docs | ☑ |
-| 1 | Shared schemas + migration 002 + server rows (`isPublic`, `remindBefore`) | ☐ |
-| 2 | Client data layer: Dexie v2, repo (`setListPublic`, `reorderTodo`, reminder fields) | ☐ |
+| 1 | Shared schemas + migration 002 + server rows (`isPublic`, `remindBefore`) | ☑ |
+| 2 | Client data layer: Dexie v2, repo (`setListPublic`, `reorderTodo`, reminder fields) | ☑ |
 | 3 | Change password (API, session, Settings UI) | ☐ |
 | 4 | Online presence + Admin "Online" column | ☐ |
 | 5 | Server config + attachments API | ☐ |

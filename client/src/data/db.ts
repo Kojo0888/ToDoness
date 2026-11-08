@@ -8,6 +8,12 @@ export interface MetaRow {
 }
 
 /** An operation the server refused (or that could not be sent), kept for the user to see. */
+/** A reminder that already fired on this device (see app/reminders.ts). */
+export interface NotifiedRow {
+  key: string;
+  at: number;
+}
+
 export type DeadLetter = OutboxOp & { failedAt: number; reason: string };
 
 /**
@@ -19,6 +25,8 @@ export type DeadLetter = OutboxOp & { failedAt: number; reason: string };
  *  - initialSyncDone true once the first full pull finished
  *  - pendingLogout   the user logged out offline; the server still has to be told
  *
+ * `notified` remembers which reminders already fired on this device (version 2).
+ *
  * Only strings and numbers can be indexed, so `deletedAt` (null) and the
  * booleans have no index; they are filtered in code. The data is small.
  */
@@ -28,6 +36,7 @@ export class TodonessDB extends Dexie {
   outbox!: Table<OutboxOp, string>;
   deadLetter!: Table<DeadLetter, string>;
   meta!: Table<MetaRow, string>;
+  notified!: Table<NotifiedRow, string>;
 
   constructor(name = 'todoness') {
     super(name);
@@ -38,6 +47,23 @@ export class TodonessDB extends Dexie {
       deadLetter: 'opId, failedAt',
       meta: 'key',
     });
+    // v1 (docs/v1/TechStack.md section 2): list.isPublic, todo.remindBefore, `notified`.
+    this.version(2)
+      .stores({ notified: 'key' })
+      .upgrade(async (tx) => {
+        await tx
+          .table('lists')
+          .toCollection()
+          .modify((l) => {
+            l.isPublic ??= false;
+          });
+        await tx
+          .table('todos')
+          .toCollection()
+          .modify((t) => {
+            t.remindBefore ??= null;
+          });
+      });
   }
 
   async getMeta<T>(key: string): Promise<T | undefined> {
@@ -52,7 +78,7 @@ export class TodonessDB extends Dexie {
   async clearAll(): Promise<void> {
     await this.transaction(
       'rw',
-      [this.lists, this.todos, this.outbox, this.deadLetter, this.meta],
+      [this.lists, this.todos, this.outbox, this.deadLetter, this.meta, this.notified],
       () =>
         Promise.all([
           this.lists.clear(),
@@ -60,6 +86,7 @@ export class TodonessDB extends Dexie {
           this.outbox.clear(),
           this.deadLetter.clear(),
           this.meta.clear(),
+          this.notified.clear(),
         ]),
     );
   }
