@@ -336,12 +336,12 @@ everything; two devices' operations on different fields both end up in the row.
 3. **Pull:** apply changes in one Dexie transaction using the shared `applyOp`
    (per-field last write wins; see DBModel 4.2), then save `lastServerSeq` in
    `meta`. Move the local HLC forward with `receive()`.
-4. **Retry:** on network error or `5xx`, wait 1 s, 2 s, 4 s … up to 5 minutes,
+4. **Retry:** on network error or `5xx`, wait 1 s, 2 s, 4 s … up to 5 seconds,
    with a little random variation. A `4xx` validation error goes to `deadLetter`.
    A `401` stops syncing and tells the UI to show the login screen. **Local data
    and the outbox are kept.**
 5. **Triggers** (TechStack 6.2): app start, `online` event, tab becomes visible,
-   about 1 s after a local change, and every 60 s while online.
+   about 1 s after a local change, and every 5 s while online.
 6. **Status indicator:** add *Offline* (no connection) and *Syncing…* to the
    component from Step 2.
 7. **First login on a device ("initial sync"):** after login, show a short

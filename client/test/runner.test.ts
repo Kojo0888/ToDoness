@@ -80,20 +80,20 @@ describe('createSyncRunner', () => {
     expect(engine.sync).toHaveBeenCalledTimes(1);
   });
 
-  it('syncs every 60 seconds while online', async () => {
+  it('syncs every 5 seconds while online', async () => {
     const engine = fakeEngine([ok]);
     createSyncRunner({ engine, env: fakeEnv() }).start();
     await flush();
     engine.sync.mockClear();
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(5000);
     expect(engine.sync).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(5000);
     expect(engine.sync).toHaveBeenCalledTimes(2);
   });
 
   it('retries after failures with growing delays, and starts over after a success', async () => {
     const engine = fakeEngine([offline, offline, offline, ok]);
-    createSyncRunner({ engine, env: fakeEnv() }).start();
+    createSyncRunner({ engine, env: fakeEnv(), intervalMs: 600_000 }).start(); // isolate retries from the timer
     await flush(); // fails (attempt 0) -> retry in 1s
     expect(engine.sync).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(999);
@@ -111,7 +111,7 @@ describe('createSyncRunner', () => {
   it('syncs at once when the browser comes back online, skipping the wait', async () => {
     const engine = fakeEngine([offline, ok]);
     const env = fakeEnv();
-    createSyncRunner({ engine, env }).start();
+    createSyncRunner({ engine, env, intervalMs: 600_000 }).start(); // isolate retries from the timer
     await flush(); // fails, retry planned in 1s
     env.fire('online');
     await flush();
@@ -139,7 +139,7 @@ describe('createSyncRunner', () => {
     runner.start();
     await flush();
     runner.notifyChange();
-    await vi.advanceTimersByTimeAsync(61_000);
+    await vi.advanceTimersByTimeAsync(6000);
     expect(engine.sync).not.toHaveBeenCalled();
     expect(engine.markOffline).toHaveBeenCalled();
 

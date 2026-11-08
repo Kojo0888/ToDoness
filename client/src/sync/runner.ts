@@ -1,7 +1,7 @@
 /**
  * Decides WHEN to sync (docs/TechStack.md section 6.2):
  * at start, when the browser comes back online, when the tab becomes visible,
- * about one second after a local change, and every 60 seconds.
+ * about one second after a local change, and every 5 seconds.
  * After a failure it retries with growing delays.
  */
 import { nextDelay } from './backoff';
@@ -32,7 +32,7 @@ export interface RunnerOptions {
 }
 
 export function createSyncRunner(opts: RunnerOptions): Runner {
-  const { engine, env, onAuthRequired, intervalMs = 60_000, debounceMs = 1000 } = opts;
+  const { engine, env, onAuthRequired, intervalMs = 5000, debounceMs = 1000 } = opts;
 
   let started = false;
   let running = false;

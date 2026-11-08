@@ -62,7 +62,7 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
     now = Date.now,
     batchSize = 50,
     pullLimit = 500,
-    requestTimeoutMs = 30_000,
+    requestTimeoutMs = 5000,
   } = opts;
 
   let status: SyncStatus = { state: 'idle', lastSyncAt: null };

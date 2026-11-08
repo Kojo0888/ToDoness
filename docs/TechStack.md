@@ -156,7 +156,7 @@ final ID. There is no renaming of temporary IDs later.
 | `window` `online` event | The browser regained a connection |
 | Tab becomes visible | The user returns to the app |
 | After each local change (wait about 1 s) | Near real time when online |
-| Every 60 s while online | Picks up changes from other devices |
+| Every 5 s while online | Picks up changes from other devices |
 
 `navigator.onLine` is only a hint. The real check is whether the request
 succeeds. If two tabs sync at once, nothing breaks, because the server ignores
@@ -176,7 +176,7 @@ operations it has already applied.
 4. The server replies with accepted and rejected `opId`s.
 5. The client deletes accepted operations from `outbox`.
 6. On a network error or server error (5xx): keep the operations and retry with
-   growing delays (1 s, 2 s, 4 s … up to 5 minutes).
+   growing delays (1 s, 2 s, 4 s … up to 5 seconds).
    On a validation error (4xx): move the operation to `deadLetter` and show a
    notice. On `401` (not logged in): show the login screen and **keep** the
    local data and the outbox.
