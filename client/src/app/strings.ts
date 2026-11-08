@@ -49,6 +49,8 @@ export const t = {
     settings: 'Settings',
     admin: 'Admin',
     menu: 'Menu',
+    publicLists: 'Public lists',
+    publicNeedsConnection: 'Public lists need a connection.',
   },
 
   list: {
@@ -72,6 +74,32 @@ export const t = {
         : `The list "${name}" and its ${n} open and completed task${n === 1 ? '' : 's'} will be deleted.`,
     delete: 'Delete',
     notFound: 'This list does not exist.',
+    movedTo: (name: string) => `Moved to ${name}.`,
+    public: 'Public list',
+    publicHint:
+      'Every user of the app can read and edit the tasks of this list. Only you can rename or delete it.',
+  },
+
+  publicPage: {
+    by: (email: string) => `Public list by ${email}`,
+    editable: 'Everyone can edit',
+    addTaskPlaceholder: 'Add a task to this shared list and press Enter',
+    empty: 'This list has no tasks.',
+    gone: 'This list is not public any more, or it was deleted.',
+    needsConnection: 'Public lists need a connection to the server.',
+    editsNeedConnection: 'You are offline. Shared lists can only be changed while you are online.',
+    errors: {
+      offline: 'Cannot reach the server. Your change was not saved.',
+      gone: 'This list is not public any more. Your change was not saved.',
+      auth: 'Your login is no longer valid. Log in again.',
+      rejected: 'The server did not accept this change.',
+      server: 'The server had a problem. Try again in a moment.',
+      invalid: 'That change is not valid.',
+    },
+    ownerNote: 'Changes you make here are saved at once and also appear for the owner.',
+    back: 'Back to my tasks',
+    due: (when: string) => `Due ${when}`,
+    attachments: 'Attachments',
   },
 
   todo: {
@@ -83,12 +111,66 @@ export const t = {
     title: 'Title',
     notes: 'Notes',
     dueDate: 'Due date',
+    dueTime: 'Due time (optional)',
+    remind: 'Remind me',
+    reminders: {
+      none: 'No reminder',
+      week: '1 week before',
+      day: '1 day before',
+      hour: '1 hour before',
+    },
+    remindNeedsDue: 'Set a due date to get a reminder.',
+    remindHints: {
+      insecure:
+        'Notifications need a secure connection (HTTPS). Reminders will only appear inside the app.',
+      unsupported:
+        'This browser cannot show notifications. Reminders will only appear inside the app.',
+      denied:
+        'Notifications are blocked for this site in your browser. Reminders will only appear inside the app.',
+      default: 'Your browser will ask for permission to show notifications.',
+      granted: 'You will get a notification, also when the app is closed if push is on.',
+    },
     priority: 'Priority',
     priorities: ['None', 'Low', 'Medium', 'High'] as const,
     list: 'List',
     delete: 'Delete task',
     close: 'Close',
     invalidTitle: 'The title cannot be empty.',
+    drag: (title: string) => `Drag to reorder: ${title}`,
+    dragInstructions:
+      'To reorder, press Space on the drag handle, move with the arrow keys, then press Space again to drop. Press Escape to cancel. To move a task to another list, use the List field in its details.',
+    dragStart: (title: string) => `Picked up ${title}.`,
+    dragOver: (title: string, position: number, total: number) =>
+      `${title} is now at position ${position} of ${total}.`,
+    dragOverList: (title: string, list: string) => `${title} is over the list ${list}.`,
+    dragDropped: (title: string) => `Dropped ${title}.`,
+    dragCancelled: (title: string) => `Cancelled. ${title} was not moved.`,
+  },
+
+  attachments: {
+    title: 'Attachments',
+    add: 'Add files',
+    none: 'No attachments.',
+    remove: (name: string) => `Remove ${name}`,
+    removeLabel: 'Remove',
+    download: (name: string) => `Download ${name}`,
+    tooLarge: (name: string, max: string) => `${name} is larger than the limit of ${max}.`,
+    empty: (name: string) => `${name} is empty.`,
+    maxSize: (max: string) => `Up to ${max} per file.`,
+    uploading: (name: string) => `Uploading ${name}…`,
+    needsConnection: 'Attachments need a connection to the server.',
+    loadFailed: 'Could not load the attachments.',
+    removeFailed: 'Could not remove the attachment.',
+    errors: {
+      too_large: 'The file is larger than the server allows.',
+      not_found: 'The task is not on the server yet. Wait for the sync and try again.',
+      unauthorized: 'Your login is no longer valid. Log in again.',
+      forbidden: 'Only the owner can add files.',
+      invalid: 'The server did not accept this file.',
+      server: 'The server had a problem. Try again in a moment.',
+      network: 'Cannot reach the server. Check your connection.',
+      cancelled: 'Upload cancelled.',
+    },
   },
 
   sync: {
@@ -105,6 +187,54 @@ export const t = {
     theme: 'Theme',
     themes: { system: 'Follow system', light: 'Light', dark: 'Dark' },
     logout: 'Log out',
+    push: {
+      title: 'Push notifications',
+      text: 'Get reminders as notifications even when the app is closed.',
+      status: {
+        unsupported: 'Not available: this browser does not support web push.',
+        insecure: 'Not available: push needs a secure connection (HTTPS).',
+        denied: 'Blocked in your browser settings for this site.',
+        off: 'Off on this device.',
+        on: 'On for this device.',
+      },
+      enable: 'Turn on push',
+      disable: 'Turn off push',
+      failed:
+        'Could not turn push on. The browser or the server could not set it up; try again later.',
+      hint: 'Needs a connection to the server, and the server must be able to reach your browser’s push service.',
+    },
+    notifications: {
+      title: 'Notifications',
+      enable: 'Enable notifications',
+      status: {
+        insecure: 'Not available: notifications need a secure connection (HTTPS).',
+        unsupported: 'Not available: this browser cannot show notifications.',
+        denied: 'Blocked in your browser settings for this site.',
+        default: 'Not enabled yet.',
+        granted: 'Enabled.',
+      },
+      hint: 'Reminders only appear while the app is open (in a tab or installed).',
+    },
+    password: {
+      title: 'Change password',
+      current: 'Current password',
+      next: 'New password',
+      repeat: 'Repeat the new password',
+      submit: 'Change password',
+      working: 'Changing…',
+      hint: 'At least 8 characters. You stay logged in here; your other devices are logged out.',
+      mismatch: 'The two new passwords are not the same.',
+      done: 'Password changed. Your other devices were logged out.',
+      needsConnection: 'Changing the password needs a connection to the server.',
+      errors: {
+        wrong_password: 'The current password is wrong.',
+        invalid_request: 'The new password must have at least 8 characters.',
+        too_many_attempts: 'Too many attempts. Try again later.',
+        unauthorized: 'Your login is no longer valid. Log in again.',
+        server: 'The server had a problem. Try again in a moment.',
+        network: 'Cannot reach the server. Check your connection.',
+      },
+    },
   },
 
   admin: {
@@ -112,6 +242,11 @@ export const t = {
     email: 'E-mail',
     role: 'Role',
     status: 'Status',
+    online: 'Online',
+    isOnline: 'Online',
+    isOffline: 'Offline',
+    lastSeen: (when: string) => `Last seen ${when}`,
+    neverSeen: 'Never seen',
     reset: 'Reset password',
     resetPending: 'Password reset, waiting for next login',
     active: 'Active',
@@ -121,6 +256,13 @@ export const t = {
     resetDone: (email: string) => `Password of ${email} was reset.`,
     needsConnection: 'The admin screen needs a connection to the server.',
     loadFailed: 'Could not load the users.',
+  },
+
+  reminder: {
+    label: 'Reminder',
+    open: 'Open',
+    dismiss: 'Dismiss',
+    region: 'Reminders',
   },
 
   update: {

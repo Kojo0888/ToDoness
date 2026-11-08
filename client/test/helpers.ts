@@ -38,6 +38,7 @@ export async function seedInbox(db: TodonessDB, id = newId(T0)): Promise<List> {
     id,
     name: 'Inbox',
     isInbox: true,
+    isPublic: false,
     orderKey: 'a0',
     fieldHlc: { name: hlc, orderKey: hlc, isInbox: hlc },
     createdAt: T0 - 1000,

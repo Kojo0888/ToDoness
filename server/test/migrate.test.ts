@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -22,12 +22,23 @@ function tempMigrations(files: Record<string, string>) {
 }
 
 describe('migrate (real migrations)', () => {
-  it('creates the schema from DBModel.md on an empty database', () => {
+  it('creates the schema (mvp/DBModel.md plus the v1 changes) on an empty database', () => {
     const db = new Database(':memory:');
     const applied = migrate(db, MIGRATIONS_DIR);
     expect(applied).toBeGreaterThanOrEqual(1);
     expect(tables(db)).toEqual(
-      ['change_log', 'lists', 'processed_ops', 'sessions', 'todos', 'users'].sort(),
+      [
+        'app_settings',
+        'attachments',
+        'change_log',
+        'lists',
+        'processed_ops',
+        'push_subscriptions',
+        'sent_reminders',
+        'sessions',
+        'todos',
+        'users',
+      ].sort(),
     );
     expect(db.pragma('user_version', { simple: true })).toBe(applied);
   });
@@ -114,5 +125,60 @@ describe('openDatabase', () => {
   it('works in memory', () => {
     const db = openDatabase(':memory:');
     expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+  });
+});
+
+describe('migration 002 (v1)', () => {
+  const upTo = (version: number) => {
+    const dir = mkdtempSync(join(tmpdir(), 'todoness-mig-'));
+    for (const f of readdirSync(MIGRATIONS_DIR)) {
+      if (Number(f.slice(0, 3)) <= version) copyFileSync(join(MIGRATIONS_DIR, f), join(dir, f));
+    }
+    return dir;
+  };
+
+  it('upgrades a version-1 database and keeps its data', () => {
+    const db = new Database(':memory:');
+    migrate(db, upTo(1));
+    db.exec(`INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
+      INSERT INTO lists (id, user_id, name, order_key, created_at, updated_at) VALUES ('l1','u1','Inbox','a0',1,1);
+      INSERT INTO todos (id, user_id, list_id, title, order_key, created_at, updated_at)
+        VALUES ('t1','u1','l1','Old task','a0',1,1);`);
+
+    expect(migrate(db, MIGRATIONS_DIR)).toBeGreaterThanOrEqual(1);
+    expect(db.prepare('SELECT is_public FROM lists WHERE id = ?').get('l1')).toEqual({
+      is_public: 0,
+    });
+    expect(db.prepare('SELECT remind_before FROM todos WHERE id = ?').get('t1')).toEqual({
+      remind_before: null,
+    });
+    expect(db.prepare('SELECT last_seen_at FROM users WHERE id = ?').get('u1')).toEqual({
+      last_seen_at: null,
+    });
+  });
+
+  it('checks the new columns', () => {
+    const db = new Database(':memory:');
+    migrate(db, MIGRATIONS_DIR);
+    db.exec(`INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
+      INSERT INTO lists (id, user_id, name, order_key, created_at, updated_at) VALUES ('l1','u1','L','a0',1,1);`);
+    expect(() => db.exec("UPDATE lists SET is_public = 2 WHERE id = 'l1'")).toThrow();
+    db.exec(`INSERT INTO todos (id, user_id, list_id, title, order_key, created_at, updated_at)
+      VALUES ('t1','u1','l1','T','a0',1,1)`);
+    expect(() => db.exec("UPDATE todos SET remind_before = 'month' WHERE id = 't1'")).toThrow();
+    db.exec("UPDATE todos SET remind_before = 'day' WHERE id = 't1'");
+  });
+
+  it('removes attachment rows with their task owner (cascade)', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, MIGRATIONS_DIR);
+    db.exec(`INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
+      INSERT INTO lists (id, user_id, name, order_key, created_at, updated_at) VALUES ('l1','u1','L','a0',1,1);
+      INSERT INTO todos (id, user_id, list_id, title, order_key, created_at, updated_at) VALUES ('t1','u1','l1','T','a0',1,1);
+      INSERT INTO attachments (id, user_id, todo_id, name, size, content_type, created_at)
+        VALUES ('a1','u1','t1','f.txt',3,'text/plain',1);`);
+    db.exec("DELETE FROM users WHERE id = 'u1'");
+    expect((db.prepare('SELECT COUNT(*) n FROM attachments').get() as { n: number }).n).toBe(0);
   });
 });

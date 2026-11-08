@@ -46,6 +46,18 @@ export function deleteUserSessions(db: Database.Database, userId: string): void 
   db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
 }
 
+/** Ends every session of the user except the one belonging to `keepToken`. */
+export function deleteOtherUserSessions(
+  db: Database.Database,
+  userId: string,
+  keepToken: string,
+): void {
+  db.prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?').run(
+    userId,
+    hashToken(keepToken),
+  );
+}
+
 export function deleteExpiredSessions(db: Database.Database, now: number): number {
   return db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(now).changes;
 }

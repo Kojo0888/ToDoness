@@ -1,6 +1,6 @@
 /**
  * Who is logged in on this device, and what the app should show
- * (docs/MVPImplementationSteps.md, Step 8).
+ * (docs/mvp/MVPImplementationSteps.md, Step 8).
  *
  * Rules:
  *  - Offline, a device that has logged in before opens from its local data.
@@ -39,6 +39,20 @@ export type AuthResult =
       retryAfterSec?: number;
     };
 
+export type ChangePasswordResult =
+  | { ok: true }
+  | {
+      ok: false;
+      error:
+        | 'wrong_password'
+        | 'invalid_request'
+        | 'too_many_attempts'
+        | 'unauthorized'
+        | 'server'
+        | 'network';
+      retryAfterSec?: number;
+    };
+
 export interface SessionDeps {
   db: TodonessDB;
   engine: SyncEngine;
@@ -47,6 +61,9 @@ export interface SessionDeps {
   resumeSync(): void;
   stopSync(): void;
   confirm(message: string): boolean;
+  /** Runs before the server session ends (e.g. stop push for this device). Best effort. */
+  beforeLogout?: () => Promise<void>;
+  beforeLogoutTimeoutMs?: number;
 }
 
 export interface Session {
@@ -56,6 +73,8 @@ export interface Session {
   login(email: string, password: string): Promise<AuthResult>;
   register(email: string, password: string): Promise<AuthResult>;
   logout(): Promise<boolean>;
+  /** Needs a connection. The server ends the user's other sessions. */
+  changePassword(currentPassword: string, newPassword: string): Promise<ChangePasswordResult>;
   /** The server no longer accepts this browser's login (expired or password reset). */
   requireLogin(): Promise<void>;
   retryInitialSync(): Promise<void>;
@@ -64,7 +83,8 @@ export interface Session {
 const plural = (n: number) => `${n} change${n === 1 ? '' : 's'}`;
 
 export function createSession(deps: SessionDeps): Session {
-  const { db, engine, fetch, resumeSync, stopSync, confirm } = deps;
+  const { db, engine, fetch, resumeSync, stopSync, confirm, beforeLogout } = deps;
+  const beforeLogoutTimeoutMs = deps.beforeLogoutTimeoutMs ?? 3000;
 
   let state: SessionState = { status: 'loading' };
   const listeners = new Set<() => void>();
@@ -165,6 +185,11 @@ export function createSession(deps: SessionDeps): Session {
     return { ok: true };
   }
 
+  async function requireLogin() {
+    const stored = await storedUser();
+    setState({ status: 'login', ...(stored ? { email: stored.email } : {}), reason: 'expired' });
+  }
+
   return {
     getState: () => state,
 
@@ -231,6 +256,15 @@ export function createSession(deps: SessionDeps): Session {
         return false;
       }
       stopSync();
+      if (beforeLogout) {
+        // Best effort, and never allowed to keep the user from logging out.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          beforeLogout().catch(() => undefined),
+          new Promise((resolve) => (timer = setTimeout(resolve, beforeLogoutTimeoutMs))),
+        ]);
+        clearTimeout(timer);
+      }
       const sent = await post('/api/auth/logout').then(
         () => true,
         () => false,
@@ -241,10 +275,32 @@ export function createSession(deps: SessionDeps): Session {
       return true;
     },
 
-    async requireLogin() {
-      const stored = await storedUser();
-      setState({ status: 'login', ...(stored ? { email: stored.email } : {}), reason: 'expired' });
+    async changePassword(currentPassword, newPassword) {
+      let res: Response;
+      try {
+        res = await post('/api/auth/change-password', { currentPassword, newPassword });
+      } catch {
+        return { ok: false, error: 'network' };
+      }
+      if (res.ok) return { ok: true };
+      if (res.status === 401) {
+        await requireLogin();
+        return { ok: false, error: 'unauthorized' };
+      }
+      if (res.status === 429) {
+        const wait = Number(res.headers.get('retry-after'));
+        return {
+          ok: false,
+          error: 'too_many_attempts',
+          ...(wait > 0 ? { retryAfterSec: wait } : {}),
+        };
+      }
+      if (res.status === 403) return { ok: false, error: 'wrong_password' };
+      if (res.status === 400) return { ok: false, error: 'invalid_request' };
+      return { ok: false, error: 'server' };
     },
+
+    requireLogin,
 
     async retryInitialSync() {
       const user = state.status === 'initial_sync' ? state.user : await storedUser();

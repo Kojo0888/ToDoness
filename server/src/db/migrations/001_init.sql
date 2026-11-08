@@ -1,4 +1,4 @@
--- ToDoness initial schema. See docs/DBModel.md section 3.
+-- ToDoness initial schema. See docs/mvp/DBModel.md section 3.
 
 -- ============================================================
 -- Users and sessions

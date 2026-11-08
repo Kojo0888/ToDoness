@@ -1,5 +1,5 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
-import { engine, session } from './services';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { engine, reminderFeed, session } from './services';
 
 export function useSession() {
   return useSyncExternalStore(session.subscribe, session.getState);
@@ -7,6 +7,10 @@ export function useSession() {
 
 export function useSyncStatus() {
   return useSyncExternalStore(engine.subscribe, () => engine.status);
+}
+
+export function useReminderMessages() {
+  return useSyncExternalStore(reminderFeed.subscribe, reminderFeed.getSnapshot);
 }
 
 function subscribeOnline(callback: () => void) {
@@ -56,4 +60,44 @@ export function useTheme(): [Theme, (t: Theme) => void] {
       setTheme(next);
     },
   ];
+}
+
+/**
+ * Runs `load` now and then every `intervalMs` (and when the tab comes back or the
+ * connection returns). `undefined` means "no answer yet or failed".
+ */
+export function usePolled<T>(load: () => Promise<T | undefined>, intervalMs: number, key = '') {
+  const [value, setValue] = useState<T | undefined>(undefined);
+  const [failed, setFailed] = useState(false);
+  const reloadRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = () =>
+      void load().then(
+        (v) => {
+          if (cancelled) return;
+          setFailed(v === undefined);
+          if (v !== undefined) setValue(v);
+        },
+        () => !cancelled && setFailed(true),
+      );
+    reloadRef.current = run;
+    run();
+    const timer = setInterval(run, intervalMs);
+    const onVisible = () => document.visibilityState === 'visible' && run();
+    window.addEventListener('online', run);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener('online', run);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+    // `load` is recreated on every render; `key` says when it really changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intervalMs, key]);
+
+  const reload = useCallback(() => reloadRef.current(), []);
+  return { value, failed, reload };
 }

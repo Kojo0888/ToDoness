@@ -18,7 +18,14 @@ const BOB = {
 
 type Router = Record<string, (call: Call) => Response | 'network-error'>;
 
-function setup(routes: Router, opts: { confirm?: boolean } = {}) {
+function setup(
+  routes: Router,
+  opts: {
+    confirm?: boolean;
+    beforeLogout?: () => Promise<void>;
+    beforeLogoutTimeoutMs?: number;
+  } = {},
+) {
   const db = testDb();
   const f = fakeFetch((call) => {
     const key = `${call.method} ${call.url.split('?')[0]}`;
@@ -34,6 +41,8 @@ function setup(routes: Router, opts: { confirm?: boolean } = {}) {
     resumeSync: vi.fn(),
     stopSync: vi.fn(),
     confirm: vi.fn(() => opts.confirm ?? true),
+    ...(opts.beforeLogout ? { beforeLogout: opts.beforeLogout } : {}),
+    ...(opts.beforeLogoutTimeoutMs ? { beforeLogoutTimeoutMs: opts.beforeLogoutTimeoutMs } : {}),
   };
   const session = createSession(deps);
   const states: SessionState['status'][] = [];
@@ -297,6 +306,41 @@ describe('logout', () => {
   });
 });
 
+describe('logout and push (FR-60)', () => {
+  it('releases push for this device before the server session ends', async () => {
+    const order: string[] = [];
+    const { session } = setup(
+      {
+        'GET /api/me': () => json(200, ANN),
+        ...okSync,
+        'POST /api/auth/logout': () => {
+          order.push('server logout');
+          return new Response(null, { status: 204 });
+        },
+      },
+      { beforeLogout: async () => void order.push('release push') },
+    );
+    await session.boot();
+    await session.logout();
+    expect(order).toEqual(['release push', 'server logout']);
+  });
+
+  it('logs out even if releasing push fails or hangs', async () => {
+    for (const beforeLogout of [
+      () => Promise.reject(new Error('boom')),
+      () => new Promise<void>(() => {}), // never finishes
+    ]) {
+      const { session } = setup(
+        { 'GET /api/me': () => json(200, ANN), ...okSync },
+        { beforeLogout, beforeLogoutTimeoutMs: 20 },
+      );
+      await session.boot();
+      expect(await session.logout()).toBe(true);
+      expect(session.getState().status).toBe('login');
+    }
+  });
+});
+
 describe('logging out while offline', () => {
   it('does not silently log the user back in at the next start', async () => {
     const first = setup({
@@ -358,6 +402,66 @@ describe('logging out while offline', () => {
     await db.setMeta('pendingLogout', true);
     await session.login(ANN.email, 'secret pass');
     expect(await db.getMeta('pendingLogout')).toBeUndefined();
+  });
+});
+
+describe('changePassword (FR-29, FR-31)', () => {
+  async function ready(routes: Router) {
+    const t = setup({ 'GET /api/me': () => json(200, ANN), ...okSync, ...routes });
+    await t.session.boot();
+    return t;
+  }
+
+  it('sends both passwords and reports success', async () => {
+    const { session, f } = await ready({
+      'POST /api/auth/change-password': () => new Response(null, { status: 204 }),
+    });
+    const result = await session.changePassword('old password', 'new password!');
+    expect(result).toEqual({ ok: true });
+    const call = f.calls.find((c) => c.url === '/api/auth/change-password')!;
+    expect(call.method).toBe('POST');
+    expect(call.body).toEqual({
+      currentPassword: 'old password',
+      newPassword: 'new password!',
+    });
+    expect(session.getState().status).toBe('ready');
+  });
+
+  it('maps server answers to clear errors', async () => {
+    const answers: [() => Response | 'network-error', string][] = [
+      [() => json(403, { error: 'wrong_password' }), 'wrong_password'],
+      [() => json(400, { error: 'invalid_request' }), 'invalid_request'],
+      [() => json(500, {}), 'server'],
+      [() => 'network-error', 'network'],
+    ];
+    for (const [answer, error] of answers) {
+      const { session } = await ready({ 'POST /api/auth/change-password': answer });
+      expect(await session.changePassword('a', 'new password!')).toMatchObject({
+        ok: false,
+        error,
+      });
+    }
+  });
+
+  it('reports how long to wait after too many attempts', async () => {
+    const { session } = await ready({
+      'POST /api/auth/change-password': () =>
+        new Response('{}', { status: 429, headers: { 'retry-after': '120' } }),
+    });
+    expect(await session.changePassword('a', 'new password!')).toEqual({
+      ok: false,
+      error: 'too_many_attempts',
+      retryAfterSec: 120,
+    });
+  });
+
+  it('an expired login (401) sends the user to the login screen', async () => {
+    const { session } = await ready({ 'POST /api/auth/change-password': () => json(401, {}) });
+    expect(await session.changePassword('a', 'new password!')).toMatchObject({
+      ok: false,
+      error: 'unauthorized',
+    });
+    expect(session.getState().status).toBe('login');
   });
 });
 

@@ -1,11 +1,14 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState } from 'react';
+import { useState, type ChangeEvent } from 'react';
 import { Redirect, useLocation } from 'wouter';
-import type { Todo } from '@todoness/shared';
+import type { RemindBefore, Todo } from '@todoness/shared';
 import { getLists, getTodoById } from '../../data/queries';
-import { fromDateInput, toDateInput } from '../dates';
-import { db, repo } from '../services';
+import { fromDateTimeInput, toDateInput, toTimeInput } from '../dates';
+import { enablePush } from '../push';
+import { notificationSupport, requestNotificationPermission } from '../reminders';
+import { db, reminders, repo } from '../services';
 import { t } from '../strings';
+import { AttachmentsSection } from './Attachments';
 import { useUndoToast } from './Toast';
 
 /** Edit one task. Every change is saved at once (T3). */
@@ -37,6 +40,40 @@ function TaskForm({ todo, listId }: { todo: Todo; listId: string }) {
     setTitleError(false);
     setTitle(trimmed);
     if (trimmed !== todo.title) await repo.updateTodo(todo.id, { title: trimmed });
+  }
+
+  const [support, setSupport] = useState(() => notificationSupport());
+
+  /** Changing the date keeps the time of day; clearing it also ends the reminder (FR-44). */
+  async function changeDate(e: ChangeEvent<HTMLInputElement>) {
+    const dueAt = fromDateTimeInput(e.target.value, toTimeInput(todo.dueAt));
+    await repo.updateTodo(
+      todo.id,
+      dueAt === null ? { dueAt: null, remindBefore: null } : { dueAt },
+    );
+    void reminders.check();
+  }
+
+  async function changeTime(e: ChangeEvent<HTMLInputElement>) {
+    if (todo.dueAt === null) return;
+    const dueAt = fromDateTimeInput(toDateInput(todo.dueAt), e.target.value);
+    if (dueAt !== null) await repo.updateTodo(todo.id, { dueAt });
+    void reminders.check();
+  }
+
+  async function changeReminder(e: ChangeEvent<HTMLSelectElement>) {
+    const value = (e.target.value || null) as RemindBefore | null;
+    // Asking for permission has to happen right away, inside the click.
+    // (and, once allowed, subscribe this device to web push so it also works when closed)
+    const asked = value
+      ? requestNotificationPermission().then(async (s) => {
+          if (s === 'granted') void enablePush();
+          return s;
+        })
+      : undefined;
+    await repo.updateTodo(todo.id, { remindBefore: value });
+    if (asked) setSupport(await asked);
+    void reminders.check();
   }
 
   async function remove() {
@@ -82,14 +119,43 @@ function TaskForm({ todo, listId }: { todo: Todo; listId: string }) {
         />
       </label>
 
+      <div className="due-row">
+        <label>
+          {t.todo.dueDate}
+          <input type="date" value={toDateInput(todo.dueAt)} onChange={(e) => void changeDate(e)} />
+        </label>
+        <label>
+          {t.todo.dueTime}
+          <input
+            type="time"
+            value={toTimeInput(todo.dueAt)}
+            disabled={todo.dueAt === null}
+            onChange={(e) => void changeTime(e)}
+          />
+        </label>
+      </div>
+
       <label>
-        {t.todo.dueDate}
-        <input
-          type="date"
-          value={toDateInput(todo.dueAt)}
-          onChange={(e) => void repo.updateTodo(todo.id, { dueAt: fromDateInput(e.target.value) })}
-        />
+        {t.todo.remind}
+        <select
+          value={todo.remindBefore ?? ''}
+          disabled={todo.dueAt === null}
+          aria-describedby="remind-hint"
+          onChange={(e) => void changeReminder(e)}
+        >
+          <option value="">{t.todo.reminders.none}</option>
+          <option value="week">{t.todo.reminders.week}</option>
+          <option value="day">{t.todo.reminders.day}</option>
+          <option value="hour">{t.todo.reminders.hour}</option>
+        </select>
       </label>
+      <p id="remind-hint" className="hint">
+        {todo.dueAt === null
+          ? t.todo.remindNeedsDue
+          : todo.remindBefore === null
+            ? ''
+            : t.todo.remindHints[support]}
+      </p>
 
       <label>
         {t.todo.priority}
@@ -123,6 +189,8 @@ function TaskForm({ todo, listId }: { todo: Todo; listId: string }) {
           ))}
         </select>
       </label>
+
+      <AttachmentsSection todoId={todo.id} />
 
       <button type="button" className="danger" onClick={() => void remove()}>
         {t.todo.delete}

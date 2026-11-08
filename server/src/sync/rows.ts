@@ -11,6 +11,7 @@ interface TodoDb {
   completed_at: number | null;
   due_at: number | null;
   priority: number;
+  remind_before: string | null;
   order_key: string;
   field_hlc: string;
   created_at: number;
@@ -22,6 +23,7 @@ interface ListDb {
   id: string;
   name: string;
   is_inbox: number;
+  is_public: number;
   order_key: string;
   field_hlc: string;
   created_at: number;
@@ -50,6 +52,7 @@ export function getTodo(db: Database.Database, id: string): Owned<Todo> | undefi
       completedAt: r.completed_at,
       dueAt: r.due_at,
       priority: r.priority as Todo['priority'],
+      remindBefore: r.remind_before as Todo['remindBefore'],
       orderKey: r.order_key,
       fieldHlc: JSON.parse(r.field_hlc),
       createdAt: r.created_at,
@@ -62,13 +65,14 @@ export function getTodo(db: Database.Database, id: string): Owned<Todo> | undefi
 export function saveTodo(db: Database.Database, userId: string, t: Todo): void {
   db.prepare(
     `INSERT INTO todos (id, user_id, list_id, title, notes, done, completed_at, due_at, priority,
-                        order_key, field_hlc, created_at, updated_at, deleted_at)
+                        remind_before, order_key, field_hlc, created_at, updated_at, deleted_at)
      VALUES (@id, @userId, @listId, @title, @notes, @done, @completedAt, @dueAt, @priority,
-             @orderKey, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
+             @remindBefore, @orderKey, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
      ON CONFLICT(id) DO UPDATE SET
        list_id = excluded.list_id, title = excluded.title, notes = excluded.notes,
        done = excluded.done, completed_at = excluded.completed_at, due_at = excluded.due_at,
-       priority = excluded.priority, order_key = excluded.order_key,
+       priority = excluded.priority, remind_before = excluded.remind_before,
+       order_key = excluded.order_key,
        field_hlc = excluded.field_hlc, updated_at = excluded.updated_at,
        deleted_at = excluded.deleted_at`,
   ).run({ ...t, userId, done: t.done ? 1 : 0, fieldHlc: JSON.stringify(t.fieldHlc) });
@@ -84,6 +88,7 @@ export function getList(db: Database.Database, id: string): Owned<List> | undefi
       id: r.id,
       name: r.name,
       isInbox: r.is_inbox === 1,
+      isPublic: r.is_public === 1,
       orderKey: r.order_key,
       fieldHlc: JSON.parse(r.field_hlc),
       createdAt: r.created_at,
@@ -95,12 +100,19 @@ export function getList(db: Database.Database, id: string): Owned<List> | undefi
 
 export function saveList(db: Database.Database, userId: string, l: List): void {
   db.prepare(
-    `INSERT INTO lists (id, user_id, name, is_inbox, order_key, field_hlc, created_at, updated_at, deleted_at)
-     VALUES (@id, @userId, @name, @isInbox, @orderKey, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
+    `INSERT INTO lists (id, user_id, name, is_inbox, is_public, order_key, field_hlc, created_at, updated_at, deleted_at)
+     VALUES (@id, @userId, @name, @isInbox, @isPublic, @orderKey, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
      ON CONFLICT(id) DO UPDATE SET
-       name = excluded.name, order_key = excluded.order_key, field_hlc = excluded.field_hlc,
+       name = excluded.name, is_public = excluded.is_public, order_key = excluded.order_key,
+       field_hlc = excluded.field_hlc,
        updated_at = excluded.updated_at, deleted_at = excluded.deleted_at`,
-  ).run({ ...l, userId, isInbox: l.isInbox ? 1 : 0, fieldHlc: JSON.stringify(l.fieldHlc) });
+  ).run({
+    ...l,
+    userId,
+    isInbox: l.isInbox ? 1 : 0,
+    isPublic: l.isPublic ? 1 : 0,
+    fieldHlc: JSON.stringify(l.fieldHlc),
+  });
 }
 
 /** The owner of a list, if it exists (deleted lists still count). */

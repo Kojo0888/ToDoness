@@ -53,7 +53,7 @@ describe('meResponseSchema / adminUsersResponseSchema', () => {
     expect(meResponseSchema.safeParse(user).success).toBe(true);
     expect(meResponseSchema.safeParse({ ...user, role: 'root' }).success).toBe(false);
     const list = {
-      users: [{ ...user, createdAt: 1, passwordReset: false }],
+      users: [{ ...user, createdAt: 1, passwordReset: false, online: false, lastSeenAt: null }],
     };
     expect(adminUsersResponseSchema.safeParse(list).success).toBe(true);
   });
@@ -82,5 +82,71 @@ describe('pushEnvelopeSchema', () => {
     const many = Array.from({ length: 501 }, op);
     expect(pushEnvelopeSchema.safeParse({ clientId: 'c9f1a2', ops: many }).success).toBe(false);
     expect(pushEnvelopeSchema.safeParse({ clientId: 'no-dash', ops: [op()] }).success).toBe(false);
+  });
+});
+
+describe('changePasswordSchema', () => {
+  it('needs the current password and a new one of the same length rules', async () => {
+    const { changePasswordSchema } = await import('../src/api');
+    expect(
+      changePasswordSchema.safeParse({ currentPassword: 'x', newPassword: 'long enough' }).success,
+    ).toBe(true);
+    expect(
+      changePasswordSchema.safeParse({ currentPassword: '', newPassword: 'long enough' }).success,
+    ).toBe(false);
+    expect(
+      changePasswordSchema.safeParse({ currentPassword: 'x', newPassword: 'short' }).success,
+    ).toBe(false);
+    expect(
+      changePasswordSchema.safeParse({ currentPassword: 'x', newPassword: 'y'.repeat(201) })
+        .success,
+    ).toBe(false);
+    expect(changePasswordSchema.safeParse({ newPassword: 'long enough' }).success).toBe(false);
+  });
+});
+
+describe('adminUsersResponseSchema (presence)', () => {
+  it('carries online and lastSeenAt', () => {
+    const user = {
+      id: newId(),
+      email: 'a@b.co',
+      role: 'user',
+      createdAt: 1,
+      passwordReset: false,
+    };
+    const ok = (extra: object) =>
+      adminUsersResponseSchema.safeParse({ users: [{ ...user, ...extra }] }).success;
+    expect(ok({ online: true, lastSeenAt: 5 })).toBe(true);
+    expect(ok({ online: false, lastSeenAt: null })).toBe(true);
+    expect(ok({ online: 'yes', lastSeenAt: null })).toBe(false);
+    expect(ok({})).toBe(false);
+  });
+});
+
+describe('reminder helpers and pushSubscriptionSchema', () => {
+  it('REMIND_MS and timeUntil are shared by the app and the server', async () => {
+    const { REMIND_MS, timeUntil, reminderKey } = await import('../src/reminders');
+    expect(REMIND_MS).toEqual({ week: 604_800_000, day: 86_400_000, hour: 3_600_000 });
+    expect(timeUntil(3_600_000)).toBe('in 1 hour');
+    expect(reminderKey({ id: 'a', dueAt: 5, remindBefore: 'day' })).toBe('a:5:day');
+  });
+
+  it('accepts what the browser produces and rejects the rest', async () => {
+    const { pushSubscriptionSchema } = await import('../src/api');
+    const ok = {
+      endpoint: 'https://push.example/abc',
+      expirationTime: null,
+      keys: { p256dh: 'BPk', auth: 'tok' },
+    };
+    expect(pushSubscriptionSchema.safeParse(ok).success).toBe(true);
+    expect(
+      pushSubscriptionSchema.safeParse({ ...ok, endpoint: 'http://push.example/abc' }).success,
+    ).toBe(false);
+    expect(pushSubscriptionSchema.safeParse({ ...ok, keys: { p256dh: 'x' } }).success).toBe(false);
+    expect(
+      pushSubscriptionSchema.safeParse({ ...ok, endpoint: 'https://x/' + 'a'.repeat(3000) })
+        .success,
+    ).toBe(false);
+    expect(pushSubscriptionSchema.safeParse({}).success).toBe(false);
   });
 });

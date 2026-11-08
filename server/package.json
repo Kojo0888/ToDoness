@@ -14,12 +14,14 @@
     "@hono/node-server": "^2.1.6",
     "@node-rs/argon2": "^2.2.2",
     "better-sqlite3": "^13.0.3",
-    "hono": "^4.13.16"
+    "hono": "^4.13.16",
+    "web-push": "^4.0.0"
   },
   "devDependencies": {
     "@todoness/shared": "workspace:*",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.0.0",
+    "@types/web-push": "^3.6.4",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
     "vitest": "^5.1.0"

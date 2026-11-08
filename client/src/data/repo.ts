@@ -1,5 +1,5 @@
 /**
- * The only code that changes data (docs/MVPImplementationSteps.md, Step 2).
+ * The only code that changes data (docs/mvp/MVPImplementationSteps.md, Step 2).
  *
  * Every change is ONE transaction that
  *   1. builds the new row with the shared `applyOp` (the same rules the server uses),
@@ -10,9 +10,7 @@
 import { generateKeyBetween } from 'fractional-indexing';
 import Dexie from 'dexie';
 import {
-  HlcClock,
   applyOp,
-  newClientId,
   newId,
   syncOpSchema,
   type List,
@@ -20,7 +18,9 @@ import {
   type Todo,
   type TodoPatch,
 } from '@todoness/shared';
+import { nextHlc as nextHlcOf } from './clock';
 import type { TodonessDB } from './db';
+import { keyForPosition } from './order';
 
 export type RepoErrorCode = 'invalid' | 'not_found' | 'inbox_protected';
 
@@ -52,6 +52,13 @@ export interface Repo {
   createList(name: string): Promise<List>;
   renameList(id: string, name: string): Promise<List>;
   deleteList(id: string): Promise<List>;
+  /**
+   * Puts a task directly before another open task of the same list (`null` = at the
+   * end). One `orderKey` update; nothing happens if the position would not change.
+   */
+  reorderTodo(id: string, beforeId: string | null): Promise<Todo>;
+  /** Makes a list readable (or not) by every logged-in user. */
+  setListPublic(id: string, isPublic: boolean): Promise<List>;
   /** Moves a list one place up or down among the visible lists (never above the Inbox). */
   moveList(id: string, direction: 'up' | 'down'): Promise<List>;
 }
@@ -62,18 +69,7 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
   const inTx = <T>(fn: () => Promise<T>) =>
     db.transaction('rw', [db.todos, db.lists, db.outbox, db.meta], fn);
 
-  /** Next clock value for this browser; remembered in `meta` so it survives reloads. */
-  async function nextHlc(): Promise<string> {
-    let clientId = await db.getMeta<string>('clientId');
-    if (!clientId) {
-      clientId = newClientId();
-      await db.setMeta('clientId', clientId);
-    }
-    const last = await db.getMeta<string>('lastHlc');
-    const hlc = new HlcClock(clientId, now, last).now();
-    await db.setMeta('lastHlc', hlc);
-    return hlc;
-  }
+  const nextHlc = () => nextHlcOf(db, now);
 
   /** Validates, applies and queues one operation. Returns the resulting row. */
   async function commit<T extends Todo | List>(
@@ -117,6 +113,15 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
     const l = await db.lists.get(id);
     if (!l || l.deletedAt !== null) throw new RepoError('not_found', 'List not found');
     return l;
+  }
+
+  /** Todos of a list that are not deleted, in key order. */
+  async function todosOfList(listId: string): Promise<Todo[]> {
+    const rows = await db.todos
+      .where('[listId+orderKey]')
+      .between([listId, Dexie.minKey], [listId, Dexie.maxKey])
+      .toArray();
+    return rows.filter((t) => t.deletedAt === null);
   }
 
   /** A key that sorts before every todo of the list, so the new one lands on top. */
@@ -180,6 +185,23 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         await liveTodo(id);
         await liveList(listId);
         return commit<Todo>('todo', 'update', id, { listId, orderKey: await topKey(listId) });
+      }),
+
+    reorderTodo: (id, beforeId) =>
+      inTx(async () => {
+        const todo = await liveTodo(id);
+        const open = (await todosOfList(todo.listId)).filter((t) => !t.done);
+        const choice = keyForPosition(open, id, beforeId);
+        if (choice.kind === 'same') return todo;
+        if (choice.kind === 'missing') throw new RepoError('not_found', 'Task or target not found');
+        return commit<Todo>('todo', 'update', id, { orderKey: choice.key });
+      }),
+
+    setListPublic: (id, isPublic) =>
+      inTx(async () => {
+        const list = await liveList(id);
+        if (list.isPublic === isPublic) return list;
+        return commit<List>('list', 'update', id, { isPublic });
       }),
 
     createList: (name) =>

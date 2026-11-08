@@ -216,6 +216,7 @@ describe('todoSchema / listSchema', () => {
       completedAt: null,
       dueAt: null,
       priority: 0,
+      remindBefore: null,
       orderKey: 'a0',
       fieldHlc: { title: HLC },
       createdAt: now,
@@ -229,6 +230,7 @@ describe('todoSchema / listSchema', () => {
       id: newId(),
       name: 'Inbox',
       isInbox: true,
+      isPublic: false,
       orderKey: 'a0',
       fieldHlc: {},
       createdAt: now,
@@ -236,5 +238,93 @@ describe('todoSchema / listSchema', () => {
       deletedAt: null,
     };
     expect(listSchema.safeParse(list).success).toBe(true);
+  });
+});
+
+describe('v1 fields', () => {
+  it('lists: isPublic is optional on create and can be updated', () => {
+    const create = (patch: Record<string, unknown>) =>
+      syncOpSchema.safeParse(op({ entity: 'list', type: 'create', patch }));
+    expect(create({ name: 'Recipes', orderKey: 'a1' }).success).toBe(true);
+    expect(create({ name: 'Recipes', orderKey: 'a1', isPublic: true }).success).toBe(true);
+    expect(create({ name: 'Recipes', orderKey: 'a1', isPublic: 'yes' }).success).toBe(false);
+
+    const update = (patch: Record<string, unknown>) =>
+      syncOpSchema.safeParse(op({ entity: 'list', type: 'update', patch }));
+    expect(update({ isPublic: false }).success).toBe(true);
+    expect(update({ isPublic: 1 }).success).toBe(false);
+  });
+
+  it('todos: remindBefore accepts week, day, hour and null only', () => {
+    const update = (patch: Record<string, unknown>) =>
+      syncOpSchema.safeParse(op({ type: 'update', patch }));
+    for (const v of ['week', 'day', 'hour', null]) {
+      expect(update({ remindBefore: v }).success, String(v)).toBe(true);
+    }
+    for (const v of ['month', '', 7, true]) {
+      expect(update({ remindBefore: v }).success, String(v)).toBe(false);
+    }
+  });
+
+  it('todos: remindBefore can be set on create', () => {
+    const o = op({
+      type: 'create',
+      patch: { listId: newId(), title: 'x', orderKey: 'a0', dueAt: 1, remindBefore: 'day' },
+    });
+    expect(syncOpSchema.safeParse(o).success).toBe(true);
+  });
+
+  it('rows carry the new fields', () => {
+    const base = {
+      id: newId(),
+      fieldHlc: {},
+      createdAt: 1,
+      updatedAt: 1,
+      deletedAt: null,
+    };
+    expect(
+      listSchema.safeParse({ ...base, name: 'A', orderKey: 'a0', isInbox: false, isPublic: true })
+        .success,
+    ).toBe(true);
+    expect(
+      todoSchema.safeParse({
+        ...base,
+        listId: newId(),
+        title: 'A',
+        notes: '',
+        done: false,
+        completedAt: null,
+        dueAt: null,
+        priority: 0,
+        orderKey: 'a0',
+        remindBefore: null,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('pulled changes may carry the new fields', () => {
+    const res = pullResponseSchema.safeParse({
+      changes: [
+        {
+          serverSeq: 1,
+          entity: 'list',
+          entityId: newId(),
+          type: 'update',
+          patch: { isPublic: true },
+          hlc: HLC,
+        },
+        {
+          serverSeq: 2,
+          entity: 'todo',
+          entityId: newId(),
+          type: 'update',
+          patch: { remindBefore: 'hour' },
+          hlc: HLC,
+        },
+      ],
+      nextSeq: 2,
+      hasMore: false,
+    });
+    expect(res.success).toBe(true);
   });
 });

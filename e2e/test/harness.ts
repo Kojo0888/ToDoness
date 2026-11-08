@@ -29,7 +29,7 @@ export interface App {
   stop(): Promise<void>;
 }
 
-export async function startApp(): Promise<App> {
+export async function startApp(extraEnv: Record<string, string> = {}): Promise<App> {
   if (
     !existsSync(join(root, 'server/dist/index.js')) ||
     !existsSync(join(root, 'client/dist/index.html'))
@@ -47,6 +47,7 @@ export async function startApp(): Promise<App> {
       DATABASE_PATH: join(dir, 'todoness.db'),
       CLIENT_DIR: join(root, 'client/dist'),
       COOKIE_SECURE: 'false', // plain http://localhost in tests
+      ...extraEnv,
     },
     stdio: 'ignore',
   });
@@ -72,13 +73,20 @@ export async function startApp(): Promise<App> {
   };
 }
 
-export async function launch(): Promise<Browser> {
-  return chromium.launch();
+export async function launch(
+  options: Parameters<typeof chromium.launch>[0] = {},
+): Promise<Browser> {
+  return chromium.launch(options);
 }
 
 /** A "device": its own storage, cookies, service worker and network switch. */
-export function newDevice(browser: Browser, app: App, viewport = { width: 1100, height: 800 }) {
-  return browser.newContext({ baseURL: app.url, viewport });
+export function newDevice(
+  browser: Browser,
+  app: App,
+  viewport = { width: 1100, height: 800 },
+  extra: Parameters<Browser['newContext']>[0] = {},
+) {
+  return browser.newContext({ baseURL: app.url, viewport, ...extra });
 }
 
 let counter = 0;
@@ -141,6 +149,18 @@ export async function waitForOfflineReady(page: Page) {
 export async function openTask(page: Page, title: string) {
   await task(page, title).click();
   await page.getByRole('complementary', { name: 'Task details' }).waitFor();
+  // The panel of a previously opened task may still be showing: wait for this one's.
+  await page.waitForFunction(
+    (expected) =>
+      (document.querySelector('aside.detail input[type="text"]') as HTMLInputElement | null)
+        ?.value === expected,
+    title,
+  );
+}
+
+/** The titles of the open tasks, top to bottom. */
+export async function titlesOnPage(page: Page): Promise<string[]> {
+  return page.locator('.todos:not(.completed .todos) .todo .todo-title').allTextContents();
 }
 
 export async function newPage(context: BrowserContext) {

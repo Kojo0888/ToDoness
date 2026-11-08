@@ -1,11 +1,16 @@
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { HlcClock } from '@todoness/shared';
+import { HlcClock, type ConfigResponse } from '@todoness/shared';
 import { logger } from 'hono/logger';
+import { createPresence } from './auth/presence';
+import { getVapidKeys } from './push/keys';
+import { pushRoutes } from './routes/push';
 import type { Config } from './config';
 import { adminRoutes } from './routes/admin';
+import { attachmentRoutes } from './routes/attachments';
 import { authRoutes, meRoute } from './routes/auth';
+import { publicRoutes } from './routes/public';
 import { syncRoutes } from './routes/sync';
 import { staticMiddleware } from './static';
 import type { AppEnv } from './types';
@@ -34,11 +39,25 @@ export function createApp({ db, config, log = false, now = Date.now }: AppDeps) 
     }
   });
 
+  const presence = createPresence(db, config.onlineWindowMs);
+  // Whoever made an authenticated request is online (FR-56). Runs after the route.
+  app.use('/api/*', async (c, next) => {
+    await next();
+    const user = c.get('user');
+    if (user) presence.touch(user.id, now());
+  });
+
   const serverClock = new HlcClock('server', now);
-  app.route('/api/auth', authRoutes({ db, config, now, serverClock }));
+  app.route('/api/auth', authRoutes({ db, config, now, serverClock, presence }));
   app.route('/api/me', meRoute({ db, now }));
-  app.route('/api/admin', adminRoutes({ db, now }));
+  app.route('/api/admin', adminRoutes({ db, now, presence, config }));
+  app.get('/api/config', (c) =>
+    c.json({ maxAttachmentBytes: config.maxAttachmentBytes } satisfies ConfigResponse),
+  );
+  app.route('/api', attachmentRoutes({ db, config, now }));
   app.route('/api/sync', syncRoutes({ db, now }));
+  app.route('/api/public', publicRoutes({ db, now }));
+  app.route('/api/push', pushRoutes({ db, now, publicKey: getVapidKeys(db, config).publicKey }));
 
   if (config.clientDir) app.use('*', staticMiddleware(config.clientDir));
 
