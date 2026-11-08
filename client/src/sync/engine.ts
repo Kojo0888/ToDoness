@@ -1,6 +1,6 @@
 /**
  * Talks to the server: pushes the outbox, pulls changes
- * (docs/TechStack.md section 6, docs/MVPImplementationSteps.md Step 6).
+ * (docs/mvp/TechStack.md section 6, docs/mvp/MVPImplementationSteps.md Step 6).
  */
 import {
   newClientId,

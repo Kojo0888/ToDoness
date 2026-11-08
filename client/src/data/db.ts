@@ -1,4 +1,4 @@
-/** The browser's local database (docs/DBModel.md section 4). */
+/** The browser's local database (docs/mvp/DBModel.md section 4). */
 import Dexie, { type Table } from 'dexie';
 import type { List, OutboxOp, Todo } from '@todoness/shared';
 

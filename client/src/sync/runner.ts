@@ -1,5 +1,5 @@
 /**
- * Decides WHEN to sync (docs/TechStack.md section 6.2):
+ * Decides WHEN to sync (docs/mvp/TechStack.md section 6.2):
  * at start, when the browser comes back online, when the tab becomes visible,
  * about one second after a local change, and every 5 seconds.
  * After a failure it retries with growing delays.

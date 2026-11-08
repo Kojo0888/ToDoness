@@ -1,5 +1,5 @@
 /**
- * The only code that changes data (docs/MVPImplementationSteps.md, Step 2).
+ * The only code that changes data (docs/mvp/MVPImplementationSteps.md, Step 2).
  *
  * Every change is ONE transaction that
  *   1. builds the new row with the shared `applyOp` (the same rules the server uses),

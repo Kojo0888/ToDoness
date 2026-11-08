@@ -1,4 +1,4 @@
-/** Server settings, read from environment variables (see docs/TechStack.md, section 13.4). */
+/** Server settings, read from environment variables (see docs/mvp/TechStack.md, section 13.4). */
 
 export class ConfigError extends Error {
   override name = 'ConfigError';

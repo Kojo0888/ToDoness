@@ -1,0 +1,166 @@
+# ToDoness v1 – Product Requirements Document (PRD)
+
+| | |
+|---|---|
+| **Status** | Draft v1.0 – ready to build |
+| **Builds on** | The MVP in [`../mvp/`](../mvp/) ([PRD](../mvp/PRD.md), [TechStack](../mvp/TechStack.md), [DBModel](../mvp/DBModel.md)) |
+| **Related docs** | [ImplementationPlan.md](./ImplementationPlan.md), [TechStack.md](./TechStack.md) |
+
+> Everything in the MVP PRD still applies unless this document says otherwise.
+> Requirement numbers continue where the MVP stopped (FR-29 and up).
+> Decisions I had to make where the request left room are marked **[Decision]**.
+
+---
+
+## 1. Summary
+
+v1 turns the single-user MVP into something a small team can use together,
+and makes tasks richer:
+
+1. A signed-in user can **change their own password**.
+2. A list can be switched to **public**, so every user of the app can read it.
+3. Tasks can be **reordered by drag & drop**, and **dragged onto another list**.
+4. A task can have a **reminder** (1 week, 1 day or 1 hour before it is due),
+   shown as a notification.
+5. A task can have **attachments**, up to a size set in the server config
+   (default 100 MB per file).
+6. The admin screen shows **who is online right now**.
+
+## 2. Goals and non-goals
+
+**Goals**
+
+- Keep the offline-first promise: everything that was offline-capable in the MVP
+  stays offline-capable.
+- Keep the app fast and simple. No new service, no new database: still one
+  container, one SQLite file, plus a folder for attachments.
+
+**Non-goals (still out of scope)**
+
+- Editing by other people: public lists are **read-only** for everyone but the owner.
+- Anonymous visitors: "everyone" means every **logged-in** user (sign-up is open on
+  the intranet, so anyone who can reach the app can become one).
+- Push notifications while the app is closed (needs a push service; see risk R2).
+- Offline upload of attachments (see decision D3).
+- Virus scanning, image thumbnails, previews.
+
+## 3. User stories
+
+| ID | As a user, I want to… | So that… |
+|----|----------------------|----------|
+| A7 | change my password while I am logged in | I can keep my account safe without asking the admin |
+| P1 | switch one of my lists to "public" | colleagues can see it |
+| P2 | switch it back to private | I stay in control |
+| P3 | browse the public lists of other users, read-only | I can see shared information |
+| T6 | drag a task up or down in its list | I can put the important ones on top (this finishes MVP story T6) |
+| L2 | drag a task onto another list in the sidebar | I can file it without opening it |
+| R1 | pick "1 week / 1 day / 1 hour before" on a task with a due date | I am reminded in time |
+| R2 | get a pop-up notification when it is time | I notice it even if the app is in another tab |
+| F1 | attach files to a task | everything about the task is in one place |
+| F2 | download and remove an attachment | I can get my files back and clean up |
+| AD1 | (as admin) see who is online | I know who is using the app |
+
+## 4. Functional requirements
+
+### 4.1 Change password (FR-29 – FR-31)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-29 | In **Settings** a logged-in user can change their password by entering the **current** password, the **new** password (min. 8, max. 200 characters, as at sign-up) and a repeat of the new one. | Must |
+| FR-30 | The server checks the current password. A wrong one is refused and counts toward the login rate limit. On success the new password is stored (argon2id) and **all other sessions of that user are ended**; the session making the request stays logged in. | Must |
+| FR-31 | Changing the password needs a connection to the server. Offline, the form says so and is disabled. | Must |
+
+### 4.2 Public lists (FR-32 – FR-36)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-32 | Every list has a **"Public"** switch (off by default), on the list page. It is a normal synced list field: it works offline and is merged like any other field. | Must |
+| FR-33 | A public list, with its tasks (title, notes, due date, priority, done state) and attachments, is **readable by every logged-in user**. Only the owner can change it. | Must |
+| FR-34 | The sidebar shows a **"Public lists"** section with the public lists of **other** users, labelled with the owner's e-mail. Opening one shows a read-only page. | Must |
+| FR-35 | Public lists are read from the server on demand (they are not copied to the viewer's device) and refreshed while the page is open. Offline, the section shows a short "needs a connection" note. **[Decision D1]** | Must |
+| FR-36 | Making a list private, or deleting a list or task, removes it from other users' view at their next refresh. Attachments of a private list can no longer be downloaded by others. | Must |
+
+### 4.3 Drag & drop (FR-37 – FR-41)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-37 | Open tasks can be **reordered by dragging** a handle on the row, with mouse, touch or keyboard (Space to pick up, arrow keys to move, Space to drop, Esc to cancel). | Must |
+| FR-38 | The new position is saved as one change (one `orderKey`), works offline, and is merged without conflicts (existing fractional-index design). | Must |
+| FR-39 | A task can be **dragged onto a list in the sidebar** to move it there. It lands on top of that list. The list under the pointer is highlighted while dragging. | Must |
+| FR-40 | The task-detail "List" selector stays as the keyboard / touch alternative for moving between lists (on phones the sidebar is hidden while dragging). | Must |
+| FR-41 | Dragging never changes anything if the task is dropped where it started. | Must |
+
+### 4.4 Reminders (FR-42 – FR-47)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-42 | The task detail has a **"Remind me"** field: *No reminder / 1 week before / 1 day before / 1 hour before*. **[Decision D2: one choice per task.]** | Must |
+| FR-43 | The due date can now carry an optional **time**. No time means the start of the day (00:00 local time), as before. The reminder is counted back from the due date and time. | Must |
+| FR-44 | A reminder is only active for an **open** task with a due date. Completing, deleting or removing the due date or reminder cancels it. Changing the due date or the reminder makes it fire again. | Must |
+| FR-45 | When the time has come, the app shows a **system notification** (title: the task, text: when it is due) and an in-app message. A reminder fires **once per device** per due date + choice. | Must |
+| FR-46 | The check runs while the app is open: when it starts, when the tab becomes visible, and about every 30 seconds. A reminder whose time passed while the app was closed fires at the next start, **if the task is not yet due**. | Must |
+| FR-47 | Notifications need a **secure context (HTTPS, or `localhost`)** and the user's permission. The app asks for permission when the user first sets a reminder (and offers a button in Settings). Without HTTPS or permission, the field explains why reminders will only appear inside the app. | Must |
+
+### 4.5 Attachments (FR-48 – FR-55)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-48 | In the task detail the owner can **attach files**. Each file may be up to **`MAX_ATTACHMENT_MB`** (default **100**) megabytes. | Must |
+| FR-49 | The limit is **configurable** on the server (environment variable `MAX_ATTACHMENT_MB`), documented in the README. The app reads it from the server (`GET /api/config`) and refuses a too large file **before** uploading; the server enforces it again while receiving, and stops and discards anything above it. | Must |
+| FR-50 | Each attachment shows its name and size, with **Download** and **Remove** (owner only). Uploading shows progress. | Must |
+| FR-51 | Files are stored on the server's disk in `ATTACHMENTS_DIR` (default: an `attachments` folder next to the database file). Names and sizes are stored in the database. | Must |
+| FR-52 | Downloads are always sent as a **download** (never shown inline) with a safe content type, so an uploaded HTML or SVG file cannot run in the app's origin. | Must |
+| FR-53 | Only the owner can add or remove attachments. The owner and, for tasks in a **public list**, every logged-in user can download them. | Must |
+| FR-54 | Deleting a user also deletes their attachment files. Attachments of a deleted task stay until the task is permanently removed, so **Undo** keeps working. | Must |
+| FR-55 | Attachments need a connection (upload, list, download, remove). **[Decision D3]** The task must already be on the server: if it was created offline, the app syncs first. | Must |
+
+### 4.6 Who is online (FR-56 – FR-58)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-56 | The server records when it last heard from each logged-in user (any authenticated request; the app talks to the server about every 5 seconds while it is open). | Must |
+| FR-57 | A user is **online** if that was within the last **`ONLINE_WINDOW_SECONDS`** (default 30). | Must |
+| FR-58 | The admin **Users** table gets a new **"Online"** column with an indicator (a coloured dot **and** the words *Online* / *Offline*, with "last seen" as a tooltip). The table refreshes about every 5 seconds while the admin screen is open. | Must |
+
+## 5. Non-functional requirements (changes and additions)
+
+| Area | Requirement |
+|------|-------------|
+| **Security** | Uploaded files are never executed or rendered inline (FR-52). File names are stored as text and never used as a path (files are stored under generated ids). Access is checked on every attachment request. The upload size is limited by both the declared and the actual number of bytes. A wrong current password counts toward rate limiting. |
+| **Privacy** | Public lists expose the owner's e-mail, titles, notes, due dates and attachments to all logged-in users. The switch is off by default and clearly labelled. |
+| **Performance** | Uploads are streamed to disk, never held in memory. Presence tracking writes at most once per user every 10 seconds. |
+| **Accessibility** | Drag and drop works with the keyboard and announces its state to screen readers. The online indicator does not rely on colour alone. |
+| **Compatibility** | Notifications use the standard Notification API (through the service worker where the browser requires it). Safari / iOS support is limited to installed web apps; the field explains when notifications are not available. |
+| **Operations** | One more folder to back up: the attachments folder next to the database (documented in the README). |
+| **Config** | `MAX_ATTACHMENT_MB`, `ATTACHMENTS_DIR`, `ONLINE_WINDOW_SECONDS` – all optional, validated at start-up, listed in the README. |
+
+## 6. Decisions and open points
+
+| # | Topic | Decision |
+|---|-------|----------|
+| D1 | How do others get public lists? | Read on demand through the API, read-only, online only. Copying them into every user's local database would make the sync model (per-user change feed) much heavier for little gain. |
+| D2 | One reminder or several? | One choice per task. Simple to understand and to merge between devices. Several reminders can be added later (the field would become a list). |
+| D3 | Offline attachments? | No. Files up to 100 MB do not fit the "small queue of tiny changes" offline model (browser storage quota, retries). Attach, list and download need a connection. |
+| D4 | Due time | Added as an optional time next to the date. Overdue highlighting still works by day (a task due today at 09:00 is not marked overdue until tomorrow). |
+| D5 | Reminders while the app is closed | Not supported: needs Web Push and a push service, which conflicts with "internal use, no third-party services". The app catches up at the next start (FR-46). |
+| D6 | Who counts as "online" | Last authenticated request within 30 s. A browser tab in the background may be throttled and show as offline after a while; that is accepted. |
+
+**Risks**
+
+| # | Risk | Mitigation |
+|---|------|------------|
+| R1 | Large uploads fill the disk | Size limit per file is configurable; the attachments folder is documented for backup and monitoring. No per-user quota in v1. |
+| R2 | Reminders are missed when no device is open | Documented (D5). Catch-up fires at the next start. |
+| R3 | Notifications blocked by the browser or plain HTTP | Clear explanation in the UI; in-app message still shown. |
+| R4 | Drag and drop on touch screens fights with scrolling | A dedicated drag handle with `touch-action: none`; the rest of the row scrolls normally. |
+
+## 7. Acceptance criteria (key scenarios)
+
+1. **Change password:** In Settings enter the wrong current password → refused. Enter the right one and a new password → success; another logged-in device of the same user is logged out; logging in with the old password fails, with the new one works.
+2. **Public list:** User A switches list "Recipes" to public. User B sees "Recipes (a@…)" under *Public lists*, opens it and sees the tasks, but has no way to edit. A switches it back to private → B no longer sees it after the next refresh.
+3. **Reorder:** Drag the third task to the top (mouse, then keyboard). Reload → the order is kept. Do it offline → after reconnecting the other device shows the same order.
+4. **Move by drag:** Drag a task onto "Work" in the sidebar → it disappears from the current list and is on top of "Work".
+5. **Reminder:** Set a task due in 1 hour 5 minutes with "1 hour before" → within about 30 seconds after the 5 minute mark a notification pops up, once. Changing the due date re-arms it.
+6. **Attachments:** Attach a small file → it is listed with name and size; download returns identical bytes; remove deletes it. With `MAX_ATTACHMENT_MB=1`, a 2 MB file is refused in the app, and refused by the server if sent directly.
+7. **Online indicator:** User B opens the app → the admin sees B with the green *Online* indicator within about 5 seconds; B closes the app → *Offline* within about 30 seconds plus one refresh.
+8. **Offline still works:** Everything from the MVP acceptance list still passes.

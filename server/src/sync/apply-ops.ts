@@ -1,5 +1,5 @@
 /**
- * Applying pushed operations (docs/DBModel.md section 3.2).
+ * Applying pushed operations (docs/mvp/DBModel.md section 3.2).
  * The whole batch runs in one `BEGIN IMMEDIATE` transaction: SQLite allows one
  * writer at a time, so `server_seq` values become visible in order and a client
  * cursor can never skip a row that was committed late.

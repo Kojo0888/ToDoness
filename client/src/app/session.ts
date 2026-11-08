@@ -1,6 +1,6 @@
 /**
  * Who is logged in on this device, and what the app should show
- * (docs/MVPImplementationSteps.md, Step 8).
+ * (docs/mvp/MVPImplementationSteps.md, Step 8).
  *
  * Rules:
  *  - Offline, a device that has logged in before opens from its local data.
