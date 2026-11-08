@@ -96,7 +96,9 @@ so the native modules always match it. To roll back, keep a copy of `release/`.
 
 If the server is a separate machine, build locally and upload instead:
 `./deploy.sh user@server:/path/to/todoness/release` builds the app, then
-copies `release/` over with rsync (keeping the server's `node_modules`). It
+copies `release/` over with rsync (keeping the server's `node_modules`). The
+target must end in `/release`; anything else is refused, because the upload
+makes the target an exact copy and would delete everything else in it. It
 does not touch Docker; restart the `app` container on the server, or let it
 restart itself, to load the new files.
 
