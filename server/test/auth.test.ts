@@ -389,3 +389,122 @@ describe('admin', () => {
     ).toBe(404);
   });
 });
+
+describe('POST /api/auth/change-password (FR-29, FR-30)', () => {
+  const NEW_PW = 'a brand new password';
+  const login = (c: TestClient, password: string, email = 'ann@corp.test') =>
+    c.post('/api/auth/login', { email, password });
+
+  it('requires a login', async () => {
+    const { app } = testApp();
+    const res = await new TestClient(app).post('/api/auth/change-password', {
+      currentPassword: PW,
+      newPassword: NEW_PW,
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it('changes the password: the new one logs in, the old one no longer does', async () => {
+    const { app, db } = testApp();
+    const c = new TestClient(app);
+    await register(c);
+    const res = await c.post('/api/auth/change-password', {
+      currentPassword: PW,
+      newPassword: NEW_PW,
+    });
+    expect(res.status).toBe(204);
+
+    const hash = (db.prepare('SELECT password_hash h FROM users').get() as { h: string }).h;
+    expect(hash).toMatch(/^\$argon2id\$/);
+    expect(await verify(hash, NEW_PW)).toBe(true);
+
+    const other = new TestClient(app);
+    expect((await login(other, PW)).status).toBe(401);
+    expect((await login(other, NEW_PW)).status).toBe(200);
+  });
+
+  it('refuses a wrong current password and changes nothing', async () => {
+    const { app } = testApp();
+    const c = new TestClient(app);
+    await register(c);
+    const res = await c.post('/api/auth/change-password', {
+      currentPassword: 'not my password',
+      newPassword: NEW_PW,
+    });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'wrong_password' });
+    expect((await login(new TestClient(app), PW)).status).toBe(200);
+    expect((await c.get('/api/me')).status).toBe(200); // still logged in
+  });
+
+  it('rejects a new password that is too short, too long or missing', async () => {
+    const { app } = testApp();
+    const c = new TestClient(app);
+    await register(c);
+    for (const body of [
+      { currentPassword: PW, newPassword: 'short' },
+      { currentPassword: PW, newPassword: 'x'.repeat(201) },
+      { currentPassword: PW },
+      { newPassword: NEW_PW },
+      {},
+    ]) {
+      const res = await c.post('/api/auth/change-password', body);
+      expect(res.status, JSON.stringify(body).slice(0, 50)).toBe(400);
+    }
+  });
+
+  it('ends the other sessions of the user but keeps this one', async () => {
+    const { app, db } = testApp();
+    const here = new TestClient(app);
+    await register(here);
+    const phone = new TestClient(app);
+    await login(phone, PW);
+    const bob = new TestClient(app);
+    await register(bob, 'bob@corp.test');
+    expect(db.prepare('SELECT COUNT(*) n FROM sessions').get()).toEqual({ n: 3 });
+
+    expect(
+      (
+        await here.post('/api/auth/change-password', {
+          currentPassword: PW,
+          newPassword: NEW_PW,
+        })
+      ).status,
+    ).toBe(204);
+
+    expect((await here.get('/api/me')).status).toBe(200);
+    expect((await phone.get('/api/me')).status).toBe(401);
+    expect((await bob.get('/api/me')).status).toBe(200); // other users are not affected
+  });
+
+  it('counts wrong current passwords toward a limit', async () => {
+    const { app } = testApp();
+    const c = new TestClient(app);
+    await register(c);
+    for (let i = 0; i < 10; i++) {
+      const r = await c.post('/api/auth/change-password', {
+        currentPassword: 'wrong password',
+        newPassword: NEW_PW,
+      });
+      expect(r.status).toBe(403);
+    }
+    const blocked = await c.post('/api/auth/change-password', {
+      currentPassword: PW,
+      newPassword: NEW_PW,
+    });
+    expect(blocked.status).toBe(429);
+    expect(Number(blocked.headers.get('retry-after'))).toBeGreaterThan(0);
+  });
+
+  it('a user that was reset by the admin cannot use it (no current password)', async () => {
+    const { app, db } = testApp();
+    const c = new TestClient(app);
+    await register(c);
+    db.prepare('UPDATE users SET password_hash = NULL').run();
+    const res = await c.post('/api/auth/change-password', {
+      currentPassword: PW,
+      newPassword: NEW_PW,
+    });
+    expect(res.status).toBe(403);
+  });
+});

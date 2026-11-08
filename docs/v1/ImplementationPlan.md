@@ -23,8 +23,8 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | 0 | Housekeeping: old docs to `docs/mvp/`, v1 docs | ☑ |
 | 1 | Shared schemas + migration 002 + server rows (`isPublic`, `remindBefore`) | ☑ |
 | 2 | Client data layer: Dexie v2, repo (`setListPublic`, `reorderTodo`, reminder fields) | ☑ |
-| 3 | Change password (API, session, Settings UI) | ☐ |
-| 4 | Online presence + Admin "Online" column | ☐ |
+| 3 | Change password (API, session, Settings UI) | ☑ |
+| 4 | Online presence + Admin "Online" column (also: all three config settings) | ☑ |
 | 5 | Server config + attachments API | ☐ |
 | 6 | Public lists API + sidebar section + read-only page + switch | ☐ |
 | 7 | Attachments UI (task detail, public page) | ☐ |
@@ -93,7 +93,7 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 
 **Build**
 - Config `ONLINE_WINDOW_SECONDS` (default 30, validated).
-- `requireAuth` records `last_seen_at` (throttled to once per 10 s per user).
+- `requireAuth` records `last_seen_at` (throttled to once per 5 s per user; every authenticated request counts, plus login and sign-up).
 - `GET /api/admin/users` returns `online` and `lastSeenAt`.
 - Admin screen: "Online" column (dot + words, last seen as tooltip), refresh every 5 s.
 

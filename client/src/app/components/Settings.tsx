@@ -2,6 +2,7 @@ import { session } from '../services';
 import type { StoredUser } from '../session';
 import { t } from '../strings';
 import { useTheme, type Theme } from '../hooks';
+import { ChangePassword } from './ChangePassword';
 
 export function Settings({ user }: { user: StoredUser }) {
   const [theme, setTheme] = useTheme();
@@ -25,6 +26,7 @@ export function Settings({ user }: { user: StoredUser }) {
           ))}
         </select>
       </label>
+      <ChangePassword />
       <button type="button" onClick={() => void session.logout()}>
         {t.settings.logout}
       </button>

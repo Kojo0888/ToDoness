@@ -48,7 +48,7 @@ code.
 |----------|---------|---------|
 | `MAX_ATTACHMENT_MB` | `100` | Largest allowed attachment, in megabytes (whole number ≥ 1) |
 | `ATTACHMENTS_DIR` | `<folder of DATABASE_PATH>/attachments` | Where uploaded files are stored |
-| `ONLINE_WINDOW_SECONDS` | `30` | A user counts as online if the server heard from them this recently |
+| `ONLINE_WINDOW_SECONDS` | `30` | A user counts as online if the server heard from them this recently (whole number, 10 – 3600) |
 
 ## 5. How the pieces work
 
@@ -72,5 +72,5 @@ runs on start, on tab focus and every 30 s. Notifications go through the service
 Requires HTTPS or `localhost` (`window.isSecureContext`).
 
 **Presence.** The auth middleware records `last_seen_at` (at most one write per user per
-10 s). The admin API turns it into `online` using `ONLINE_WINDOW_SECONDS`. The normal
+5 s). The admin API turns it into `online` using `ONLINE_WINDOW_SECONDS`. The normal
 5-second sync loop is the heartbeat.

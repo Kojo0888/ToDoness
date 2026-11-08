@@ -2,11 +2,23 @@ import type Database from 'better-sqlite3';
 import { Hono, type Context } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { getConnInfo } from '@hono/node-server/conninfo';
-import { credentialsSchema, type HlcClock, type MeResponse } from '@todoness/shared';
+import {
+  changePasswordSchema,
+  credentialsSchema,
+  type HlcClock,
+  type MeResponse,
+} from '@todoness/shared';
 import { requireAuth } from '../auth/middleware';
+import type { Presence } from '../auth/presence';
 import { hashPassword, verifyDummy, verifyPassword } from '../auth/password';
 import { createRateLimiter } from '../auth/rate-limit';
-import { createSession, deleteSession, SESSION_COOKIE, SESSION_MS } from '../auth/sessions';
+import {
+  createSession,
+  deleteOtherUserSessions,
+  deleteSession,
+  SESSION_COOKIE,
+  SESSION_MS,
+} from '../auth/sessions';
 import { createUserWithInbox } from '../auth/users';
 import type { Config } from '../config';
 import type { AppEnv } from '../types';
@@ -16,6 +28,7 @@ interface Deps {
   config: Config;
   now: () => number;
   serverClock: HlcClock;
+  presence: Presence;
 }
 
 const MIN = 60_000;
@@ -33,13 +46,15 @@ function clientIp(c: Context, trustProxy: boolean): string {
   }
 }
 
-export function authRoutes({ db, config, now, serverClock }: Deps) {
+export function authRoutes({ db, config, now, serverClock, presence }: Deps) {
   const app = new Hono<AppEnv>();
   const emailLimiter = createRateLimiter({ max: 10, windowMs: 15 * MIN, now });
   const ipLimiter = createRateLimiter({ max: 50, windowMs: 15 * MIN, now });
   const signupLimiter = createRateLimiter({ max: 20, windowMs: 60 * MIN, now });
+  const changeLimiter = createRateLimiter({ max: 10, windowMs: 15 * MIN, now });
 
   function startSession(c: Context, userId: string) {
+    presence.touch(userId, now());
     const token = createSession(db, userId, now());
     setCookie(c, SESSION_COOKIE, token, {
       httpOnly: true,
@@ -138,6 +153,39 @@ export function authRoutes({ db, config, now, serverClock }: Deps) {
     startSession(c, user.id);
     const me: MeResponse = { id: user.id, email: user.email, role: user.role };
     return c.json(me);
+  });
+
+  /** A logged-in user changes their own password (FR-29, FR-30). */
+  app.post('/change-password', requireAuth(db, now), async (c) => {
+    const parsed = changePasswordSchema.safeParse(await c.req.json());
+    if (!parsed.success) return c.json({ error: 'invalid_request' }, 400);
+    const { currentPassword, newPassword } = parsed.data;
+
+    const me = c.get('user');
+    const key = `user:${me.id}`;
+    const limit = changeLimiter.check(key);
+    if (!limit.allowed) return tooMany(c, limit.retryAfterSec);
+
+    const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(me.id) as
+      { password_hash: string | null } | undefined;
+    const valid =
+      row?.password_hash != null && (await verifyPassword(row.password_hash, currentPassword));
+    if (!valid) {
+      changeLimiter.fail(key);
+      return c.json({ error: 'wrong_password' }, 403);
+    }
+
+    const newHash = await hashPassword(newPassword);
+    db.transaction(() => {
+      db.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?').run(
+        newHash,
+        now(),
+        me.id,
+      );
+      deleteOtherUserSessions(db, me.id, getCookie(c, SESSION_COOKIE) ?? '');
+    })();
+    changeLimiter.reset(key);
+    return c.body(null, 204);
   });
 
   app.post('/logout', (c) => {

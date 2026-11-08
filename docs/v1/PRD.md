@@ -128,7 +128,7 @@ and makes tasks richer:
 |------|-------------|
 | **Security** | Uploaded files are never executed or rendered inline (FR-52). File names are stored as text and never used as a path (files are stored under generated ids). Access is checked on every attachment request. The upload size is limited by both the declared and the actual number of bytes. A wrong current password counts toward rate limiting. |
 | **Privacy** | Public lists expose the owner's e-mail, titles, notes, due dates and attachments to all logged-in users. The switch is off by default and clearly labelled. |
-| **Performance** | Uploads are streamed to disk, never held in memory. Presence tracking writes at most once per user every 10 seconds. |
+| **Performance** | Uploads are streamed to disk, never held in memory. Presence tracking writes at most once per user every 5 seconds. |
 | **Accessibility** | Drag and drop works with the keyboard and announces its state to screen readers. The online indicator does not rely on colour alone. |
 | **Compatibility** | Notifications use the standard Notification API (through the service worker where the browser requires it). Safari / iOS support is limited to installed web apps; the field explains when notifications are not available. |
 | **Operations** | One more folder to back up: the attachments folder next to the database (documented in the README). |

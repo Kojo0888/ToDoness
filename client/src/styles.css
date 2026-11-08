@@ -190,6 +190,14 @@ label > textarea {
   background: var(--surface);
 }
 
+h3 {
+  margin: 0 0 0.25rem;
+}
+
+.password-form {
+  margin: 1.25rem 0;
+}
+
 .card button.primary {
   width: 100%;
   margin-top: 0.5rem;
@@ -468,6 +476,30 @@ label > textarea {
   background: var(--accent);
   color: var(--accent-fg);
   z-index: 10;
+}
+
+.online-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.online-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+  flex: none;
+}
+
+.is-online .online-dot {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.is-offline {
+  color: var(--muted);
 }
 
 .facts {

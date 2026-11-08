@@ -39,6 +39,20 @@ export type AuthResult =
       retryAfterSec?: number;
     };
 
+export type ChangePasswordResult =
+  | { ok: true }
+  | {
+      ok: false;
+      error:
+        | 'wrong_password'
+        | 'invalid_request'
+        | 'too_many_attempts'
+        | 'unauthorized'
+        | 'server'
+        | 'network';
+      retryAfterSec?: number;
+    };
+
 export interface SessionDeps {
   db: TodonessDB;
   engine: SyncEngine;
@@ -56,6 +70,8 @@ export interface Session {
   login(email: string, password: string): Promise<AuthResult>;
   register(email: string, password: string): Promise<AuthResult>;
   logout(): Promise<boolean>;
+  /** Needs a connection. The server ends the user's other sessions. */
+  changePassword(currentPassword: string, newPassword: string): Promise<ChangePasswordResult>;
   /** The server no longer accepts this browser's login (expired or password reset). */
   requireLogin(): Promise<void>;
   retryInitialSync(): Promise<void>;
@@ -165,6 +181,11 @@ export function createSession(deps: SessionDeps): Session {
     return { ok: true };
   }
 
+  async function requireLogin() {
+    const stored = await storedUser();
+    setState({ status: 'login', ...(stored ? { email: stored.email } : {}), reason: 'expired' });
+  }
+
   return {
     getState: () => state,
 
@@ -241,10 +262,32 @@ export function createSession(deps: SessionDeps): Session {
       return true;
     },
 
-    async requireLogin() {
-      const stored = await storedUser();
-      setState({ status: 'login', ...(stored ? { email: stored.email } : {}), reason: 'expired' });
+    async changePassword(currentPassword, newPassword) {
+      let res: Response;
+      try {
+        res = await post('/api/auth/change-password', { currentPassword, newPassword });
+      } catch {
+        return { ok: false, error: 'network' };
+      }
+      if (res.ok) return { ok: true };
+      if (res.status === 401) {
+        await requireLogin();
+        return { ok: false, error: 'unauthorized' };
+      }
+      if (res.status === 429) {
+        const wait = Number(res.headers.get('retry-after'));
+        return {
+          ok: false,
+          error: 'too_many_attempts',
+          ...(wait > 0 ? { retryAfterSec: wait } : {}),
+        };
+      }
+      if (res.status === 403) return { ok: false, error: 'wrong_password' };
+      if (res.status === 400) return { ok: false, error: 'invalid_request' };
+      return { ok: false, error: 'server' };
     },
+
+    requireLogin,
 
     async retryInitialSync() {
       const user = state.status === 'initial_sync' ? state.user : await storedUser();

@@ -11,6 +11,12 @@ export const credentialsSchema = z.object({
 });
 export type Credentials = z.infer<typeof credentialsSchema>;
 
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(PASSWORD_MAX),
+  newPassword: z.string().min(PASSWORD_MIN).max(PASSWORD_MAX),
+});
+export type ChangePasswordRequest = z.infer<typeof changePasswordSchema>;
+
 export const roleSchema = z.enum(['admin', 'user']);
 export type Role = z.infer<typeof roleSchema>;
 
@@ -27,6 +33,10 @@ export const adminUsersResponseSchema = z.object({
       createdAt: z.number().int(),
       /** True after an admin reset, until the user logs in again. */
       passwordReset: z.boolean(),
+      /** Heard from the server recently (see ONLINE_WINDOW_SECONDS). */
+      online: z.boolean(),
+      /** Epoch ms of the last authenticated request, or null if never. */
+      lastSeenAt: z.number().int().nullable(),
     }),
   ),
 });

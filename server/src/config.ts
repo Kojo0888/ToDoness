@@ -1,4 +1,9 @@
-/** Server settings, read from environment variables (see docs/mvp/TechStack.md, section 13.4). */
+import { dirname, join } from 'node:path';
+
+/**
+ * Server settings, read from environment variables (see docs/mvp/TechStack.md,
+ * section 13.4, and docs/v1/TechStack.md, section 4).
+ */
 
 export class ConfigError extends Error {
   override name = 'ConfigError';
@@ -12,6 +17,12 @@ export interface Config {
   cookieSecure: boolean;
   trustProxy: boolean;
   production: boolean;
+  /** Largest allowed attachment, in bytes (MAX_ATTACHMENT_MB). */
+  maxAttachmentBytes: number;
+  /** Where uploaded files are stored (ATTACHMENTS_DIR). */
+  attachmentsDir: string;
+  /** A user counts as online if the server heard from them this recently. */
+  onlineWindowMs: number;
 }
 
 type Env = Record<string, string | undefined>;
@@ -29,6 +40,16 @@ function bool(env: Env, key: string): boolean | undefined {
   throw new ConfigError(`${key} must be "true" or "false" (got "${v}")`);
 }
 
+function wholeNumber(env: Env, key: string, fallback: number, min: number, max: number): number {
+  const v = text(env, key);
+  if (v === undefined) return fallback;
+  const n = Number(v);
+  if (!/^\d+$/.test(v) || n < min || n > max) {
+    throw new ConfigError(`${key} must be a whole number from ${min} to ${max} (got "${v}")`);
+  }
+  return n;
+}
+
 export function loadConfig(env: Env = process.env): Config {
   const production = env.NODE_ENV === 'production';
 
@@ -43,12 +64,20 @@ export function loadConfig(env: Env = process.env): Config {
     throw new ConfigError('DATABASE_PATH is required in production');
   }
 
+  const resolvedDatabasePath = databasePath ?? './data/todoness.db';
+  const maxMb = wholeNumber(env, 'MAX_ATTACHMENT_MB', 100, 1, 1_000_000);
+  const windowSeconds = wholeNumber(env, 'ONLINE_WINDOW_SECONDS', 30, 10, 3600);
+
   return {
     port,
-    databasePath: databasePath ?? './data/todoness.db',
+    databasePath: resolvedDatabasePath,
     clientDir: text(env, 'CLIENT_DIR'),
     cookieSecure: bool(env, 'COOKIE_SECURE') ?? production,
     trustProxy: bool(env, 'TRUST_PROXY') ?? false,
     production,
+    maxAttachmentBytes: maxMb * 1024 * 1024,
+    attachmentsDir:
+      text(env, 'ATTACHMENTS_DIR') ?? join(dirname(resolvedDatabasePath), 'attachments'),
+    onlineWindowMs: windowSeconds * 1000,
   };
 }

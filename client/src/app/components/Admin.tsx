@@ -6,6 +6,8 @@ import { ConfirmDialog } from './ConfirmDialog';
 
 type Users = AdminUsersResponse['users'];
 
+const REFRESH_MS = 5000;
+
 async function fetchUsers(): Promise<{ ok: true; users: Users } | { ok: false }> {
   try {
     const res = await fetch('/api/admin/users');
@@ -31,13 +33,18 @@ export function Admin({ user }: { user: StoredUser }) {
     }
   }, []);
 
+  // Load now, then every few seconds so the "Online" column stays current.
   useEffect(() => {
     let cancelled = false;
-    void fetchUsers().then((result) => {
-      if (!cancelled) apply(result);
-    });
+    const load = () =>
+      void fetchUsers().then((result) => {
+        if (!cancelled) apply(result);
+      });
+    load();
+    const timer = setInterval(load, REFRESH_MS);
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
   }, [apply]);
 
@@ -65,6 +72,7 @@ export function Admin({ user }: { user: StoredUser }) {
           <thead>
             <tr>
               <th>{t.admin.email}</th>
+              <th>{t.admin.online}</th>
               <th>{t.admin.role}</th>
               <th>{t.admin.status}</th>
               <th />
@@ -74,6 +82,9 @@ export function Admin({ user }: { user: StoredUser }) {
             {users.map((u) => (
               <tr key={u.id}>
                 <td>{u.email}</td>
+                <td>
+                  <OnlineIndicator online={u.online} lastSeenAt={u.lastSeenAt} />
+                </td>
                 <td>{u.role}</td>
                 <td>{u.passwordReset ? t.admin.resetPending : t.admin.active}</td>
                 <td>
@@ -102,5 +113,19 @@ export function Admin({ user }: { user: StoredUser }) {
         <p>{target ? t.admin.resetText(target.email) : ''}</p>
       </ConfirmDialog>
     </section>
+  );
+}
+
+/** A coloured dot plus words, so the state does not depend on colour alone. */
+function OnlineIndicator({ online, lastSeenAt }: { online: boolean; lastSeenAt: number | null }) {
+  const title =
+    lastSeenAt === null
+      ? t.admin.neverSeen
+      : t.admin.lastSeen(new Date(lastSeenAt).toLocaleString());
+  return (
+    <span className={`online-indicator ${online ? 'is-online' : 'is-offline'}`} title={title}>
+      <span className="online-dot" aria-hidden="true" />
+      {online ? t.admin.isOnline : t.admin.isOffline}
+    </span>
   );
 }

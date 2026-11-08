@@ -361,6 +361,66 @@ describe('logging out while offline', () => {
   });
 });
 
+describe('changePassword (FR-29, FR-31)', () => {
+  async function ready(routes: Router) {
+    const t = setup({ 'GET /api/me': () => json(200, ANN), ...okSync, ...routes });
+    await t.session.boot();
+    return t;
+  }
+
+  it('sends both passwords and reports success', async () => {
+    const { session, f } = await ready({
+      'POST /api/auth/change-password': () => new Response(null, { status: 204 }),
+    });
+    const result = await session.changePassword('old password', 'new password!');
+    expect(result).toEqual({ ok: true });
+    const call = f.calls.find((c) => c.url === '/api/auth/change-password')!;
+    expect(call.method).toBe('POST');
+    expect(call.body).toEqual({
+      currentPassword: 'old password',
+      newPassword: 'new password!',
+    });
+    expect(session.getState().status).toBe('ready');
+  });
+
+  it('maps server answers to clear errors', async () => {
+    const answers: [() => Response | 'network-error', string][] = [
+      [() => json(403, { error: 'wrong_password' }), 'wrong_password'],
+      [() => json(400, { error: 'invalid_request' }), 'invalid_request'],
+      [() => json(500, {}), 'server'],
+      [() => 'network-error', 'network'],
+    ];
+    for (const [answer, error] of answers) {
+      const { session } = await ready({ 'POST /api/auth/change-password': answer });
+      expect(await session.changePassword('a', 'new password!')).toMatchObject({
+        ok: false,
+        error,
+      });
+    }
+  });
+
+  it('reports how long to wait after too many attempts', async () => {
+    const { session } = await ready({
+      'POST /api/auth/change-password': () =>
+        new Response('{}', { status: 429, headers: { 'retry-after': '120' } }),
+    });
+    expect(await session.changePassword('a', 'new password!')).toEqual({
+      ok: false,
+      error: 'too_many_attempts',
+      retryAfterSec: 120,
+    });
+  });
+
+  it('an expired login (401) sends the user to the login screen', async () => {
+    const { session } = await ready({ 'POST /api/auth/change-password': () => json(401, {}) });
+    expect(await session.changePassword('a', 'new password!')).toMatchObject({
+      ok: false,
+      error: 'unauthorized',
+    });
+    expect(session.getState().status).toBe('login');
+  });
+});
+
 describe('subscribe', () => {
   it('notifies listeners and supports unsubscribing', async () => {
     const { session } = setup({ 'GET /api/me': () => json(401, {}) });
