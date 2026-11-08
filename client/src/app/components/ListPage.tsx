@@ -1,3 +1,4 @@
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState, type FormEvent } from 'react';
 import { Redirect, useLocation } from 'wouter';
@@ -7,7 +8,7 @@ import { t } from '../strings';
 import { ConfirmDialog } from './ConfirmDialog';
 import { QuickAdd } from './QuickAdd';
 import { TaskDetail } from './TaskDetail';
-import { TodoRow } from './TodoRow';
+import { SortableTodoRow, TodoRow } from './TodoRow';
 
 export function ListPage({ listId, todoId }: { listId: string; todoId?: string }) {
   const [, navigate] = useLocation();
@@ -28,6 +29,7 @@ export function ListPage({ listId, todoId }: { listId: string; todoId?: string }
   if (list === undefined) return null;
   if (list === null) return <Redirect to="/" replace />;
 
+  const openIds = open.map((todo) => todo.id);
   const position = lists.findIndex((l) => l.id === listId);
   const canMoveUp = position > 0 && !lists[position - 1]!.isInbox;
   const canMoveDown = position >= 0 && position < lists.length - 1;
@@ -113,11 +115,13 @@ export function ListPage({ listId, todoId }: { listId: string; todoId?: string }
         {open.length === 0 ? (
           <p className="empty">{t.list.empty}</p>
         ) : (
-          <ul className="todos">
-            {open.map((todo) => (
-              <TodoRow key={todo.id} todo={todo} listId={listId} />
-            ))}
-          </ul>
+          <SortableContext items={openIds} strategy={verticalListSortingStrategy}>
+            <ul className="todos">
+              {open.map((todo) => (
+                <SortableTodoRow key={todo.id} todo={todo} listId={listId} openIds={openIds} />
+              ))}
+            </ul>
+          </SortableContext>
         )}
 
         {done.length > 0 && (

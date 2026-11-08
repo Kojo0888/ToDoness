@@ -28,7 +28,7 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | 5 | Server config + attachments API | ☑ |
 | 6 | Public lists API + sidebar section + read-only page + switch | ☑ |
 | 7 | Attachments UI (task detail, public page) | ☑ |
-| 8 | Drag & drop (reorder, drop on sidebar list) | ☐ |
+| 8 | Drag & drop (reorder, drop on sidebar list) | ☑ |
 | 9 | Reminders (due time, scheduler, notifications) | ☐ |
 | 10 | End-to-end tests, README, final checks | ☐ |
 

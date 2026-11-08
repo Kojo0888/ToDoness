@@ -1,6 +1,8 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState, type FormEvent } from 'react';
+import { useDroppable } from '@dnd-kit/core';
 import { Link, useLocation } from 'wouter';
+import { listDropId } from '../dnd';
 import { getLists } from '../../data/queries';
 import { useOnline, usePolled } from '../hooks';
 import { fetchPublicLists } from '../publicApi';
@@ -39,16 +41,13 @@ export function Sidebar({ user, open, onNavigate }: Props) {
       <h1 className="brand">{t.appName}</h1>
       <ul className="nav-lists">
         {lists.map((l) => (
-          <li key={l.id}>
-            <Link
-              href={`/l/${l.id}`}
-              className={active(`/l/${l.id}`) ? 'active' : ''}
-              aria-current={active(`/l/${l.id}`) ? 'page' : undefined}
-              onClick={onNavigate}
-            >
-              {l.name}
-            </Link>
-          </li>
+          <ListLink
+            key={l.id}
+            id={l.id}
+            name={l.name}
+            active={active(`/l/${l.id}`)}
+            onNavigate={onNavigate}
+          />
         ))}
       </ul>
 
@@ -101,5 +100,32 @@ export function Sidebar({ user, open, onNavigate }: Props) {
         )}
       </div>
     </nav>
+  );
+}
+
+/** A sidebar list: a link, and a place where a dragged task can be dropped (FR-39). */
+function ListLink({
+  id,
+  name,
+  active,
+  onNavigate,
+}: {
+  id: string;
+  name: string;
+  active: boolean;
+  onNavigate: () => void;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: listDropId(id) });
+  return (
+    <li ref={setNodeRef} className={isOver ? 'drop-target' : undefined}>
+      <Link
+        href={`/l/${id}`}
+        className={active ? 'active' : ''}
+        aria-current={active ? 'page' : undefined}
+        onClick={onNavigate}
+      >
+        {name}
+      </Link>
+    </li>
   );
 }

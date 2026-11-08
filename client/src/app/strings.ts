@@ -74,6 +74,7 @@ export const t = {
         : `The list "${name}" and its ${n} open and completed task${n === 1 ? '' : 's'} will be deleted.`,
     delete: 'Delete',
     notFound: 'This list does not exist.',
+    movedTo: (name: string) => `Moved to ${name}.`,
     public: 'Public list',
     publicHint: 'Every user of the app can read this list. Only you can change it.',
   },
@@ -104,6 +105,15 @@ export const t = {
     delete: 'Delete task',
     close: 'Close',
     invalidTitle: 'The title cannot be empty.',
+    drag: (title: string) => `Drag to reorder: ${title}`,
+    dragInstructions:
+      'To reorder, press Space on the drag handle, move with the arrow keys, then press Space again to drop. Press Escape to cancel. To move a task to another list, use the List field in its details.',
+    dragStart: (title: string) => `Picked up ${title}.`,
+    dragOver: (title: string, position: number, total: number) =>
+      `${title} is now at position ${position} of ${total}.`,
+    dragOverList: (title: string, list: string) => `${title} is over the list ${list}.`,
+    dragDropped: (title: string) => `Dropped ${title}.`,
+    dragCancelled: (title: string) => `Cancelled. ${title} was not moved.`,
   },
 
   attachments: {
