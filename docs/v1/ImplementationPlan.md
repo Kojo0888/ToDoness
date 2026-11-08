@@ -33,8 +33,8 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | 10 | End-to-end tests, README, final checks | ☑ |
 | 11 | Editable public lists (server restricted push, attachments permissions, client editor and page, drag & drop) | ☑ |
 | 12 | Web push, server: migration 003, VAPID keys, subscription API, reminder sweep, sender | ☑ |
-| 13 | Web push, client: own service worker, subscribe / unsubscribe, Settings, logout | ☐ |
-| 14 | Docs, README, final checks of the update | ☐ |
+| 13 | Web push, client: own service worker, subscribe / unsubscribe, Settings, logout | ☑ |
+| 14 | Docs, README, final checks of the update | ☑ |
 
 ---
 
@@ -301,9 +301,42 @@ before the code that makes them pass.
 browser (e2e) 30 (13 MVP + 17 v1 scenarios). All pass, as do `pnpm typecheck`, `pnpm lint`
 and `pnpm format:check`.
 
+### Notes on update 2 (editable public lists and web push)
+
+- **Editable public lists** reuse the normal merge: the visitor's device creates ordinary
+  operations with its own clock and the server applies them to the owner's rows
+  (`applyPush` with an `actorId` and `onlyListId`). The change lands in the owner's change
+  feed, so the owner's devices receive it with the normal pull and merge it per field with
+  their own (possibly offline) edits. A visitor's edits are online-only (no queue).
+- **Who changed what** is not recorded (no history); the latest edit to a field wins.
+- **Attachments** of a public list can be added and removed by everyone, as for any edit.
+- **Reorder in a public list** works with the same drag handle; dropping a task from a
+  public list on one of your own lists does nothing (tasks cannot leave the list).
+- **Service worker** is now our own file (`client/src/sw.ts`, `injectManifest`). The offline
+  scenarios of the MVP all pass against it. Its decisions are in `sw-logic.ts` (unit tested);
+  its push handling is also tested in a real Chromium by delivering a push message to the
+  worker through the DevTools protocol. The browser tests use Chromium's "new headless" mode
+  for this, because the default headless shell always denies notifications.
+- **What could not be tested here:** a real delivery through Google's, Mozilla's or Apple's
+  push service (needs internet access and a real browser registration). The server side is
+  tested up to the request that web-push would send (VAPID-signed, encrypted body) and the
+  mapping of the push service's answers (404/410 remove the subscription, other errors are
+  retried at the next sweep). Please try it once on your HTTPS deployment: set a reminder,
+  close the app, wait.
+- **Subscriptions follow the user**, not the browser: a browser has one endpoint, so when
+  another user logs in there it moves to them; logging out removes it.
+- The reminder tag (`<todoId>:<dueAt>:<choice>`) is shared by the app's own notification and
+  the push, so a device that has the app open and push on shows one notification, not two.
+- `web-push` is bundled into `server/dist/index.js` (pure JavaScript), so the Docker images
+  need no extra install step.
+
+**Test counts after update 2:** shared 95, server 221, client 216, integration 31,
+browser (e2e) 33 (13 MVP + 20 v1 scenarios).
+
 **Not done / ideas for later**
 
-- Several reminders per task; Web Push for reminders while the app is closed.
+- Several reminders per task; a change history for public lists (who changed what);
+  offline editing of other people's public lists.
 - Offline queueing of attachments; per-user storage quota; clean-up of attachments of tasks
   that were deleted long ago.
 - Dragging completed tasks and dragging lists in the sidebar.

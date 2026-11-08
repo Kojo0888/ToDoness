@@ -1,15 +1,31 @@
 import { useEffect } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
+import { ensurePush } from '../push';
 import { useReminderMessages } from '../hooks';
 import { reminderFeed, reminders } from '../services';
 import { t } from '../strings';
 
 /** Starts the reminder check while the app is open, and shows the messages (FR-45, FR-46). */
 export function Reminders() {
+  const [, navigate] = useLocation();
+
   useEffect(() => {
     reminders.start();
+    void ensurePush(); // this device receives pushes for the logged-in user (FR-60)
     return () => reminders.stop();
   }, []);
+
+  // A click on a pushed notification brings the app forward and sends it here (FR-62).
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const data = e.data as { type?: string; url?: unknown } | null;
+      if (data?.type === 'navigate' && typeof data.url === 'string' && data.url.startsWith('/')) {
+        navigate(data.url);
+      }
+    };
+    navigator.serviceWorker?.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+  }, [navigate]);
 
   const messages = useReminderMessages();
   if (messages.length === 0) return null;

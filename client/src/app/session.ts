@@ -61,6 +61,9 @@ export interface SessionDeps {
   resumeSync(): void;
   stopSync(): void;
   confirm(message: string): boolean;
+  /** Runs before the server session ends (e.g. stop push for this device). Best effort. */
+  beforeLogout?: () => Promise<void>;
+  beforeLogoutTimeoutMs?: number;
 }
 
 export interface Session {
@@ -80,7 +83,8 @@ export interface Session {
 const plural = (n: number) => `${n} change${n === 1 ? '' : 's'}`;
 
 export function createSession(deps: SessionDeps): Session {
-  const { db, engine, fetch, resumeSync, stopSync, confirm } = deps;
+  const { db, engine, fetch, resumeSync, stopSync, confirm, beforeLogout } = deps;
+  const beforeLogoutTimeoutMs = deps.beforeLogoutTimeoutMs ?? 3000;
 
   let state: SessionState = { status: 'loading' };
   const listeners = new Set<() => void>();
@@ -252,6 +256,15 @@ export function createSession(deps: SessionDeps): Session {
         return false;
       }
       stopSync();
+      if (beforeLogout) {
+        // Best effort, and never allowed to keep the user from logging out.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        await Promise.race([
+          beforeLogout().catch(() => undefined),
+          new Promise((resolve) => (timer = setTimeout(resolve, beforeLogoutTimeoutMs))),
+        ]);
+        clearTimeout(timer);
+      }
       const sent = await post('/api/auth/logout').then(
         () => true,
         () => false,

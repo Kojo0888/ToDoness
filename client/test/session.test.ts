@@ -18,7 +18,14 @@ const BOB = {
 
 type Router = Record<string, (call: Call) => Response | 'network-error'>;
 
-function setup(routes: Router, opts: { confirm?: boolean } = {}) {
+function setup(
+  routes: Router,
+  opts: {
+    confirm?: boolean;
+    beforeLogout?: () => Promise<void>;
+    beforeLogoutTimeoutMs?: number;
+  } = {},
+) {
   const db = testDb();
   const f = fakeFetch((call) => {
     const key = `${call.method} ${call.url.split('?')[0]}`;
@@ -34,6 +41,8 @@ function setup(routes: Router, opts: { confirm?: boolean } = {}) {
     resumeSync: vi.fn(),
     stopSync: vi.fn(),
     confirm: vi.fn(() => opts.confirm ?? true),
+    ...(opts.beforeLogout ? { beforeLogout: opts.beforeLogout } : {}),
+    ...(opts.beforeLogoutTimeoutMs ? { beforeLogoutTimeoutMs: opts.beforeLogoutTimeoutMs } : {}),
   };
   const session = createSession(deps);
   const states: SessionState['status'][] = [];
@@ -294,6 +303,41 @@ describe('logout', () => {
     expect(await session.logout()).toBe(true);
     expect(await db.lists.count()).toBe(0);
     expect(session.getState().status).toBe('login');
+  });
+});
+
+describe('logout and push (FR-60)', () => {
+  it('releases push for this device before the server session ends', async () => {
+    const order: string[] = [];
+    const { session } = setup(
+      {
+        'GET /api/me': () => json(200, ANN),
+        ...okSync,
+        'POST /api/auth/logout': () => {
+          order.push('server logout');
+          return new Response(null, { status: 204 });
+        },
+      },
+      { beforeLogout: async () => void order.push('release push') },
+    );
+    await session.boot();
+    await session.logout();
+    expect(order).toEqual(['release push', 'server logout']);
+  });
+
+  it('logs out even if releasing push fails or hangs', async () => {
+    for (const beforeLogout of [
+      () => Promise.reject(new Error('boom')),
+      () => new Promise<void>(() => {}), // never finishes
+    ]) {
+      const { session } = setup(
+        { 'GET /api/me': () => json(200, ANN), ...okSync },
+        { beforeLogout, beforeLogoutTimeoutMs: 20 },
+      );
+      await session.boot();
+      expect(await session.logout()).toBe(true);
+      expect(session.getState().status).toBe('login');
+    }
   });
 });
 

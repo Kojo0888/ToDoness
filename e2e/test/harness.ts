@@ -73,8 +73,10 @@ export async function startApp(extraEnv: Record<string, string> = {}): Promise<A
   };
 }
 
-export async function launch(): Promise<Browser> {
-  return chromium.launch();
+export async function launch(
+  options: Parameters<typeof chromium.launch>[0] = {},
+): Promise<Browser> {
+  return chromium.launch(options);
 }
 
 /** A "device": its own storage, cookies, service worker and network switch. */

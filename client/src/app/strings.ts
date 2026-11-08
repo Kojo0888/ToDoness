@@ -128,7 +128,7 @@ export const t = {
       denied:
         'Notifications are blocked for this site in your browser. Reminders will only appear inside the app.',
       default: 'Your browser will ask for permission to show notifications.',
-      granted: 'You will get a notification while the app is open.',
+      granted: 'You will get a notification, also when the app is closed if push is on.',
     },
     priority: 'Priority',
     priorities: ['None', 'Low', 'Medium', 'High'] as const,
@@ -187,6 +187,22 @@ export const t = {
     theme: 'Theme',
     themes: { system: 'Follow system', light: 'Light', dark: 'Dark' },
     logout: 'Log out',
+    push: {
+      title: 'Push notifications',
+      text: 'Get reminders as notifications even when the app is closed.',
+      status: {
+        unsupported: 'Not available: this browser does not support web push.',
+        insecure: 'Not available: push needs a secure connection (HTTPS).',
+        denied: 'Blocked in your browser settings for this site.',
+        off: 'Off on this device.',
+        on: 'On for this device.',
+      },
+      enable: 'Turn on push',
+      disable: 'Turn off push',
+      failed:
+        'Could not turn push on. The browser or the server could not set it up; try again later.',
+      hint: 'Needs a connection to the server, and the server must be able to reach your browser’s push service.',
+    },
     notifications: {
       title: 'Notifications',
       enable: 'Enable notifications',

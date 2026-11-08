@@ -4,6 +4,7 @@ import { Redirect, useLocation } from 'wouter';
 import type { RemindBefore, Todo } from '@todoness/shared';
 import { getLists, getTodoById } from '../../data/queries';
 import { fromDateTimeInput, toDateInput, toTimeInput } from '../dates';
+import { enablePush } from '../push';
 import { notificationSupport, requestNotificationPermission } from '../reminders';
 import { db, reminders, repo } from '../services';
 import { t } from '../strings';
@@ -63,7 +64,13 @@ function TaskForm({ todo, listId }: { todo: Todo; listId: string }) {
   async function changeReminder(e: ChangeEvent<HTMLSelectElement>) {
     const value = (e.target.value || null) as RemindBefore | null;
     // Asking for permission has to happen right away, inside the click.
-    const asked = value ? requestNotificationPermission() : undefined;
+    // (and, once allowed, subscribe this device to web push so it also works when closed)
+    const asked = value
+      ? requestNotificationPermission().then(async (s) => {
+          if (s === 'granted') void enablePush();
+          return s;
+        })
+      : undefined;
     await repo.updateTodo(todo.id, { remindBefore: value });
     if (asked) setSupport(await asked);
     void reminders.check();

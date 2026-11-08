@@ -8,11 +8,13 @@ connection returns.
 
 - Tasks and lists that keep working **offline**; changes sync automatically.
 - Change your **password** in Settings; the admin can still reset a forgotten one.
-- Make a list **public**: every user can read it (read-only) under "Public lists".
+- Make a list **public**: every user can read **and edit** its tasks under "Public lists"
+  (add, change, complete, delete, reorder, attach files). Only the owner can rename or
+  delete the list or make it private again.
 - Reorder tasks by **drag and drop** (mouse, touch or keyboard), or drop a task on a
   list in the sidebar to move it there.
-- **Reminders**: 1 week, 1 day or 1 hour before a task is due, as a notification
-  (needs HTTPS, see below).
+- **Reminders**: 1 week, 1 day or 1 hour before a task is due, as a notification, also
+  when the app is closed (**web push**, needs HTTPS, see below).
 - **Attachments** on tasks, up to a configurable size per file.
 - The admin screen shows **who is online**.
 
@@ -91,16 +93,18 @@ Offline mode, installing and notifications need `http://localhost` or HTTPS; a p
 The server reads these environment variables. All are optional except
 `DATABASE_PATH` in production.
 
-| Variable                | Default                                       | Meaning                                                                                                                                                                                                                                                                |
-| ----------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PORT`                  | `3000`                                        | Port the server listens on.                                                                                                                                                                                                                                            |
-| `DATABASE_PATH`         | `./data/todoness.db` (required in production) | SQLite database file.                                                                                                                                                                                                                                                  |
-| `CLIENT_DIR`            | _(unset)_                                     | Folder with the built web app. Unset = API only.                                                                                                                                                                                                                       |
-| `COOKIE_SECURE`         | `true` in production, otherwise `false`       | Send the login cookie over HTTPS only.                                                                                                                                                                                                                                 |
-| `TRUST_PROXY`           | `false`                                       | Use the client IP from `X-Forwarded-For` (set to `true` behind Caddy).                                                                                                                                                                                                 |
-| **`MAX_ATTACHMENT_MB`** | `100`                                         | **Largest allowed attachment, in megabytes per file** (whole number, at least 1). The app reads it from the server (`GET /api/config`), refuses larger files before uploading, and the server enforces it again while receiving. Restart the server after changing it. |
-| `ATTACHMENTS_DIR`       | `attachments` folder next to the database     | Where uploaded files are stored (one sub-folder per user, files named by id).                                                                                                                                                                                          |
-| `ONLINE_WINDOW_SECONDS` | `30`                                          | A user counts as **online** in the admin screen if the server heard from them this recently (whole number, 10 – 3600).                                                                                                                                                 |
+| Variable                                | Default                                           | Meaning                                                                                                                                                                                                                                                                |
+| --------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                                  | `3000`                                            | Port the server listens on.                                                                                                                                                                                                                                            |
+| `DATABASE_PATH`                         | `./data/todoness.db` (required in production)     | SQLite database file.                                                                                                                                                                                                                                                  |
+| `CLIENT_DIR`                            | _(unset)_                                         | Folder with the built web app. Unset = API only.                                                                                                                                                                                                                       |
+| `COOKIE_SECURE`                         | `true` in production, otherwise `false`           | Send the login cookie over HTTPS only.                                                                                                                                                                                                                                 |
+| `TRUST_PROXY`                           | `false`                                           | Use the client IP from `X-Forwarded-For` (set to `true` behind Caddy).                                                                                                                                                                                                 |
+| **`MAX_ATTACHMENT_MB`**                 | `100`                                             | **Largest allowed attachment, in megabytes per file** (whole number, at least 1). The app reads it from the server (`GET /api/config`), refuses larger files before uploading, and the server enforces it again while receiving. Restart the server after changing it. |
+| `ATTACHMENTS_DIR`                       | `attachments` folder next to the database         | Where uploaded files are stored (one sub-folder per user, files named by id).                                                                                                                                                                                          |
+| `ONLINE_WINDOW_SECONDS`                 | `30`                                              | A user counts as **online** in the admin screen if the server heard from them this recently (whole number, 10 – 3600).                                                                                                                                                 |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | generated on first start and kept in the database | Identity of the server for **web push**. Leave both unset unless you want your own keys (set both or neither). Changing them later invalidates all existing push subscriptions; users then have to switch push off and on again in Settings.                           |
+| `VAPID_SUBJECT`                         | `mailto:todoness@localhost`                       | Contact address (`mailto:` or `https://`) sent to push services. Apple's service wants a real-looking address, so set e.g. `mailto:it@company.example` if you have iPhone users.                                                                                       |
 
 Example: allow files up to 250 MB:
 
@@ -115,10 +119,24 @@ Behind a reverse proxy, make sure it does not limit the request size below
 setup both are in the `todoness-data` volume (`/data`); the optional `backup` service
 copies the database daily and mirrors `/data/attachments` to `./backups/attachments`.
 
-**Notifications** (reminders) use the browser's notification feature, which only works
-on **HTTPS** (or `http://localhost`). Without it, reminders still appear inside the app.
-They are shown while the app is open in a tab or installed; there is no push while it is
-closed. Users allow notifications once, in Settings or when they set their first reminder.
+**Notifications and web push** (reminders) use the browser's notification feature, which
+only works on **HTTPS** (or `http://localhost`). Without it, reminders still appear inside
+the app while it is open.
+
+With **web push** the _server_ checks the reminders every 30 seconds and sends a push, so
+the notification also appears when the app is closed. Users allow notifications once (in
+Settings, or when they set their first reminder); push is then switched on for that device
+automatically and can be switched off in Settings. Logging out removes the device from the
+user's pushes. What the server needs for this:
+
+- **Outbound HTTPS from the server** to the browser vendors' push services
+  (`fcm.googleapis.com` for Chrome/Edge/Android, `*.push.services.mozilla.com` for Firefox,
+  `*.push.apple.com` for Safari/iPhone). On a closed intranet, allow these hosts for the
+  server. Without access, pushes fail (logged as `Push to … failed`) and reminders still
+  work while the app is open and are caught up when it is next opened.
+- iPhones and iPads only support push for the app **installed to the home screen**.
+- The push content is encrypted for the device; the vendor's service only sees that a push
+  was sent.
 
 ## Deployment
 

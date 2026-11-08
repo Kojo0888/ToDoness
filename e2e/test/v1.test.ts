@@ -14,6 +14,7 @@ import {
   task,
   titlesOnPage,
   uniqueEmail,
+  waitForOfflineReady,
   type App,
 } from './harness';
 
@@ -471,5 +472,111 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
     await signUp(page, uniqueEmail('settings'));
     await page.getByRole('link', { name: 'Settings' }).click();
     await page.getByText('Enabled.').waitFor();
+  });
+});
+
+describe('v1: web push in the service worker (FR-62, FR-66)', () => {
+  /**
+   * Real push delivery needs the browser vendor's push service, which a test cannot reach.
+   * Chromium lets us hand a push message straight to the worker, so the worker's own
+   * code (parse, show, tag, click) is exercised for real.
+   */
+  async function deliverPush(
+    page: Page,
+    context: Awaited<ReturnType<typeof newDevice>>,
+    data: unknown,
+  ) {
+    const cdp = await context.newCDPSession(page);
+    const registrations: string[] = [];
+    cdp.on('ServiceWorker.workerRegistrationUpdated', (e) => {
+      for (const r of e.registrations) registrations.push(r.registrationId);
+    });
+    await cdp.send('ServiceWorker.enable');
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null || true);
+    await expect.poll(() => registrations.length, { timeout: 10_000 }).toBeGreaterThan(0);
+    await cdp.send('ServiceWorker.deliverPushMessage', {
+      origin: new URL(page.url()).origin,
+      registrationId: registrations[0]!,
+      data: typeof data === 'string' ? data : JSON.stringify(data),
+    });
+  }
+
+  // The default headless shell always denies notifications; the full Chromium in headless
+  // mode lets a test grant the permission.
+  let pushBrowser: Browser;
+  beforeAll(async () => {
+    pushBrowser = await launch({ channel: 'chromium' });
+  });
+  afterAll(async () => {
+    await pushBrowser?.close();
+  });
+
+  const shownNotifications = (page: Page) =>
+    page.evaluate(async () => {
+      const reg = await navigator.serviceWorker.ready;
+      return (await reg.getNotifications()).map((n) => ({
+        title: n.title,
+        body: n.body,
+        tag: n.tag,
+        url: (n.data as { url?: string } | null)?.url,
+      }));
+    });
+
+  it('a pushed reminder becomes a notification with the reminder tag and link', async () => {
+    const context = await newDevice(pushBrowser, app, undefined, {
+      permissions: ['notifications'],
+    });
+    const page = await newPage(context);
+    await signUp(page, uniqueEmail('push'));
+    await waitForOfflineReady(page);
+
+    await deliverPush(page, context, {
+      title: 'Dentist',
+      body: 'Due in 1 hour',
+      tag: 'task-1:123:hour',
+      url: '/l/abc/t/def',
+    });
+    await expect
+      .poll(() => shownNotifications(page), { timeout: 10_000 })
+      .toEqual([
+        { title: 'Dentist', body: 'Due in 1 hour', tag: 'task-1:123:hour', url: '/l/abc/t/def' },
+      ]);
+
+    // The same reminder pushed twice replaces the first notification (one tag, one notification).
+    await deliverPush(page, context, {
+      title: 'Dentist',
+      body: 'Due in 59 minutes',
+      tag: 'task-1:123:hour',
+      url: '/l/abc/t/def',
+    });
+    await expect
+      .poll(async () => (await shownNotifications(page)).map((n) => n.body), { timeout: 10_000 })
+      .toEqual(['Due in 59 minutes']);
+  });
+
+  it('a broken push still shows a generic notification, never a silent one', async () => {
+    const context = await newDevice(pushBrowser, app, undefined, {
+      permissions: ['notifications'],
+    });
+    const page = await newPage(context);
+    await signUp(page, uniqueEmail('pushbad'));
+    await waitForOfflineReady(page);
+    await deliverPush(page, context, 'this is not json');
+    await expect
+      .poll(async () => (await shownNotifications(page)).map((n) => n.title), { timeout: 10_000 })
+      .toEqual(['ToDoness']);
+  });
+
+  it('Settings explains the push state of this device', async () => {
+    const page = await newPage(await newDevice(browser, app));
+    await signUp(page, uniqueEmail('pushset'));
+    await page.getByRole('link', { name: 'Settings' }).click();
+    await page.getByRole('heading', { name: 'Push notifications' }).waitFor();
+    // headless Chromium has no push service, so it is never "on" here; it must say something clear
+    await page
+      .getByRole('status')
+      .filter({ hasText: /Off on this device|Blocked in your browser|Not available/ })
+      .first()
+      .waitFor();
   });
 });

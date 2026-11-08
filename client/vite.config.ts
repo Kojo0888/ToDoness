@@ -9,6 +9,10 @@ export default defineConfig({
       // Ask the user before switching to a new version (see UpdateBanner).
       registerType: 'prompt',
       injectRegister: false,
+      // Our own service worker (src/sw.ts): the offline app shell plus web push.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       manifest: {
         name: 'ToDoness',
         short_name: 'ToDoness',
@@ -29,12 +33,9 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
+      injectManifest: {
         // Cache the app itself. API calls are never cached: data comes from IndexedDB.
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//],
-        cleanupOutdatedCaches: true,
       },
     }),
   ],
