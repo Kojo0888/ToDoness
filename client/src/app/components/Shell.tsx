@@ -1,5 +1,5 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Redirect, Route, Switch } from 'wouter';
 import { getInbox } from '../../data/queries';
 import { db } from '../services';
@@ -21,18 +21,45 @@ function Home() {
 export function Shell({ user }: { user: StoredUser }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenuOpen(false);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
+
   return (
     <ToastProvider>
       <div className="shell">
-        <button
-          type="button"
-          className="menu-button"
-          aria-label={t.nav.menu}
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen(!menuOpen)}
-        >
-          ☰
-        </button>
+        <header className="topbar">
+          <button
+            type="button"
+            className="menu-button"
+            aria-label={t.nav.menu}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(!menuOpen)}
+          >
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+              <path
+                d="M4 6h16M4 12h16M4 18h16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+          <span className="topbar-title">{t.appName}</span>
+        </header>
+        {menuOpen && (
+          <button
+            type="button"
+            className="scrim"
+            tabIndex={-1}
+            aria-label={t.nav.menu}
+            onClick={() => setMenuOpen(false)}
+          />
+        )}
         <Sidebar user={user} open={menuOpen} onNavigate={() => setMenuOpen(false)} />
         <main className="content">
           <Switch>

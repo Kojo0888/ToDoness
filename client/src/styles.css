@@ -203,7 +203,8 @@ label > textarea {
   min-height: 100vh;
 }
 
-.menu-button {
+.topbar,
+.scrim {
   display: none;
 }
 
@@ -488,36 +489,112 @@ label > textarea {
     display: block;
   }
 
+  /* A bar in the page flow, so nothing is ever covered by the menu button. */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 3.25rem;
+    padding: 0.4rem 0.75rem;
+    padding-top: max(0.4rem, env(safe-area-inset-top));
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .topbar-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+  }
+
   .menu-button {
+    display: grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    border-radius: 12px;
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .menu-button:active {
+    background: var(--surface);
+  }
+
+  .scrim {
     display: block;
     position: fixed;
-    top: 0.6rem;
-    left: 0.6rem;
-    z-index: 5;
-    padding: 0.4rem 0.7rem;
+    inset: 0;
+    z-index: 4;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: rgb(0 0 0 / 0.45);
   }
 
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
     width: min(18rem, 85vw);
+    overflow-y: auto;
+    padding-top: max(1rem, env(safe-area-inset-top));
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+    border-right: 0;
+    border-radius: 0 20px 20px 0;
     transform: translateX(-100%);
     /* Hidden (not just off-screen) so keyboard users cannot tab into it. */
     visibility: hidden;
     transition:
       transform 0.2s,
       visibility 0s 0.2s;
-    z-index: 4;
+    z-index: 5;
   }
 
   .sidebar.open {
     transform: none;
     visibility: visible;
+    box-shadow: 0 0 40px rgb(0 0 0 / 0.3);
     transition: transform 0.2s;
   }
 
+  .nav-lists a,
+  .nav-foot a {
+    padding: 0.75rem 0.8rem;
+    border-radius: 12px;
+  }
+
   .content {
-    padding: 3.5rem 1rem 1rem;
+    padding: 1rem 1rem calc(1.5rem + env(safe-area-inset-bottom));
+  }
+
+  .list-head h2 {
+    font-size: 1.5rem;
+  }
+
+  .todo {
+    padding: 0.8rem 0.2rem;
+  }
+
+  .todo input[type='checkbox'] {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  /* 16px inputs stop iOS from zooming in on focus. */
+  input[type='text'],
+  input[type='email'],
+  input[type='password'],
+  input[type='date'],
+  select,
+  textarea {
+    padding: 0.7rem 0.8rem;
+    font-size: 1rem;
+    border-radius: 12px;
   }
 
   .list-page.has-detail {
@@ -527,5 +604,10 @@ label > textarea {
   /* On a phone the task detail fills the screen. */
   .list-page.has-detail .list-main {
     display: none;
+  }
+
+  .toast-region {
+    bottom: calc(1rem + env(safe-area-inset-bottom));
+    padding: 0 1rem;
   }
 }
