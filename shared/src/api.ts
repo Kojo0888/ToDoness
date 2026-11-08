@@ -63,6 +63,15 @@ export type PublicListResponse = z.infer<typeof publicListResponseSchema>;
 export const configResponseSchema = z.object({ maxAttachmentBytes: z.number().int().min(1) });
 export type ConfigResponse = z.infer<typeof configResponseSchema>;
 
+/** What `PushSubscription.toJSON()` gives (FR-60). */
+export const pushSubscriptionSchema = z.object({
+  endpoint: z.url().max(2048).startsWith('https://'),
+  keys: z.object({ p256dh: z.string().min(1).max(512), auth: z.string().min(1).max(512) }),
+});
+export type PushSubscriptionBody = z.infer<typeof pushSubscriptionSchema>;
+
+export const pushUnsubscribeSchema = z.object({ endpoint: z.string().min(1).max(2048) });
+
 export const roleSchema = z.enum(['admin', 'user']);
 export type Role = z.infer<typeof roleSchema>;
 

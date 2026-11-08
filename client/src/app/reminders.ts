@@ -6,15 +6,11 @@
  * choice; the device remembers that in the local `notified` table.
  * Everything runs while the app is open (start, tab focus, every 30 s).
  */
-import type { RemindBefore, Todo } from '@todoness/shared';
+import { REMIND_MS, reminderKey, timeUntil, type Todo } from '@todoness/shared';
 import type { TodonessDB } from '../data/db';
 import { formatDue } from './dates';
 
-export const REMIND_MS: Record<RemindBefore, number> = {
-  week: 7 * 24 * 3_600_000,
-  day: 24 * 3_600_000,
-  hour: 3_600_000,
-};
+export { REMIND_MS, reminderKey, timeUntil };
 
 const CHECK_EVERY_MS = 30_000;
 const FORGET_AFTER_MS = 60 * 24 * 3_600_000;
@@ -25,10 +21,6 @@ export interface Reminder {
   /** When it became due (epoch ms). */
   remindAt: number;
 }
-
-/** Same task + same due date + same choice = same reminder. Changing either re-arms it. */
-export const reminderKey = (t: Pick<Todo, 'id' | 'dueAt' | 'remindBefore'>) =>
-  `${t.id}:${t.dueAt}:${t.remindBefore}`;
 
 /** The reminders that should fire now, soonest due task first. */
 export function dueReminders(
@@ -46,16 +38,6 @@ export function dueReminders(
     if (!notified.has(key)) out.push({ key, todo, remindAt });
   }
   return out.sort((a, b) => a.todo.dueAt! - b.todo.dueAt!);
-}
-
-const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
-
-/** `in 5 minutes`, `in 2 hours`, `in 3 days`. */
-export function timeUntil(ms: number): string {
-  if (ms < 60_000) return 'in less than a minute';
-  if (ms < 3_600_000) return `in ${plural(Math.round(ms / 60_000), 'minute')}`;
-  if (ms < 24 * 3_600_000) return `in ${plural(Math.round(ms / 3_600_000), 'hour')}`;
-  return `in ${plural(Math.round(ms / (24 * 3_600_000)), 'day')}`;
 }
 
 export function reminderText(r: Reminder, now: number): { title: string; body: string } {

@@ -122,3 +122,31 @@ describe('adminUsersResponseSchema (presence)', () => {
     expect(ok({})).toBe(false);
   });
 });
+
+describe('reminder helpers and pushSubscriptionSchema', () => {
+  it('REMIND_MS and timeUntil are shared by the app and the server', async () => {
+    const { REMIND_MS, timeUntil, reminderKey } = await import('../src/reminders');
+    expect(REMIND_MS).toEqual({ week: 604_800_000, day: 86_400_000, hour: 3_600_000 });
+    expect(timeUntil(3_600_000)).toBe('in 1 hour');
+    expect(reminderKey({ id: 'a', dueAt: 5, remindBefore: 'day' })).toBe('a:5:day');
+  });
+
+  it('accepts what the browser produces and rejects the rest', async () => {
+    const { pushSubscriptionSchema } = await import('../src/api');
+    const ok = {
+      endpoint: 'https://push.example/abc',
+      expirationTime: null,
+      keys: { p256dh: 'BPk', auth: 'tok' },
+    };
+    expect(pushSubscriptionSchema.safeParse(ok).success).toBe(true);
+    expect(
+      pushSubscriptionSchema.safeParse({ ...ok, endpoint: 'http://push.example/abc' }).success,
+    ).toBe(false);
+    expect(pushSubscriptionSchema.safeParse({ ...ok, keys: { p256dh: 'x' } }).success).toBe(false);
+    expect(
+      pushSubscriptionSchema.safeParse({ ...ok, endpoint: 'https://x/' + 'a'.repeat(3000) })
+        .success,
+    ).toBe(false);
+    expect(pushSubscriptionSchema.safeParse({}).success).toBe(false);
+  });
+});

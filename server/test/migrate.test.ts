@@ -27,7 +27,18 @@ describe('migrate (real migrations)', () => {
     const applied = migrate(db, MIGRATIONS_DIR);
     expect(applied).toBeGreaterThanOrEqual(1);
     expect(tables(db)).toEqual(
-      ['attachments', 'change_log', 'lists', 'processed_ops', 'sessions', 'todos', 'users'].sort(),
+      [
+        'app_settings',
+        'attachments',
+        'change_log',
+        'lists',
+        'processed_ops',
+        'push_subscriptions',
+        'sent_reminders',
+        'sessions',
+        'todos',
+        'users',
+      ].sort(),
     );
     expect(db.pragma('user_version', { simple: true })).toBe(applied);
   });

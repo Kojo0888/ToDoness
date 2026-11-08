@@ -4,6 +4,8 @@ import { HTTPException } from 'hono/http-exception';
 import { HlcClock, type ConfigResponse } from '@todoness/shared';
 import { logger } from 'hono/logger';
 import { createPresence } from './auth/presence';
+import { getVapidKeys } from './push/keys';
+import { pushRoutes } from './routes/push';
 import type { Config } from './config';
 import { adminRoutes } from './routes/admin';
 import { attachmentRoutes } from './routes/attachments';
@@ -55,6 +57,7 @@ export function createApp({ db, config, log = false, now = Date.now }: AppDeps) 
   app.route('/api', attachmentRoutes({ db, config, now }));
   app.route('/api/sync', syncRoutes({ db, now }));
   app.route('/api/public', publicRoutes({ db, now }));
+  app.route('/api/push', pushRoutes({ db, now, publicKey: getVapidKeys(db, config).publicKey }));
 
   if (config.clientDir) app.use('*', staticMiddleware(config.clientDir));
 

@@ -23,6 +23,11 @@ export interface Config {
   attachmentsDir: string;
   /** A user counts as online if the server heard from them this recently. */
   onlineWindowMs: number;
+  /** Web push identity. Both unset = generated on first start and kept in the database. */
+  vapidPublicKey: string | undefined;
+  vapidPrivateKey: string | undefined;
+  /** `mailto:` or `https:` contact sent to push services. */
+  vapidSubject: string;
 }
 
 type Env = Record<string, string | undefined>;
@@ -68,6 +73,20 @@ export function loadConfig(env: Env = process.env): Config {
   const maxMb = wholeNumber(env, 'MAX_ATTACHMENT_MB', 100, 1, 1_000_000);
   const windowSeconds = wholeNumber(env, 'ONLINE_WINDOW_SECONDS', 30, 10, 3600);
 
+  const vapidPublicKey = text(env, 'VAPID_PUBLIC_KEY');
+  const vapidPrivateKey = text(env, 'VAPID_PRIVATE_KEY');
+  if ((vapidPublicKey === undefined) !== (vapidPrivateKey === undefined)) {
+    throw new ConfigError(
+      `${vapidPublicKey === undefined ? 'VAPID_PUBLIC_KEY' : 'VAPID_PRIVATE_KEY'} is missing: set both VAPID keys or neither`,
+    );
+  }
+  const vapidSubject = text(env, 'VAPID_SUBJECT') ?? 'mailto:todoness@localhost';
+  if (!/^(mailto:|https:\/\/)\S+$/.test(vapidSubject)) {
+    throw new ConfigError(
+      `VAPID_SUBJECT must start with "mailto:" or "https://" (got "${vapidSubject}")`,
+    );
+  }
+
   return {
     port,
     databasePath: resolvedDatabasePath,
@@ -79,5 +98,8 @@ export function loadConfig(env: Env = process.env): Config {
     attachmentsDir:
       text(env, 'ATTACHMENTS_DIR') ?? join(dirname(resolvedDatabasePath), 'attachments'),
     onlineWindowMs: windowSeconds * 1000,
+    vapidPublicKey,
+    vapidPrivateKey,
+    vapidSubject,
   };
 }

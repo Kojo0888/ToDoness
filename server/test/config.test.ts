@@ -15,6 +15,9 @@ describe('loadConfig', () => {
       maxAttachmentBytes: 100 * 1024 * 1024,
       attachmentsDir: join('./data', 'attachments'),
       onlineWindowMs: 30_000,
+      vapidPublicKey: undefined,
+      vapidPrivateKey: undefined,
+      vapidSubject: 'mailto:todoness@localhost',
     });
   });
 
@@ -29,6 +32,9 @@ describe('loadConfig', () => {
       MAX_ATTACHMENT_MB: '25',
       ATTACHMENTS_DIR: '/files',
       ONLINE_WINDOW_SECONDS: '90',
+      VAPID_PUBLIC_KEY: 'pub',
+      VAPID_PRIVATE_KEY: 'priv',
+      VAPID_SUBJECT: 'https://todo.company.internal',
     });
     expect(c).toEqual({
       port: 8080,
@@ -40,6 +46,9 @@ describe('loadConfig', () => {
       maxAttachmentBytes: 25 * 1024 * 1024,
       attachmentsDir: '/files',
       onlineWindowMs: 90_000,
+      vapidPublicKey: 'pub',
+      vapidPrivateKey: 'priv',
+      vapidSubject: 'https://todo.company.internal',
     });
   });
 
@@ -100,6 +109,29 @@ describe('loadConfig – v1 settings', () => {
     expect(loadConfig({ ONLINE_WINDOW_SECONDS: '10' }).onlineWindowMs).toBe(10_000);
     for (const v of ['9', '0', '3601', 'x', '30.5']) {
       expect(() => loadConfig({ ONLINE_WINDOW_SECONDS: v }), v).toThrow(/ONLINE_WINDOW_SECONDS/);
+    }
+  });
+});
+
+describe('loadConfig – web push settings (FR-64)', () => {
+  it('keys are optional (they are generated and stored on first start)', () => {
+    const c = loadConfig({});
+    expect(c.vapidPublicKey).toBeUndefined();
+    expect(c.vapidPrivateKey).toBeUndefined();
+    expect(c.vapidSubject).toBe('mailto:todoness@localhost');
+  });
+
+  it('needs both keys or none', () => {
+    expect(() => loadConfig({ VAPID_PUBLIC_KEY: 'x' })).toThrow(/VAPID_PRIVATE_KEY/);
+    expect(() => loadConfig({ VAPID_PRIVATE_KEY: 'x' })).toThrow(/VAPID_PUBLIC_KEY/);
+  });
+
+  it('the subject must be a mailto: or https: address', () => {
+    for (const v of ['mailto:a@b.co', 'https://x.example']) {
+      expect(loadConfig({ VAPID_SUBJECT: v }).vapidSubject).toBe(v);
+    }
+    for (const v of ['a@b.co', 'http://x.example', 'ftp://x']) {
+      expect(() => loadConfig({ VAPID_SUBJECT: v }), v).toThrow(/VAPID_SUBJECT/);
     }
   });
 });

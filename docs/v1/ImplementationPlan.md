@@ -32,7 +32,7 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | 9 | Reminders (due time, scheduler, notifications) | ☑ |
 | 10 | End-to-end tests, README, final checks | ☑ |
 | 11 | Editable public lists (server restricted push, attachments permissions, client editor and page, drag & drop) | ☑ |
-| 12 | Web push, server: migration 003, VAPID keys, subscription API, reminder sweep, sender | ☐ |
+| 12 | Web push, server: migration 003, VAPID keys, subscription API, reminder sweep, sender | ☑ |
 | 13 | Web push, client: own service worker, subscribe / unsubscribe, Settings, logout | ☐ |
 | 14 | Docs, README, final checks of the update | ☐ |
 
