@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { publicListResponseSchema, publicListsResponseSchema } from '@todoness/shared';
+import { createPublicEditor } from '../../client/src/app/publicEdit';
 import { Browser, startServer, twoBrowsers, T0 } from './harness';
 
 async function expectConverged(a: Browser, b: Browser) {
@@ -133,5 +134,129 @@ describe('v1: reminder field merges between devices', () => {
       });
     }
     await expectConverged(a, b);
+  });
+});
+
+describe('v1: everyone can edit a public list', () => {
+  it('a visitor’s edits reach the owner, and merge with the owner’s offline edits', async () => {
+    const server = startServer();
+    const ann = new Browser(server, 'ann');
+    await ann.register('ann@corp.test');
+    const bob = new Browser(server, 'bob');
+    await bob.register('bob@corp.test');
+    const editor = createPublicEditor({ db: bob.db, fetch: bob.fetch, now: () => bob.time });
+
+    const list = await ann.repo.createList('Shared');
+    const first = await ann.repo.createTodo({ listId: list.id, title: 'Plan' });
+    await ann.repo.setListPublic(list.id, true);
+    await ann.sync();
+
+    // Ann works offline, Bob (online) edits the same list in the meantime.
+    ann.online = false;
+    await ann.repo.updateTodo(first.id, { notes: 'Ann’s notes' });
+    const second = await ann.repo.createTodo({ listId: list.id, title: 'Ann offline task' });
+
+    bob.time += 1000;
+    expect(await editor.updateTodo(list.id, first.id, { title: 'Plan v2', priority: 2 })).toEqual({
+      ok: true,
+    });
+    expect(await editor.createTodo(list.id, 'From Bob', 'a0')).toEqual({ ok: true });
+    expect(await editor.setDone(list.id, first.id, true)).toEqual({ ok: true });
+
+    ann.online = true;
+    expect(await ann.sync()).toEqual({ ok: true });
+    const mine = await ann.db.todos.get(first.id);
+    expect(mine).toMatchObject({
+      title: 'Plan v2', // Bob's change arrived
+      priority: 2,
+      done: true,
+      notes: 'Ann’s notes', // Ann's own offline change was kept
+    });
+    expect((await ann.titles(list.id)).sort()).toEqual(['Ann offline task', 'From Bob']);
+
+    // Bob sees Ann's offline task and notes too (read on demand).
+    const page = publicListResponseSchema.parse(
+      await (await bob.fetch(`/api/public/lists/${list.id}`)).json(),
+    );
+    expect(page.todos.map((t) => t.title).sort()).toEqual([
+      'Ann offline task',
+      'From Bob',
+      'Plan v2',
+    ]);
+    expect(page.todos.find((t) => t.id === first.id)?.notes).toBe('Ann’s notes');
+    void second;
+
+    // Bob's own database never received the owner's list.
+    await bob.sync();
+    expect((await bob.db.todos.toArray()).some((t) => t.id === first.id)).toBe(false);
+  });
+
+  it('a visitor can reorder, delete and restore; the owner’s second device follows', async () => {
+    const server = startServer();
+    const ann = new Browser(server, 'laptop');
+    await ann.register('ann@corp.test');
+    const phone = new Browser(server, 'phone');
+    await phone.login('ann@corp.test');
+    const bob = new Browser(server, 'bob');
+    await bob.register('bob@corp.test');
+    const editor = createPublicEditor({ db: bob.db, fetch: bob.fetch, now: () => bob.time });
+
+    const list = await ann.repo.createList('Shared');
+    for (const title of ['A', 'B', 'C']) await ann.repo.createTodo({ listId: list.id, title });
+    await ann.repo.setListPublic(list.id, true);
+    await ann.sync();
+    await phone.sync();
+
+    const fetchPage = async () =>
+      publicListResponseSchema.parse(
+        await (await bob.fetch(`/api/public/lists/${list.id}`)).json(),
+      );
+    let page = await fetchPage(); // C B A
+    expect(page.todos.map((t) => t.title)).toEqual(['C', 'B', 'A']);
+
+    bob.time += 1000;
+    const open = page.todos.map((t) => ({ id: t.id, orderKey: t.orderKey }));
+    await editor.reorder(list.id, open, page.todos[2]!.id, page.todos[0]!.id); // A to the top
+    page = await fetchPage();
+    expect(page.todos.map((t) => t.title)).toEqual(['A', 'C', 'B']);
+
+    const b = page.todos.find((t) => t.title === 'B')!;
+    await editor.deleteTodo(list.id, b.id);
+    expect((await fetchPage()).todos.map((t) => t.title)).toEqual(['A', 'C']);
+    bob.time += 1000;
+    await editor.restoreTodo(list.id, b.id);
+
+    await ann.sync();
+    await phone.sync();
+    expect(await ann.titles(list.id)).toEqual(['A', 'C', 'B']);
+    expect(await phone.titles(list.id)).toEqual(['A', 'C', 'B']);
+    expect(await ann.snapshot()).toEqual(await phone.snapshot());
+  });
+
+  it('after the owner makes the list private, edits are refused', async () => {
+    const server = startServer();
+    const ann = new Browser(server, 'ann');
+    await ann.register('ann@corp.test');
+    const bob = new Browser(server, 'bob');
+    await bob.register('bob@corp.test');
+    const editor = createPublicEditor({ db: bob.db, fetch: bob.fetch, now: () => bob.time });
+
+    const list = await ann.repo.createList('Shared');
+    const t = await ann.repo.createTodo({ listId: list.id, title: 'Plan' });
+    await ann.repo.setListPublic(list.id, true);
+    await ann.sync();
+    bob.time += 500;
+    expect(await editor.updateTodo(list.id, t.id, { title: 'ok' })).toEqual({ ok: true });
+
+    bob.time += 1000;
+    ann.time += 2000;
+    await ann.repo.setListPublic(list.id, false);
+    await ann.sync();
+    expect(await editor.updateTodo(list.id, t.id, { title: 'too late' })).toEqual({
+      ok: false,
+      error: 'gone',
+    });
+    await ann.sync();
+    expect((await ann.db.todos.get(t.id))?.title).toBe('ok');
   });
 });

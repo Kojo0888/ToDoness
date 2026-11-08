@@ -10,9 +10,7 @@
 import { generateKeyBetween } from 'fractional-indexing';
 import Dexie from 'dexie';
 import {
-  HlcClock,
   applyOp,
-  newClientId,
   newId,
   syncOpSchema,
   type List,
@@ -20,7 +18,9 @@ import {
   type Todo,
   type TodoPatch,
 } from '@todoness/shared';
+import { nextHlc as nextHlcOf } from './clock';
 import type { TodonessDB } from './db';
+import { keyForPosition } from './order';
 
 export type RepoErrorCode = 'invalid' | 'not_found' | 'inbox_protected';
 
@@ -69,18 +69,7 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
   const inTx = <T>(fn: () => Promise<T>) =>
     db.transaction('rw', [db.todos, db.lists, db.outbox, db.meta], fn);
 
-  /** Next clock value for this browser; remembered in `meta` so it survives reloads. */
-  async function nextHlc(): Promise<string> {
-    let clientId = await db.getMeta<string>('clientId');
-    if (!clientId) {
-      clientId = newClientId();
-      await db.setMeta('clientId', clientId);
-    }
-    const last = await db.getMeta<string>('lastHlc');
-    const hlc = new HlcClock(clientId, now, last).now();
-    await db.setMeta('lastHlc', hlc);
-    return hlc;
-  }
+  const nextHlc = () => nextHlcOf(db, now);
 
   /** Validates, applies and queues one operation. Returns the resulting row. */
   async function commit<T extends Todo | List>(
@@ -201,26 +190,11 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
     reorderTodo: (id, beforeId) =>
       inTx(async () => {
         const todo = await liveTodo(id);
-        if (beforeId === id) return todo;
-
-        const current = (await todosOfList(todo.listId)).filter((t) => !t.done);
-        const next = current[current.findIndex((t) => t.id === id) + 1]?.id ?? null;
-        if (beforeId === next) return todo; // already there
-
-        const open = current.filter((t) => t.id !== id);
-
-        let index = open.length;
-        if (beforeId !== null) {
-          index = open.findIndex((t) => t.id === beforeId);
-          if (index < 0) throw new RepoError('not_found', 'Target task not found');
-        }
-        const lo = open[index - 1]?.orderKey ?? null;
-        let hi = open[index]?.orderKey ?? null;
-        // Equal keys (two devices created tasks at once): step past the equal ones.
-        if (lo !== null && hi !== null && lo >= hi) {
-          hi = open.slice(index).find((t) => t.orderKey > lo)?.orderKey ?? null;
-        }
-        return commit<Todo>('todo', 'update', id, { orderKey: generateKeyBetween(lo, hi) });
+        const open = (await todosOfList(todo.listId)).filter((t) => !t.done);
+        const choice = keyForPosition(open, id, beforeId);
+        if (choice.kind === 'same') return todo;
+        if (choice.kind === 'missing') throw new RepoError('not_found', 'Task or target not found');
+        return commit<Todo>('todo', 'update', id, { orderKey: choice.key });
       }),
 
     setListPublic: (id, isPublic) =>

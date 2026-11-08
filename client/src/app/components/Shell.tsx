@@ -71,6 +71,9 @@ export function Shell({ user }: { user: StoredUser }) {
               <Route path="/l/:listId/t/:todoId">
                 {(p) => <ListPage key={p.listId} listId={p.listId} todoId={p.todoId} />}
               </Route>
+              <Route path="/public/:listId/t/:todoId">
+                {(p) => <PublicListPage key={p.listId} listId={p.listId} todoId={p.todoId} />}
+              </Route>
               <Route path="/public/:listId">
                 {(p) => <PublicListPage key={p.listId} listId={p.listId} />}
               </Route>

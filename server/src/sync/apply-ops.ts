@@ -15,7 +15,18 @@ import {
 } from '@todoness/shared';
 import { getList, getTodo, listOwner, saveList, saveTodo } from './rows';
 
-export type RejectReason = 'invalid_operation' | 'not_found' | 'list_not_found' | 'inbox_protected';
+export type RejectReason =
+  'invalid_operation' | 'not_found' | 'list_not_found' | 'inbox_protected' | 'forbidden';
+
+/**
+ * Editing somebody else's public list (docs/v1/TechStack.md section 6): the rows stay
+ * owned by the list owner (`userId`), but the operations come from `actorId` and may only
+ * be task operations inside `onlyListId`.
+ */
+export interface PushScope {
+  actorId: string;
+  onlyListId: string;
+}
 
 type Outcome = { ok: true } | { ok: false; reason: RejectReason };
 
@@ -25,7 +36,9 @@ export function applyPush(
   clientId: string,
   rawOps: { opId: string }[],
   now: number,
+  scope?: PushScope,
 ): PushResponse {
+  const processedBy = scope?.actorId ?? userId;
   const markProcessed = db.prepare(
     'INSERT OR IGNORE INTO processed_ops (user_id, op_id, processed_at) VALUES (?, ?, ?)',
   );
@@ -53,6 +66,19 @@ export function applyPush(
     if (existing && existing.userId !== userId) return { ok: false, reason: 'not_found' };
 
     const targetList = 'listId' in op.patch ? op.patch.listId : undefined;
+    if (scope) {
+      // Only inside the public list: no moving tasks in or out, no taking over other rows.
+      if (existing && existing.row.listId !== scope.onlyListId) {
+        return { ok: false, reason: 'not_found' };
+      }
+      if (
+        op.type === 'create'
+          ? targetList !== scope.onlyListId
+          : targetList !== undefined && targetList !== scope.onlyListId
+      ) {
+        return { ok: false, reason: 'list_not_found' };
+      }
+    }
     if (targetList !== undefined && listOwner(db, targetList) !== userId) {
       return { ok: false, reason: 'list_not_found' };
     }
@@ -98,8 +124,13 @@ export function applyPush(
       }
       const op = parsed.data;
 
+      if (scope && op.entity === 'list') {
+        rejected.push({ opId: op.opId, reason: 'forbidden' });
+        continue;
+      }
+
       // Already applied earlier (a retry): report it accepted again and skip it.
-      if (markProcessed.run(userId, op.opId, now).changes === 0) {
+      if (markProcessed.run(processedBy, op.opId, now).changes === 0) {
         accepted.push(op.opId);
         continue;
       }
@@ -108,7 +139,7 @@ export function applyPush(
       if (outcome.ok) {
         accepted.push(op.opId);
       } else {
-        unmark.run(userId, op.opId); // a refused operation is not "processed"
+        unmark.run(processedBy, op.opId); // a refused operation is not "processed"
         rejected.push({ opId: op.opId, reason: outcome.reason });
       }
     }

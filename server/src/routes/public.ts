@@ -4,13 +4,16 @@
  */
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import {
   idSchema,
+  pushEnvelopeSchema,
   type PublicListResponse,
   type PublicListsResponse,
   type PublicTodo,
 } from '@todoness/shared';
 import { requireAuth } from '../auth/middleware';
+import { applyPush } from '../sync/apply-ops';
 import type { AppEnv } from '../types';
 
 export function publicRoutes({ db, now }: { db: Database.Database; now: () => number }) {
@@ -49,7 +52,7 @@ export function publicRoutes({ db, now }: { db: Database.Database; now: () => nu
 
     const todos = db
       .prepare(
-        `SELECT id, title, notes, done, completed_at, due_at, priority
+        `SELECT id, title, notes, done, completed_at, due_at, priority, order_key
            FROM todos WHERE list_id = ? AND deleted_at IS NULL
           ORDER BY order_key, id`,
       )
@@ -61,6 +64,7 @@ export function publicRoutes({ db, now }: { db: Database.Database; now: () => nu
       completed_at: number | null;
       due_at: number | null;
       priority: number;
+      order_key: string;
     }[];
 
     const files = db
@@ -101,11 +105,43 @@ export function publicRoutes({ db, now }: { db: Database.Database; now: () => nu
         completedAt: t.completed_at,
         dueAt: t.due_at,
         priority: t.priority,
+        orderKey: t.order_key,
         attachments: byTodo.get(t.id) ?? [],
       })),
     };
     return c.json(body);
   });
+
+  /**
+   * Edit a public list (FR-33): the same operations as the normal push, but only task
+   * operations inside this list. The rows belong to the owner, so the change reaches the
+   * owner's devices through their normal pull.
+   */
+  app.post(
+    '/lists/:id/push',
+    bodyLimit({ maxSize: 1024 * 1024, onError: (c) => c.json({ error: 'too_large' }, 413) }),
+    async (c) => {
+      const id = idSchema.safeParse(c.req.param('id'));
+      const list = id.success
+        ? (db
+            .prepare(
+              'SELECT user_id FROM lists WHERE id = ? AND is_public = 1 AND deleted_at IS NULL',
+            )
+            .get(id.data) as { user_id: string } | undefined)
+        : undefined;
+      if (!id.success || !list) return c.json({ error: 'not_found' }, 404);
+
+      const parsed = pushEnvelopeSchema.safeParse(await c.req.json());
+      if (!parsed.success) return c.json({ error: 'invalid_request' }, 400);
+      const { clientId, ops } = parsed.data;
+      return c.json(
+        applyPush(db, list.user_id, clientId, ops, now(), {
+          actorId: c.get('user').id,
+          onlyListId: id.data,
+        }),
+      );
+    },
+  );
 
   return app;
 }

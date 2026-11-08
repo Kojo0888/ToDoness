@@ -112,7 +112,7 @@ describe('v1: change password (FR-29 – FR-31)', () => {
 });
 
 describe('v1: public lists (FR-32 – FR-36)', () => {
-  it('another user can read a public list, but not change it, until it is made private', async () => {
+  it('another user can read and edit a public list, and it reaches the owner, until it is made private', async () => {
     const { ann, bob } = await getPair();
 
     await addList(ann.page, 'Recipes');
@@ -124,20 +124,42 @@ describe('v1: public lists (FR-32 – FR-36)', () => {
     await link.waitFor();
     await link.click();
     await bob.page.getByRole('heading', { level: 2, name: 'Recipes' }).waitFor();
-    await bob.page.getByText('Soup').waitFor();
-    await bob.page.getByText('Read-only').waitFor();
-    expect(await bob.page.getByLabel('Add a task').count()).toBe(0);
-    expect(await bob.page.getByRole('link', { name: 'Soup' }).count()).toBe(0);
+    await bob.page.getByRole('link', { name: 'Soup' }).waitFor();
+    await bob.page.getByText('Everyone can edit').waitFor();
 
+    // Bob adds a task and completes the existing one...
+    const input = bob.page.getByLabel('Add a task');
+    await input.fill('Bread from Bob');
+    await input.press('Enter');
+    await bob.page.getByRole('link', { name: 'Bread from Bob' }).waitFor();
+    await bob.page.getByRole('checkbox', { name: 'Mark "Soup" as done' }).click();
+    await bob.page.getByRole('button', { name: /Completed \(1\)/ }).waitFor();
+
+    // ...renames the new one in its detail panel...
+    await bob.page.getByRole('link', { name: 'Bread from Bob' }).click();
+    const title = bob.page.getByRole('complementary', { name: 'Task details' }).getByLabel('Title');
+    await title.fill('Bread, edited');
+    await title.press('Enter');
+    await bob.page.getByRole('link', { name: 'Bread, edited' }).first().waitFor();
+
+    // ...and Ann sees all of it after her next sync.
+    await syncNow(ann.page);
+    await ann.page.getByRole('link', { name: 'Bread, edited' }).waitFor({ timeout: 20_000 });
+    await ann.page.getByRole('button', { name: /Completed \(1\)/ }).waitFor();
+    expect(await ann.page.getByRole('switch', { name: /Public list/ }).isChecked()).toBe(true);
+
+    // Bob cannot rename or delete the list.
+    expect(await bob.page.getByRole('button', { name: 'Delete list' }).count()).toBe(0);
+    expect(await bob.page.getByRole('button', { name: 'Rename' }).count()).toBe(0);
+
+    // Private again: Bob is told, and his edits are refused.
     await setPublic(ann.page, false);
     await syncNow(bob.page);
     await bob.page.getByText('not public any more').waitFor({ timeout: 20_000 });
     await bob.page
       .getByRole('navigation')
       .getByRole('link', { name: /Recipes/ })
-      .waitFor({
-        state: 'detached',
-      });
+      .waitFor({ state: 'detached' });
   });
 
   it('a list is private by default', async () => {
@@ -277,7 +299,7 @@ describe('v1: attachments (FR-48 – FR-55)', () => {
     await page.getByRole('link', { name: 'note.txt' }).waitFor();
   });
 
-  it('another user can download from a public list but cannot add files', async () => {
+  it('another user can download from a public list and add files too', async () => {
     const { ann, bob } = await getPair();
     await addList(ann.page, 'Docs');
     await addTask(ann.page, 'Manual');
@@ -297,7 +319,14 @@ describe('v1: attachments (FR-48 – FR-55)', () => {
     await link.waitFor();
     const [download] = await Promise.all([bob.page.waitForEvent('download'), link.click()]);
     expect(download.suggestedFilename()).toBe('manual.txt');
-    expect(await bob.page.getByRole('button', { name: 'Add files' }).count()).toBe(0);
+    // everyone may edit a public list, so Bob can add a file himself
+    await bob.page.getByRole('link', { name: 'Manual', exact: true }).click();
+    await bob.page.getByTestId('attachment-input').setInputFiles({
+      name: 'extra.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('more'),
+    });
+    await bob.page.getByRole('link', { name: 'extra.txt' }).first().waitFor();
   });
 });
 

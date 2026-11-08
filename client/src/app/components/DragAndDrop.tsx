@@ -16,7 +16,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useState, type ReactNode } from 'react';
 import { getLists } from '../../data/queries';
 import { LIST_PREFIX, resolveDrop } from '../dnd';
-import { db, repo } from '../services';
+import type { Keyed } from '../../data/order';
+import { db, publicEditor, repo } from '../services';
 import { t } from '../strings';
 import { useUndoToast } from './Toast';
 
@@ -26,6 +27,8 @@ export interface TodoDragData {
   listId: string;
   /** Open tasks of its list in the order currently shown. */
   openIds: string[];
+  /** Set for tasks of somebody else's public list: they are changed on the server. */
+  remote?: { listId: string; open: Keyed[] };
 }
 
 const isListTarget = (id: unknown) => String(id).startsWith(LIST_PREFIX);
@@ -75,6 +78,18 @@ export function DragAndDrop({ children }: { children: ReactNode }) {
       openIds: data.openIds,
       currentListId: data.listId,
     });
+    if (data.remote) {
+      // Somebody else's list: reordering only; it cannot be moved into one of my lists.
+      if (action.kind === 'reorder') {
+        await publicEditor.reorder(
+          data.remote.listId,
+          data.remote.open,
+          action.todoId,
+          action.beforeId,
+        );
+      }
+      return;
+    }
     if (action.kind === 'reorder') {
       await repo.reorderTodo(action.todoId, action.beforeId);
     } else if (action.kind === 'move') {

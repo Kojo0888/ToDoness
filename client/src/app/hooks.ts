@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { engine, reminderFeed, session } from './services';
 
 export function useSession() {
@@ -69,6 +69,7 @@ export function useTheme(): [Theme, (t: Theme) => void] {
 export function usePolled<T>(load: () => Promise<T | undefined>, intervalMs: number, key = '') {
   const [value, setValue] = useState<T | undefined>(undefined);
   const [failed, setFailed] = useState(false);
+  const reloadRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +82,7 @@ export function usePolled<T>(load: () => Promise<T | undefined>, intervalMs: num
         },
         () => !cancelled && setFailed(true),
       );
+    reloadRef.current = run;
     run();
     const timer = setInterval(run, intervalMs);
     const onVisible = () => document.visibilityState === 'visible' && run();
@@ -96,5 +98,6 @@ export function usePolled<T>(load: () => Promise<T | undefined>, intervalMs: num
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intervalMs, key]);
 
-  return { value, failed };
+  const reload = useCallback(() => reloadRef.current(), []);
+  return { value, failed, reload };
 }

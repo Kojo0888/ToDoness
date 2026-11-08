@@ -197,7 +197,7 @@ describe('who may do what (FR-53)', () => {
     expect((await bob.delete(`/api/attachments/${meta.id}`)).status).toBe(404);
   });
 
-  it('in a public list others can list and download but not change', async () => {
+  it('in a public list others can list, download, add and remove', async () => {
     const meta = await (await upload(s.ann.device.http, s.todoId, bytes(3))).json();
     await s.ann.device.push([op('list', 'update', s.annInbox, { isPublic: true }, hlcAt(5))]);
 
@@ -206,8 +206,10 @@ describe('who may do what (FR-53)', () => {
     expect(list.status).toBe(200);
     expect((await list.json()).attachments).toHaveLength(1);
     expect((await bob.get(`/api/attachments/${meta.id}`)).status).toBe(200);
-    expect((await upload(bob, s.todoId, bytes(3))).status).toBe(403);
-    expect((await bob.delete(`/api/attachments/${meta.id}`)).status).toBe(403);
+    // everyone can edit a public list, so they can add and remove files too
+    const added = await upload(bob, s.todoId, bytes(3), 'bobs.txt');
+    expect(added.status).toBe(201);
+    expect((await bob.delete(`/api/attachments/${(await added.json()).id}`)).status).toBe(204);
 
     // back to private: gone again
     await s.ann.device.push([op('list', 'update', s.annInbox, { isPublic: false }, hlcAt(6))]);

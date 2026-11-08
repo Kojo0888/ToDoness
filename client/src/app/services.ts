@@ -3,6 +3,7 @@ import { TodonessDB } from '../data/db';
 import { createRepo } from '../data/repo';
 import { createSyncEngine } from '../sync/engine';
 import { browserEnv, createSyncRunner } from '../sync/runner';
+import { createPublicEditor } from './publicEdit';
 import { createReminderFeed } from './reminderFeed';
 import { createReminderScheduler, reminderText, showSystemNotification } from './reminders';
 import { createSession } from './session';
@@ -11,6 +12,7 @@ const request = (url: string, init?: RequestInit) => fetch(url, init);
 
 export const db = new TodonessDB();
 export const repo = createRepo(db);
+export const publicEditor = createPublicEditor({ db, fetch: request });
 export const engine = createSyncEngine({ db, fetch: request });
 
 export const runner = createSyncRunner({

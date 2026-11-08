@@ -132,7 +132,7 @@ export function attachmentRoutes({ db, config, now }: Deps) {
     if (!todoId.success || !a || a.access === 'none' || (a.access === 'owner' && a.deleted)) {
       return c.json({ error: 'not_found' }, 404);
     }
-    if (a.access !== 'owner') return c.json({ error: 'forbidden' }, 403);
+    // Owner, or anyone for a task in a public list (FR-53).
 
     const name = cleanFileName(c.req.query('name'));
     if (!name) return c.json({ error: 'invalid_name' }, 400);
@@ -213,7 +213,6 @@ export function attachmentRoutes({ db, config, now }: Deps) {
   app.delete('/attachments/:id', async (c) => {
     const found = find(c.get('user').id, c.req.param('id'));
     if (!found) return c.json({ error: 'not_found' }, 404);
-    if (found.access !== 'owner') return c.json({ error: 'forbidden' }, 403);
     db.prepare('DELETE FROM attachments WHERE id = ?').run(found.row.id);
     await removeFile(config.attachmentsDir, found.row.user_id, found.row.id);
     return c.body(null, 204);

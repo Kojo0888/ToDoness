@@ -48,6 +48,7 @@ export const publicTodoSchema = z.object({
   completedAt: z.number().int().nullable(),
   dueAt: z.number().int().nullable(),
   priority: z.number().int().min(0).max(3),
+  orderKey: z.string(),
   attachments: z.array(attachmentSchema),
 });
 export type PublicTodo = z.infer<typeof publicTodoSchema>;
