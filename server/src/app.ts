@@ -1,11 +1,12 @@
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { HlcClock } from '@todoness/shared';
+import { HlcClock, type ConfigResponse } from '@todoness/shared';
 import { logger } from 'hono/logger';
 import { createPresence } from './auth/presence';
 import type { Config } from './config';
 import { adminRoutes } from './routes/admin';
+import { attachmentRoutes } from './routes/attachments';
 import { authRoutes, meRoute } from './routes/auth';
 import { syncRoutes } from './routes/sync';
 import { staticMiddleware } from './static';
@@ -46,7 +47,11 @@ export function createApp({ db, config, log = false, now = Date.now }: AppDeps) 
   const serverClock = new HlcClock('server', now);
   app.route('/api/auth', authRoutes({ db, config, now, serverClock, presence }));
   app.route('/api/me', meRoute({ db, now }));
-  app.route('/api/admin', adminRoutes({ db, now, presence }));
+  app.route('/api/admin', adminRoutes({ db, now, presence, config }));
+  app.get('/api/config', (c) =>
+    c.json({ maxAttachmentBytes: config.maxAttachmentBytes } satisfies ConfigResponse),
+  );
+  app.route('/api', attachmentRoutes({ db, config, now }));
   app.route('/api/sync', syncRoutes({ db, now }));
 
   if (config.clientDir) app.use('*', staticMiddleware(config.clientDir));

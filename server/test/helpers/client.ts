@@ -25,12 +25,16 @@ export class TestClient {
     const h: Record<string, string> = { ...headers };
     if (this.cookies.size) h.cookie = this.cookieHeader;
     if (this.ip) h['x-forwarded-for'] = this.ip;
-    if (body !== undefined) h['content-type'] = 'application/json';
+    const raw = body instanceof Uint8Array || body instanceof ReadableStream;
+    if (body !== undefined && !raw && !('content-type' in h))
+      h['content-type'] = 'application/json';
     const res = await this.app.request(path, {
       method,
       headers: h,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+      body:
+        body === undefined ? undefined : raw ? (body as RequestInit['body']) : JSON.stringify(body),
+      ...(body instanceof ReadableStream ? { duplex: 'half' } : {}),
+    } as RequestInit);
     for (const line of res.headers.getSetCookie()) {
       const [pair] = line.split(';');
       const [name, ...rest] = pair!.split('=');
@@ -40,6 +44,13 @@ export class TestClient {
     }
     return res as TestResponse;
   }
+
+  /** Sends a raw (non-JSON) body, like an upload. */
+  upload = (
+    path: string,
+    body: Uint8Array | ReadableStream,
+    headers: Record<string, string> = {},
+  ) => this.request('POST', path, body, headers);
 
   get = (path: string) => this.request('GET', path);
   post = (path: string, body?: unknown) => this.request('POST', path, body ?? {});

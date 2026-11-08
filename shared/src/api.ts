@@ -17,6 +17,21 @@ export const changePasswordSchema = z.object({
 });
 export type ChangePasswordRequest = z.infer<typeof changePasswordSchema>;
 
+export const attachmentSchema = z.object({
+  id: idSchema,
+  name: z.string().min(1).max(255),
+  size: z.number().int().min(0),
+  contentType: z.string(),
+  createdAt: z.number().int(),
+});
+export type Attachment = z.infer<typeof attachmentSchema>;
+
+export const attachmentsResponseSchema = z.object({ attachments: z.array(attachmentSchema) });
+export type AttachmentsResponse = z.infer<typeof attachmentsResponseSchema>;
+
+export const configResponseSchema = z.object({ maxAttachmentBytes: z.number().int().min(1) });
+export type ConfigResponse = z.infer<typeof configResponseSchema>;
+
 export const roleSchema = z.enum(['admin', 'user']);
 export type Role = z.infer<typeof roleSchema>;
 

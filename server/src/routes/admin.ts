@@ -4,16 +4,20 @@ import { idSchema, type AdminUsersResponse } from '@todoness/shared';
 import { requireAdmin, requireAuth } from '../auth/middleware';
 import type { Presence } from '../auth/presence';
 import { deleteUserSessions } from '../auth/sessions';
+import { removeUserFiles } from '../attachments/storage';
+import type { Config } from '../config';
 import type { AppEnv } from '../types';
 
 export function adminRoutes({
   db,
   now,
   presence,
+  config,
 }: {
   db: Database.Database;
   now: () => number;
   presence: Presence;
+  config: Config;
 }) {
   const app = new Hono<AppEnv>();
   app.use('*', requireAuth(db, now), requireAdmin);
@@ -64,12 +68,14 @@ export function adminRoutes({
   });
 
   /** Deletes the user; sessions, lists, todos and the change log go with them. */
-  app.delete('/users/:id', (c) => {
+  app.delete('/users/:id', async (c) => {
     const id = idSchema.safeParse(c.req.param('id'));
     if (!id.success) return c.json({ error: 'not_found' }, 404);
     if (id.data === c.get('user').id) return c.json({ error: 'cannot_delete_self' }, 400);
     const r = db.prepare('DELETE FROM users WHERE id = ?').run(id.data);
-    return r.changes === 0 ? c.json({ error: 'not_found' }, 404) : c.body(null, 204);
+    if (r.changes === 0) return c.json({ error: 'not_found' }, 404);
+    await removeUserFiles(config.attachmentsDir, id.data); // attachments (FR-54)
+    return c.body(null, 204);
   });
 
   return app;

@@ -25,7 +25,7 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | 2 | Client data layer: Dexie v2, repo (`setListPublic`, `reorderTodo`, reminder fields) | ☑ |
 | 3 | Change password (API, session, Settings UI) | ☑ |
 | 4 | Online presence + Admin "Online" column (also: all three config settings) | ☑ |
-| 5 | Server config + attachments API | ☐ |
+| 5 | Server config + attachments API | ☑ |
 | 6 | Public lists API + sidebar section + read-only page + switch | ☐ |
 | 7 | Attachments UI (task detail, public page) | ☐ |
 | 8 | Drag & drop (reorder, drop on sidebar list) | ☐ |
