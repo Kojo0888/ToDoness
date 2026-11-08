@@ -31,6 +31,10 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | 8 | Drag & drop (reorder, drop on sidebar list) | ☑ |
 | 9 | Reminders (due time, scheduler, notifications) | ☑ |
 | 10 | End-to-end tests, README, final checks | ☑ |
+| 11 | Editable public lists (server restricted push, attachments permissions, client editor and page, drag & drop) | ☐ |
+| 12 | Web push, server: migration 003, VAPID keys, subscription API, reminder sweep, sender | ☐ |
+| 13 | Web push, client: own service worker, subscribe / unsubscribe, Settings, logout | ☐ |
+| 14 | Docs, README, final checks of the update | ☐ |
 
 ---
 
@@ -204,6 +208,64 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 
 **Done when:** `pnpm test`, `pnpm e2e`, `pnpm typecheck`, `pnpm lint` and
 `pnpm format:check` pass.
+
+---
+
+## Update 2: editable public lists and web push
+
+(Requested after v1 was delivered. Requirements: PRD sections 4.2 and 4.7.)
+
+### Step 11 – Editable public lists
+
+**Build**
+- `server/src/sync/apply-ops.ts`: `applyPush` gets options `{ actorId, onlyListId }`: rows stay
+  owned by the list owner, the change log goes to the owner, `processed_ops` is per actor;
+  with `onlyListId` only task operations inside that list are accepted.
+- `POST /api/public/lists/:id/push` (login; list must be public and not deleted).
+- `GET /api/public/lists/:id` returns `orderKey`.
+- Attachments: add and remove allowed for every logged-in user on tasks of public lists.
+- `client/src/data/order.ts`: the "key for a position" function now shared by the local repo
+  and the public editor.
+- `client/src/app/publicEdit.ts`: builds operations with the device's own clock and sends them.
+- Public list page: add task, complete, edit title / notes / due / priority, delete with Undo,
+  reorder by drag, attachments.
+
+**Tests first**
+- server: a non-owner can create, update, delete, restore tasks in a public list; the owner
+  sees them in their pull and in their database; repeats are safe; a private, deleted or
+  unknown list is 404; list operations and ops touching other lists or moving a task out are
+  rejected; invalid operations are rejected one by one; the owner's other lists and tasks are
+  untouchable; attachments can be added and removed by others.
+- integration: owner and visitor edit the same list (visitor online, owner offline), results
+  converge by the merge rules; owner's pending offline edit vs visitor's edit of another field.
+- client: the key-for-position function; the public editor builds valid operations.
+- e2e: Bob adds, completes, edits and deletes in Ann's public list; Ann sees it.
+
+### Step 12 – Web push, server
+
+**Build** migration `003_push.sql`; `web-push` dependency; VAPID key store; `push` routes;
+`push/reminders.ts` sweep with an injected sender; the real sender; the 30 s timer in
+`index.ts`; config for `VAPID_*`.
+
+**Tests first** key generation and persistence, env override; subscribe / move between users /
+unsubscribe / auth; sweep: window rules (week, day, hour, before, after due), once only,
+re-arm on change, catch-up, skip done / deleted / no due / no reminder, no subscription = nothing
+recorded, several devices, dead subscription removed, one failing send does not stop others,
+pruning of old `sent_reminders`.
+
+### Step 13 – Web push, client
+
+**Build** `src/sw.ts` (precache as before, `push`, `notificationclick`, skip-waiting message);
+vite-plugin-pwa `injectManifest`; `app/push.ts`; Settings switch; auto-subscribe when a reminder
+is set or the app starts with permission granted; unsubscribe on logout.
+
+**Tests first** `urlBase64ToUint8Array`, support detection, the payload-to-notification function
+used by the service worker (title, body, tag, url; bad payloads), logout calls the hook,
+subscription request body. The offline e2e scenarios of the MVP guard the new service worker.
+
+### Step 14 – Docs and final checks
+
+README (VAPID settings, outbound access note), PRD/plan status, all test suites.
 
 ---
 
