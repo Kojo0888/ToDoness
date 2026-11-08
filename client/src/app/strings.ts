@@ -99,6 +99,25 @@ export const t = {
     title: 'Title',
     notes: 'Notes',
     dueDate: 'Due date',
+    dueTime: 'Due time (optional)',
+    remind: 'Remind me',
+    reminders: {
+      none: 'No reminder',
+      week: '1 week before',
+      day: '1 day before',
+      hour: '1 hour before',
+    },
+    remindNeedsDue: 'Set a due date to get a reminder.',
+    remindHints: {
+      insecure:
+        'Notifications need a secure connection (HTTPS). Reminders will only appear inside the app.',
+      unsupported:
+        'This browser cannot show notifications. Reminders will only appear inside the app.',
+      denied:
+        'Notifications are blocked for this site in your browser. Reminders will only appear inside the app.',
+      default: 'Your browser will ask for permission to show notifications.',
+      granted: 'You will get a notification while the app is open.',
+    },
     priority: 'Priority',
     priorities: ['None', 'Low', 'Medium', 'High'] as const,
     list: 'List',
@@ -156,6 +175,18 @@ export const t = {
     theme: 'Theme',
     themes: { system: 'Follow system', light: 'Light', dark: 'Dark' },
     logout: 'Log out',
+    notifications: {
+      title: 'Notifications',
+      enable: 'Enable notifications',
+      status: {
+        insecure: 'Not available: notifications need a secure connection (HTTPS).',
+        unsupported: 'Not available: this browser cannot show notifications.',
+        denied: 'Blocked in your browser settings for this site.',
+        default: 'Not enabled yet.',
+        granted: 'Enabled.',
+      },
+      hint: 'Reminders only appear while the app is open (in a tab or installed).',
+    },
     password: {
       title: 'Change password',
       current: 'Current password',
@@ -197,6 +228,13 @@ export const t = {
     resetDone: (email: string) => `Password of ${email} was reset.`,
     needsConnection: 'The admin screen needs a connection to the server.',
     loadFailed: 'Could not load the users.',
+  },
+
+  reminder: {
+    label: 'Reminder',
+    open: 'Open',
+    dismiss: 'Dismiss',
+    region: 'Reminders',
   },
 
   update: {

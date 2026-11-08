@@ -9,6 +9,7 @@ import { Admin } from './Admin';
 import { DragAndDrop } from './DragAndDrop';
 import { ListPage } from './ListPage';
 import { PublicListPage } from './PublicListPage';
+import { Reminders } from './Reminders';
 import { Settings } from './Settings';
 import { Sidebar } from './Sidebar';
 import { ToastProvider } from './Toast';
@@ -65,6 +66,7 @@ export function Shell({ user }: { user: StoredUser }) {
           )}
           <Sidebar user={user} open={menuOpen} onNavigate={() => setMenuOpen(false)} />
           <main className="content">
+            <Reminders />
             <Switch>
               <Route path="/l/:listId/t/:todoId">
                 {(p) => <ListPage key={p.listId} listId={p.listId} todoId={p.todoId} />}

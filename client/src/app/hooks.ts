@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { engine, session } from './services';
+import { engine, reminderFeed, session } from './services';
 
 export function useSession() {
   return useSyncExternalStore(session.subscribe, session.getState);
@@ -7,6 +7,10 @@ export function useSession() {
 
 export function useSyncStatus() {
   return useSyncExternalStore(engine.subscribe, () => engine.status);
+}
+
+export function useReminderMessages() {
+  return useSyncExternalStore(reminderFeed.subscribe, reminderFeed.getSnapshot);
 }
 
 function subscribeOnline(callback: () => void) {

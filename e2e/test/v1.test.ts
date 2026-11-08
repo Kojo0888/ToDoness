@@ -55,6 +55,13 @@ async function setPublic(page: Page, on: boolean) {
   );
 }
 
+/** Sign-up is rate limited (20 per hour per address), so two users are shared by several tests. */
+let pair:
+  | Promise<{ ann: Awaited<ReturnType<typeof newUser>>; bob: Awaited<ReturnType<typeof newUser>> }>
+  | undefined;
+const getPair = () =>
+  (pair ??= Promise.all([newUser('ann'), newUser('bob')]).then(([ann, bob]) => ({ ann, bob })));
+
 async function addList(page: Page, name: string) {
   await page.getByPlaceholder('New list name').fill(name);
   await page.getByRole('button', { name: 'Add list' }).click();
@@ -106,8 +113,7 @@ describe('v1: change password (FR-29 – FR-31)', () => {
 
 describe('v1: public lists (FR-32 – FR-36)', () => {
   it('another user can read a public list, but not change it, until it is made private', async () => {
-    const ann = await newUser('ann');
-    const bob = await newUser('bob');
+    const { ann, bob } = await getPair();
 
     await addList(ann.page, 'Recipes');
     await addTask(ann.page, 'Soup');
@@ -135,8 +141,7 @@ describe('v1: public lists (FR-32 – FR-36)', () => {
   });
 
   it('a list is private by default', async () => {
-    const ann = await newUser('ann');
-    const bob = await newUser('bob');
+    const { ann, bob } = await getPair();
     await addList(ann.page, 'Secret');
     await ann.page.getByRole('switch', { name: /Public list/ }).waitFor();
     expect(await ann.page.getByRole('switch', { name: /Public list/ }).isChecked()).toBe(false);
@@ -273,8 +278,7 @@ describe('v1: attachments (FR-48 – FR-55)', () => {
   });
 
   it('another user can download from a public list but cannot add files', async () => {
-    const ann = await newUser('annf');
-    const bob = await newUser('bobf');
+    const { ann, bob } = await getPair();
     await addList(ann.page, 'Docs');
     await addTask(ann.page, 'Manual');
     await openTask(ann.page, 'Manual');
@@ -308,4 +312,135 @@ describe('v1: who is online (FR-56 – FR-58)', () => {
     await user.context.close(); // the app is gone: no more requests
     await row.getByText('Offline', { exact: true }).waitFor({ timeout: 30_000 });
   }, 60_000);
+});
+
+describe('v1: reminders (FR-42 – FR-47)', () => {
+  /**
+   * Headless Chromium always reports `denied`, even when the permission is granted, so
+   * the tests that need "granted" pretend it; and records every system notification.
+   */
+  const recordNotifications = async (page: Page) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(Notification, 'permission', { get: () => 'granted' });
+      const w = window as unknown as { __shown: string[] };
+      w.__shown = [];
+      const original = ServiceWorkerRegistration.prototype.showNotification;
+      ServiceWorkerRegistration.prototype.showNotification = function (title, options) {
+        w.__shown.push(`${title}|${options?.body ?? ''}`);
+        return original.call(this, title, options);
+      };
+    });
+  };
+  const shown = (page: Page) =>
+    page.evaluate(() => (window as unknown as { __shown: string[] }).__shown);
+
+  /** Local `YYYY-MM-DD` and `HH:MM` for a moment `minutes` from now. */
+  const inMinutes = (minutes: number) => {
+    const d = new Date(Date.now() + minutes * 60_000);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return {
+      date: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`,
+      time: `${p(d.getHours())}:${p(d.getMinutes())}`,
+    };
+  };
+
+  async function setDue(page: Page, minutes: number) {
+    const { date, time } = inMinutes(minutes);
+    await page.getByLabel('Due date').fill(date);
+    await page.getByLabel('Due time').fill(time);
+  }
+
+  it('shows a notification and an in-app message once the reminder time has come', async () => {
+    const email = uniqueEmail('rem');
+    const page = await newPage(await newDevice(browser, app));
+    await recordNotifications(page);
+    await signUp(page, email);
+    await addTask(page, 'Dentist');
+    await openTask(page, 'Dentist');
+
+    expect(await page.getByLabel('Remind me').isDisabled()).toBe(true); // needs a due date first
+    await setDue(page, 40); // due in 40 minutes: a 1-hour reminder is already due
+    await page.getByLabel('Remind me').selectOption('hour');
+
+    const message = page.getByRole('region', { name: 'Reminders' });
+    await message.getByText('Reminder: Dentist').waitFor();
+    await message.getByText(/Due in (39|40) minutes/).waitFor();
+    await page.waitForFunction(
+      () => (window as unknown as { __shown: string[] }).__shown.length > 0,
+    );
+    expect((await shown(page))[0]).toMatch(/^Dentist\|Due in (39|40) minutes/);
+
+    // Once only: after a reload the same reminder does not come back.
+    await page.reload();
+    await task(page, 'Dentist').waitFor();
+    await page.waitForTimeout(1500);
+    expect(await page.getByRole('region', { name: 'Reminders' }).count()).toBe(0);
+    expect(await shown(page)).toEqual([]); // (the recorder restarts with the page)
+
+    // Changing the due time re-arms it.
+    await openTask(page, 'Dentist');
+    await setDue(page, 35);
+    await page.getByRole('region', { name: 'Reminders' }).getByText('Reminder: Dentist').waitFor();
+  });
+
+  it('a reminder that is not due yet stays quiet, and completing the task cancels it', async () => {
+    const page = await newPage(await newDevice(browser, app));
+    await recordNotifications(page);
+    await signUp(page, uniqueEmail('quiet'));
+    await addTask(page, 'Far away');
+    await openTask(page, 'Far away');
+    await setDue(page, 3 * 24 * 60); // in 3 days
+    await page.getByLabel('Remind me').selectOption('hour');
+    await page.waitForTimeout(1500);
+    expect(await page.getByRole('region', { name: 'Reminders' }).count()).toBe(0);
+
+    await addTask(page, 'Done already');
+    await openTask(page, 'Done already');
+    await setDue(page, 30);
+    await page.getByLabel('Remind me').selectOption('hour');
+    await page
+      .getByRole('region', { name: 'Reminders' })
+      .getByText('Reminder: Done already')
+      .waitFor();
+  });
+
+  it('removing the due date also removes the reminder', async () => {
+    const page = await newPage(await newDevice(browser, app));
+    await recordNotifications(page);
+    await signUp(page, uniqueEmail('clear'));
+    await addTask(page, 'Later');
+    await openTask(page, 'Later');
+    await setDue(page, 5 * 24 * 60);
+    await page.getByLabel('Remind me').selectOption('day');
+    await page.getByLabel('Due date').fill('');
+    await page.waitForFunction(
+      () =>
+        (document.querySelector('select[aria-describedby="remind-hint"]') as HTMLSelectElement)
+          .disabled,
+    );
+    expect(await page.getByLabel('Remind me').inputValue()).toBe('');
+  });
+
+  it('reminders still appear inside the app without notification permission', async () => {
+    const page = await newPage(await newDevice(browser, app));
+    await signUp(page, uniqueEmail('noperm'));
+    await addTask(page, 'No permission');
+    await openTask(page, 'No permission');
+    await setDue(page, 20);
+    await page.getByLabel('Remind me').selectOption('hour');
+    await page
+      .getByRole('region', { name: 'Reminders' })
+      .getByText('Reminder: No permission')
+      .waitFor();
+    await page.getByRole('button', { name: 'Dismiss' }).click();
+    expect(await page.getByRole('region', { name: 'Reminders' }).count()).toBe(0);
+  });
+
+  it('Settings shows whether notifications are enabled', async () => {
+    const page = await newPage(await newDevice(browser, app));
+    await recordNotifications(page);
+    await signUp(page, uniqueEmail('settings'));
+    await page.getByRole('link', { name: 'Settings' }).click();
+    await page.getByText('Enabled.').waitFor();
+  });
 });

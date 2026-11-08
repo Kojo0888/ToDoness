@@ -4,9 +4,24 @@ Simple to-do list app for internal use that keeps working offline. Changes made
 without a connection are saved on the device and sent automatically when the
 connection returns.
 
-Design documents are in [`docs/`](docs/): requirements ([PRD](docs/PRD.md)),
-[tech stack](docs/TechStack.md), [database model](docs/DBModel.md) and the
-[build plan with implementation status](docs/MVPImplementationSteps.md).
+## Features
+
+- Tasks and lists that keep working **offline**; changes sync automatically.
+- Change your **password** in Settings; the admin can still reset a forgotten one.
+- Make a list **public**: every user can read it (read-only) under "Public lists".
+- Reorder tasks by **drag and drop** (mouse, touch or keyboard), or drop a task on a
+  list in the sidebar to move it there.
+- **Reminders**: 1 week, 1 day or 1 hour before a task is due, as a notification
+  (needs HTTPS, see below).
+- **Attachments** on tasks, up to a configurable size per file.
+- The admin screen shows **who is online**.
+
+## Documentation
+
+| Folder                   | Contents                                                                                                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`docs/v1/`](docs/v1/)   | Version 1: [PRD](docs/v1/PRD.md), [implementation plan with status](docs/v1/ImplementationPlan.md), [tech stack changes](docs/v1/TechStack.md)                |
+| [`docs/mvp/`](docs/mvp/) | The MVP: [PRD](docs/mvp/PRD.md), [tech stack](docs/mvp/TechStack.md), [database model](docs/mvp/DBModel.md), [build plan](docs/mvp/MVPImplementationSteps.md) |
 
 ## Development
 
@@ -56,10 +71,9 @@ CLIENT_DIR=client/dist node server/dist/index.js    # open http://localhost:3000
 ```
 
 The server serves the built client itself, so there is no separate client to
-start. Other settings: `PORT` (default 3000) and `DATABASE_PATH` (default
-`./data/todoness.db`). Offline mode and installing need `http://localhost` or
-HTTPS; a plain `http://` address on another machine will not work (see
-[Deployment](#deployment)).
+start. Settings are environment variables, see [Configuration](#configuration).
+Offline mode, installing and notifications need `http://localhost` or HTTPS; a plain
+`http://` address on another machine will not work (see [Deployment](#deployment)).
 
 `pnpm e2e` uses Playwright 1.63 with Chromium. If the browser is not installed:
 `pnpm --filter @todoness/e2e exec playwright install chromium`.
@@ -72,11 +86,45 @@ HTTPS; a plain `http://` address on another machine will not work (see
 | `integration/` | Tests with simulated browsers against the real server                      |
 | `e2e/`         | Browser tests against the built app                                        |
 
+## Configuration
+
+The server reads these environment variables. All are optional except
+`DATABASE_PATH` in production.
+
+| Variable                | Default                                       | Meaning                                                                                                                                                                                                                                                                |
+| ----------------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                  | `3000`                                        | Port the server listens on.                                                                                                                                                                                                                                            |
+| `DATABASE_PATH`         | `./data/todoness.db` (required in production) | SQLite database file.                                                                                                                                                                                                                                                  |
+| `CLIENT_DIR`            | _(unset)_                                     | Folder with the built web app. Unset = API only.                                                                                                                                                                                                                       |
+| `COOKIE_SECURE`         | `true` in production, otherwise `false`       | Send the login cookie over HTTPS only.                                                                                                                                                                                                                                 |
+| `TRUST_PROXY`           | `false`                                       | Use the client IP from `X-Forwarded-For` (set to `true` behind Caddy).                                                                                                                                                                                                 |
+| **`MAX_ATTACHMENT_MB`** | `100`                                         | **Largest allowed attachment, in megabytes per file** (whole number, at least 1). The app reads it from the server (`GET /api/config`), refuses larger files before uploading, and the server enforces it again while receiving. Restart the server after changing it. |
+| `ATTACHMENTS_DIR`       | `attachments` folder next to the database     | Where uploaded files are stored (one sub-folder per user, files named by id).                                                                                                                                                                                          |
+| `ONLINE_WINDOW_SECONDS` | `30`                                          | A user counts as **online** in the admin screen if the server heard from them this recently (whole number, 10 – 3600).                                                                                                                                                 |
+
+Example: allow files up to 250 MB:
+
+```sh
+MAX_ATTACHMENT_MB=250 CLIENT_DIR=client/dist node server/dist/index.js
+```
+
+Behind a reverse proxy, make sure it does not limit the request size below
+`MAX_ATTACHMENT_MB` (Caddy does not by default; nginx needs `client_max_body_size`).
+
+**What to back up:** the database file **and** the attachments folder. In the Docker
+setup both are in the `todoness-data` volume (`/data`); the optional `backup` service
+copies the database daily and mirrors `/data/attachments` to `./backups/attachments`.
+
+**Notifications** (reminders) use the browser's notification feature, which only works
+on **HTTPS** (or `http://localhost`). Without it, reminders still appear inside the app.
+They are shown while the app is open in a tab or installed; there is no push while it is
+closed. Users allow notifications once, in Settings or when they set their first reminder.
+
 ## Deployment
 
 One container behind Caddy on the intranet. See
-[`docs/TechStack.md`](docs/TechStack.md#13-deployment-example-docker-compose--caddy)
-section 13 (HTTPS is required for offline mode to work).
+[`docs/mvp/TechStack.md`](docs/mvp/TechStack.md#13-deployment-example-docker-compose--caddy)
+section 13 (HTTPS is required for offline mode and notifications to work).
 
 ```sh
 # set the server name in Caddyfile, then:
@@ -86,6 +134,7 @@ docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.
 
 Update: `git pull && docker compose up -d --build`. Back up the `todoness-data`
 volume (the optional `backup` service copies the database daily to `./backups`).
+
 ### Folder-based variant (no image build for the app)
 
 `docker-compose.folder.yml` runs a stock `node:22-bookworm-slim` container on

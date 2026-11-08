@@ -34,16 +34,17 @@ services:
       - caddy-data:/data # keeps the internal CA and certificates
       - caddy-config:/config
 
-  backup: # optional: a copy of the database once a day, kept for 14 days
+  backup: # optional: a copy of the database once a day (kept 14 days) and a mirror of the attachments
     image: alpine:3.20
     restart: unless-stopped
     entrypoint: ['/bin/sh', '-c']
     command:
       - |
-        apk add --no-cache sqlite
+        apk add --no-cache sqlite rsync
         while true; do
           sqlite3 /data/todoness.db ".backup '/backups/todoness-$$(date +%F).db'"
           find /backups -name 'todoness-*.db' -mtime +14 -delete
+          [ -d /data/attachments ] && rsync -a --delete /data/attachments/ /backups/attachments/
           sleep 86400
         done
     volumes:

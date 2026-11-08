@@ -29,8 +29,8 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | 6 | Public lists API + sidebar section + read-only page + switch | ☑ |
 | 7 | Attachments UI (task detail, public page) | ☑ |
 | 8 | Drag & drop (reorder, drop on sidebar list) | ☑ |
-| 9 | Reminders (due time, scheduler, notifications) | ☐ |
-| 10 | End-to-end tests, README, final checks | ☐ |
+| 9 | Reminders (due time, scheduler, notifications) | ☑ |
+| 10 | End-to-end tests, README, final checks | ☑ |
 
 ---
 
@@ -209,4 +209,40 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 
 ## Implementation notes
 
-*(Filled in while building: what was done, deviations from the plan.)*
+Every step was built test first: the tests were written and run (and seen to fail)
+before the code that makes them pass.
+
+**Deviations from the plan**
+
+- **Config in step 4.** All three settings (`MAX_ATTACHMENT_MB`, `ATTACHMENTS_DIR`,
+  `ONLINE_WINDOW_SECONDS`) were added together with the presence feature, because they
+  share one config module and one test file.
+- **Presence write interval** is 5 seconds (not 10), so that a user who is active (the app
+  talks to the server every 5 seconds) never flickers to offline with the 10 second
+  minimum window. `ONLINE_WINDOW_SECONDS` must be 10 – 3600.
+- **Presence also counts login and sign-up**, not only requests with an existing session.
+- **Reminders re-arm immediately.** Changing the due date, time or reminder in the task
+  detail runs a reminder check right away (otherwise the user would wait up to 30 s).
+- **Clearing the due date clears the reminder** in the same change.
+- **Public list page** also works for the owner's own public lists (same URL), but the
+  sidebar section only lists other users' lists.
+- **Attachments are not in the sync feed** (decision D3). The list is fetched when the task
+  detail opens and after every change.
+- **Drag onto the sidebar** needs a visible sidebar, so on phones the task-detail "List"
+  field is the way to move a task (FR-40).
+- **Equal `orderKey`s** (two devices created tasks at the same moment): the dragged task
+  is placed after the group of equal keys instead of failing.
+- **Test environment note:** headless Chromium always reports `Notification.permission`
+  as `denied`, so the reminder browser tests override it; real browsers report it correctly.
+
+**Test counts at the end of v1:** shared 93, server 171, client 179, integration 28,
+browser (e2e) 30 (13 MVP + 17 v1 scenarios). All pass, as do `pnpm typecheck`, `pnpm lint`
+and `pnpm format:check`.
+
+**Not done / ideas for later**
+
+- Several reminders per task; Web Push for reminders while the app is closed.
+- Offline queueing of attachments; per-user storage quota; clean-up of attachments of tasks
+  that were deleted long ago.
+- Dragging completed tasks and dragging lists in the sidebar.
+
