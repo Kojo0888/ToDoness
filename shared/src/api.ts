@@ -29,6 +29,36 @@ export type Attachment = z.infer<typeof attachmentSchema>;
 export const attachmentsResponseSchema = z.object({ attachments: z.array(attachmentSchema) });
 export type AttachmentsResponse = z.infer<typeof attachmentsResponseSchema>;
 
+export const publicListSchema = z.object({
+  id: idSchema,
+  name: z.string(),
+  ownerEmail: z.string(),
+});
+export type PublicList = z.infer<typeof publicListSchema>;
+
+/** Public lists of other users (FR-34). */
+export const publicListsResponseSchema = z.object({ lists: z.array(publicListSchema) });
+export type PublicListsResponse = z.infer<typeof publicListsResponseSchema>;
+
+export const publicTodoSchema = z.object({
+  id: idSchema,
+  title: z.string(),
+  notes: z.string(),
+  done: z.boolean(),
+  completedAt: z.number().int().nullable(),
+  dueAt: z.number().int().nullable(),
+  priority: z.number().int().min(0).max(3),
+  attachments: z.array(attachmentSchema),
+});
+export type PublicTodo = z.infer<typeof publicTodoSchema>;
+
+/** One public list with its tasks (FR-33). */
+export const publicListResponseSchema = z.object({
+  list: publicListSchema,
+  todos: z.array(publicTodoSchema),
+});
+export type PublicListResponse = z.infer<typeof publicListResponseSchema>;
+
 export const configResponseSchema = z.object({ maxAttachmentBytes: z.number().int().min(1) });
 export type ConfigResponse = z.infer<typeof configResponseSchema>;
 

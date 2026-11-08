@@ -8,6 +8,7 @@ import type { Config } from './config';
 import { adminRoutes } from './routes/admin';
 import { attachmentRoutes } from './routes/attachments';
 import { authRoutes, meRoute } from './routes/auth';
+import { publicRoutes } from './routes/public';
 import { syncRoutes } from './routes/sync';
 import { staticMiddleware } from './static';
 import type { AppEnv } from './types';
@@ -53,6 +54,7 @@ export function createApp({ db, config, log = false, now = Date.now }: AppDeps) 
   );
   app.route('/api', attachmentRoutes({ db, config, now }));
   app.route('/api/sync', syncRoutes({ db, now }));
+  app.route('/api/public', publicRoutes({ db, now }));
 
   if (config.clientDir) app.use('*', staticMiddleware(config.clientDir));
 

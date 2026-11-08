@@ -95,6 +95,19 @@ export function ListPage({ listId, todoId }: { listId: string; todoId?: string }
           )}
         </header>
 
+        <label className="switch list-public">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={list.isPublic}
+            onChange={(e) => void repo.setListPublic(listId, e.target.checked)}
+          />
+          <span>
+            {t.list.public}
+            <span className="hint"> · {t.list.publicHint}</span>
+          </span>
+        </label>
+
         <QuickAdd listId={listId} />
 
         {open.length === 0 ? (

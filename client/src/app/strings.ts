@@ -49,6 +49,8 @@ export const t = {
     settings: 'Settings',
     admin: 'Admin',
     menu: 'Menu',
+    publicLists: 'Public lists',
+    publicNeedsConnection: 'Public lists need a connection.',
   },
 
   list: {
@@ -72,6 +74,19 @@ export const t = {
         : `The list "${name}" and its ${n} open and completed task${n === 1 ? '' : 's'} will be deleted.`,
     delete: 'Delete',
     notFound: 'This list does not exist.',
+    public: 'Public list',
+    publicHint: 'Every user of the app can read this list. Only you can change it.',
+  },
+
+  publicPage: {
+    by: (email: string) => `Public list by ${email}`,
+    readOnly: 'Read-only',
+    empty: 'This list has no tasks.',
+    gone: 'This list is not public any more, or it was deleted.',
+    needsConnection: 'Public lists need a connection to the server.',
+    back: 'Back to my tasks',
+    due: (when: string) => `Due ${when}`,
+    attachments: 'Attachments',
   },
 
   todo: {
@@ -89,6 +104,32 @@ export const t = {
     delete: 'Delete task',
     close: 'Close',
     invalidTitle: 'The title cannot be empty.',
+  },
+
+  attachments: {
+    title: 'Attachments',
+    add: 'Add files',
+    none: 'No attachments.',
+    remove: (name: string) => `Remove ${name}`,
+    removeLabel: 'Remove',
+    download: (name: string) => `Download ${name}`,
+    tooLarge: (name: string, max: string) => `${name} is larger than the limit of ${max}.`,
+    empty: (name: string) => `${name} is empty.`,
+    maxSize: (max: string) => `Up to ${max} per file.`,
+    uploading: (name: string) => `Uploading ${name}…`,
+    needsConnection: 'Attachments need a connection to the server.',
+    loadFailed: 'Could not load the attachments.',
+    removeFailed: 'Could not remove the attachment.',
+    errors: {
+      too_large: 'The file is larger than the server allows.',
+      not_found: 'The task is not on the server yet. Wait for the sync and try again.',
+      unauthorized: 'Your login is no longer valid. Log in again.',
+      forbidden: 'Only the owner can add files.',
+      invalid: 'The server did not accept this file.',
+      server: 'The server had a problem. Try again in a moment.',
+      network: 'Cannot reach the server. Check your connection.',
+      cancelled: 'Upload cancelled.',
+    },
   },
 
   sync: {

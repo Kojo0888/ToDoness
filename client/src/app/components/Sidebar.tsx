@@ -2,6 +2,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useState, type FormEvent } from 'react';
 import { Link, useLocation } from 'wouter';
 import { getLists } from '../../data/queries';
+import { useOnline, usePolled } from '../hooks';
+import { fetchPublicLists } from '../publicApi';
 import { db, repo } from '../services';
 import type { StoredUser } from '../session';
 import { t } from '../strings';
@@ -17,6 +19,8 @@ export function Sidebar({ user, open, onNavigate }: Props) {
   const [location, navigate] = useLocation();
   const lists = useLiveQuery(() => getLists(db), [], []);
   const [name, setName] = useState('');
+  const online = useOnline();
+  const publicLists = usePolled(fetchPublicLists, 15_000);
 
   async function addList(e: FormEvent) {
     e.preventDefault();
@@ -47,6 +51,31 @@ export function Sidebar({ user, open, onNavigate }: Props) {
           </li>
         ))}
       </ul>
+
+      {(publicLists.value?.length ?? 0) > 0 && (
+        <>
+          <h2 className="nav-heading">{t.nav.publicLists}</h2>
+          <ul className="nav-lists" aria-label={t.nav.publicLists}>
+            {publicLists.value?.map((l) => (
+              <li key={l.id}>
+                <Link
+                  href={`/public/${l.id}`}
+                  className={active(`/public/${l.id}`) ? 'active' : ''}
+                  aria-current={active(`/public/${l.id}`) ? 'page' : undefined}
+                  onClick={onNavigate}
+                  title={l.ownerEmail}
+                >
+                  {l.name}
+                  <span className="nav-owner">{l.ownerEmail}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {!online && publicLists.value === undefined && (
+        <p className="hint nav-note">{t.nav.publicNeedsConnection}</p>
+      )}
 
       <form onSubmit={addList} className="new-list">
         <input

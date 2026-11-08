@@ -26,8 +26,8 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | 3 | Change password (API, session, Settings UI) | ☑ |
 | 4 | Online presence + Admin "Online" column (also: all three config settings) | ☑ |
 | 5 | Server config + attachments API | ☑ |
-| 6 | Public lists API + sidebar section + read-only page + switch | ☐ |
-| 7 | Attachments UI (task detail, public page) | ☐ |
+| 6 | Public lists API + sidebar section + read-only page + switch | ☑ |
+| 7 | Attachments UI (task detail, public page) | ☑ |
 | 8 | Drag & drop (reorder, drop on sidebar list) | ☐ |
 | 9 | Reminders (due time, scheduler, notifications) | ☐ |
 | 10 | End-to-end tests, README, final checks | ☐ |

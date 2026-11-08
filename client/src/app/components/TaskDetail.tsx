@@ -6,6 +6,7 @@ import { getLists, getTodoById } from '../../data/queries';
 import { fromDateInput, toDateInput } from '../dates';
 import { db, repo } from '../services';
 import { t } from '../strings';
+import { AttachmentsSection } from './Attachments';
 import { useUndoToast } from './Toast';
 
 /** Edit one task. Every change is saved at once (T3). */
@@ -123,6 +124,8 @@ function TaskForm({ todo, listId }: { todo: Todo; listId: string }) {
           ))}
         </select>
       </label>
+
+      <AttachmentsSection todoId={todo.id} />
 
       <button type="button" className="danger" onClick={() => void remove()}>
         {t.todo.delete}
