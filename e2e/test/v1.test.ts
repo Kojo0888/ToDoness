@@ -103,7 +103,8 @@ describe('v1: change password (FR-29 – FR-31)', () => {
   });
 
   it('refuses two different new passwords', async () => {
-    const { page } = await newUser('pw2');
+    const { ann } = await getPair();
+    const page = ann.page;
     await page.getByRole('link', { name: 'Settings' }).click();
     await page.getByLabel('Current password').fill(PASSWORD);
     await page.getByLabel('New password', { exact: true }).fill('brand new password');
@@ -268,7 +269,9 @@ describe('v1: attachments (FR-48 – FR-55)', () => {
   });
 
   it('refuses a file above the configured limit before uploading it', async () => {
-    const { page } = await newUser('big');
+    const { ann } = await getPair();
+    const page = ann.page;
+    await page.getByRole('navigation').getByRole('link', { name: 'Inbox' }).click();
     await addTask(page, 'Big file');
     await openTask(page, 'Big file');
     await page.getByText('Up to 1.0 MB per file.').waitFor();
@@ -289,8 +292,9 @@ describe('v1: attachments (FR-48 – FR-55)', () => {
   });
 
   it('a task created offline is sent first, then the file goes up', async () => {
-    const { page } = await newUser('late');
-    await page.waitForTimeout(500);
+    const { ann } = await getPair();
+    const page = ann.page;
+    await page.getByRole('navigation').getByRole('link', { name: 'Inbox' }).click();
     await addTask(page, 'Brand new');
     await openTask(page, 'Brand new');
     await page.getByTestId('attachment-input').setInputFiles({
@@ -365,6 +369,20 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
   const shown = (page: Page) =>
     page.evaluate(() => (window as unknown as { __shown: string[] }).__shown);
 
+  /** The time control has an hour and a minute list; the minute list has steps of 5. */
+  async function pickTime(page: Page, time: string) {
+    const [h, m] = time.split(':') as [string, string];
+    await page.getByRole('combobox', { name: 'Hour' }).selectOption(h);
+    const minute = page.getByRole('combobox', { name: 'Minute' });
+    // not every minute is a choice: use the exact one if offered, else the closest earlier step
+    const offered = await minute
+      .locator('option')
+      .evaluateAll((o) => o.map((x) => (x as HTMLOptionElement).value));
+    await minute.selectOption(
+      offered.includes(m) ? m : String(Math.floor(Number(m) / 5) * 5).padStart(2, '0'),
+    );
+  }
+
   /** Local `YYYY-MM-DD` and `HH:MM` for a moment `minutes` from now. */
   const inMinutes = (minutes: number) => {
     const d = new Date(Date.now() + minutes * 60_000);
@@ -378,7 +396,7 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
   async function setDue(page: Page, minutes: number) {
     const { date, time } = inMinutes(minutes);
     await page.getByLabel('Due date').fill(date);
-    await page.getByLabel('Due time').fill(time);
+    await pickTime(page, time);
   }
 
   it('shows a notification and an in-app message once the reminder time has come', async () => {
@@ -395,11 +413,11 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
 
     const message = page.getByRole('region', { name: 'Reminders' });
     await message.getByText('Reminder: Dentist').waitFor();
-    await message.getByText(/Due in (39|40) minutes/).waitFor();
+    await message.getByText(/Due in (3[5-9]|40) minutes/).waitFor();
     await page.waitForFunction(
       () => (window as unknown as { __shown: string[] }).__shown.length > 0,
     );
-    expect((await shown(page))[0]).toMatch(/^Dentist\|Due in (39|40) minutes/);
+    expect((await shown(page))[0]).toMatch(/^Dentist\|Due in (3[5-9]|40) minutes/);
 
     // Once only: after a reload the same reminder does not come back.
     await page.reload();
@@ -410,7 +428,7 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
 
     // Changing the due time re-arms it.
     await openTask(page, 'Dentist');
-    await setDue(page, 35);
+    await setDue(page, 15); // a different time: re-armed
     await page.getByRole('region', { name: 'Reminders' }).getByText('Reminder: Dentist').waitFor();
   });
 
@@ -569,8 +587,8 @@ describe('v1: web push in the service worker (FR-62, FR-66)', () => {
   });
 
   it('Settings explains the push state of this device', async () => {
-    const page = await newPage(await newDevice(browser, app));
-    await signUp(page, uniqueEmail('pushset'));
+    const { bob } = await getPair();
+    const page = bob.page;
     await page.getByRole('link', { name: 'Settings' }).click();
     await page.getByRole('heading', { name: 'Push notifications' }).waitFor();
     // headless Chromium has no push service, so it is never "on" here; it must say something clear
@@ -707,4 +725,93 @@ describe('update 3: toggle, sticky Settings/Admin, sync diagnostics', () => {
       .locator('.flag', { hasText: 'Online event → saved' });
     await reconnect.getByText(/^\d+(\.\d)? (ms|s)$/).waitFor();
   }, 60_000);
+});
+
+describe('update 4: time control and phone file pickers', () => {
+  it('the due time is chosen with hour and minute lists, quick choices, and can be cleared', async () => {
+    const { ann } = await getPair();
+    const page = ann.page;
+    await page.getByRole('navigation').getByRole('link', { name: 'Inbox' }).click();
+    await addTask(page, 'Time control');
+    await openTask(page, 'Time control');
+
+    const group = page.getByRole('group', { name: 'Due time (optional)' });
+    expect(await page.locator('input[type="time"]').count()).toBe(0); // the old control is gone
+    expect(await group.getByRole('combobox', { name: 'Hour' }).isDisabled()).toBe(true); // needs a date first
+
+    await page.getByLabel('Due date').fill('2031-06-10');
+    // a quick choice
+    await group.getByRole('button', { name: /Morning/ }).click();
+    await expect.poll(() => group.getByRole('combobox', { name: 'Hour' }).inputValue()).toBe('09');
+    expect(await group.getByRole('combobox', { name: 'Minute' }).inputValue()).toBe('00');
+    expect(await group.getByRole('button', { name: /Morning/ }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    await page
+      .locator('.todos .todo', { hasText: 'Time control' })
+      .getByText(/09:00|9:00/)
+      .waitFor();
+
+    // hour and minute lists
+    await group.getByRole('combobox', { name: 'Hour' }).selectOption('17');
+    await group.getByRole('combobox', { name: 'Minute' }).selectOption('45');
+    await page
+      .locator('.todos .todo', { hasText: 'Time control' })
+      .getByText(/5:45|17:45/)
+      .waitFor();
+    // reload: the time is kept
+    await page.reload();
+    await task(page, 'Time control').waitFor();
+    await openTask(page, 'Time control');
+    await expect.poll(() => page.getByRole('combobox', { name: 'Hour' }).inputValue()).toBe('17');
+    expect(await page.getByRole('combobox', { name: 'Minute' }).inputValue()).toBe('45');
+
+    // clearing the time keeps the date
+    await page.getByRole('button', { name: 'Clear time' }).click();
+    await expect.poll(() => page.getByRole('combobox', { name: 'Hour' }).inputValue()).toBe('');
+    expect(await page.getByLabel('Due date').inputValue()).toBe('2031-06-10');
+    expect(await page.getByRole('combobox', { name: 'Minute' }).isDisabled()).toBe(true);
+  });
+
+  it('a phone gets separate pickers for photos/videos and documents, never "any file" or audio', async () => {
+    const context = await newDevice(
+      browser,
+      app,
+      { width: 390, height: 780 },
+      { isMobile: true, hasTouch: true },
+    );
+    const page = await newPage(context);
+    await signUp(page, uniqueEmail('phone'));
+    await addTask(page, 'From my phone');
+    await page.getByRole('link', { name: 'From my phone' }).click();
+    await page.getByRole('complementary', { name: 'Task details' }).waitFor();
+
+    await page.getByRole('button', { name: 'Add photos or videos' }).waitFor();
+    await page.getByRole('button', { name: 'Add documents' }).waitFor();
+    expect(await page.getByRole('button', { name: 'Add files' }).count()).toBe(0);
+    expect(await page.getByTestId('attachment-input-media').getAttribute('accept')).toBe(
+      'image/*,video/*',
+    );
+    const documents = await page.getByTestId('attachment-input-documents').getAttribute('accept');
+    expect(documents).toBe('application/*,text/*');
+    expect(documents).not.toMatch(/audio|\*\/\*/);
+
+    // and it still uploads
+    await page.getByTestId('attachment-input-documents').setInputFiles({
+      name: 'from-phone.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('hi'),
+    });
+    await page.getByRole('link', { name: 'from-phone.txt' }).waitFor();
+  });
+
+  it('a computer keeps one unrestricted picker', async () => {
+    const { ann } = await getPair();
+    const page = ann.page;
+    await page.getByRole('navigation').getByRole('link', { name: 'Inbox' }).click();
+    await addTask(page, 'Desktop picker');
+    await openTask(page, 'Desktop picker');
+    expect(await page.getByTestId('attachment-input').getAttribute('accept')).toBeNull();
+    await page.getByRole('button', { name: 'Add files' }).waitFor();
+  });
 });

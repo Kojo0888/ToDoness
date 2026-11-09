@@ -164,10 +164,11 @@ Dockerfile's build stage) and restarts the app; `./update.sh --pull` runs
 so the native modules always match it. To roll back, keep a copy of `release/`.
 
 If the server is a separate machine, build locally and upload instead:
-`./deploy.sh user@server:/path/to/todoness/release` builds the app, then
+`./deploy.sh user@server:/path/to/todoness` builds the app (the script adds the
+`release` folder itself, so just give the project folder), then
 copies `release/` over with rsync (keeping the server's `node_modules`). The
-target must end in `/release`; anything else is refused, because the upload
-makes the target an exact copy and would delete everything else in it. It
+upload makes the target an exact copy, so the script refuses to run against this
+checkout's own `./release`; `--dry-run` only prints where the files would go. It
 does not touch Docker; restart the `app` container on the server, or let it
 restart itself, to load the new files.
 

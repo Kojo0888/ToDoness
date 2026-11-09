@@ -6,6 +6,7 @@ import type { EditResult } from '../publicEdit';
 import { publicEditor } from '../services';
 import { t } from '../strings';
 import { AttachmentsSection } from './Attachments';
+import { TimeField } from './TimeField';
 
 /** Edit one task of a public list; every change is saved at once (FR-33). */
 export function PublicTaskDetail({
@@ -44,9 +45,9 @@ export function PublicTaskDetail({
     void act(publicEditor.updateTodo(listId, todo.id, { dueAt }));
   }
 
-  function changeTime(e: ChangeEvent<HTMLInputElement>) {
+  function changeTime(time: string) {
     if (todo.dueAt === null) return;
-    const dueAt = fromDateTimeInput(toDateInput(todo.dueAt), e.target.value);
+    const dueAt = fromDateTimeInput(toDateInput(todo.dueAt), time);
     if (dueAt !== null) void act(publicEditor.updateTodo(listId, todo.id, { dueAt }));
   }
 
@@ -102,15 +103,11 @@ export function PublicTaskDetail({
             onChange={changeDate}
           />
         </label>
-        <label>
-          {t.todo.dueTime}
-          <input
-            type="time"
-            value={toTimeInput(todo.dueAt)}
-            disabled={disabled || todo.dueAt === null}
-            onChange={changeTime}
-          />
-        </label>
+        <TimeField
+          value={toTimeInput(todo.dueAt)}
+          disabled={disabled || todo.dueAt === null}
+          onChange={changeTime}
+        />
       </div>
 
       <label>
