@@ -330,8 +330,51 @@ and `pnpm format:check`.
 - `web-push` is bundled into `server/dist/index.js` (pure JavaScript), so the Docker images
   need no extra install step.
 
-**Test counts after update 2:** shared 95, server 221, client 216, integration 31,
-browser (e2e) 33 (13 MVP + 20 v1 scenarios).
+### Update 3: toggle, sticky sidebar, sync diagnostics
+
+(PRD 4.8.) Built test first, as before.
+
+- **Cause of the slow offline → online switch.** A test (`client/test/recovery.test.ts`) with a
+  black-holed connection reproduced it: a request that never answers kept the sync busy until
+  its time limit, the browser's `online` event then waited for it (5.5 s after a 1.5 s outage),
+  and the next retry came after a further delay (up to 6.6 s when the browser did not notice
+  the return). Fixes: the `online` event aborts waiting requests and runs the sync again at once;
+  the `offline` event shows Offline immediately; requests give up after 3.5 s and, after a
+  failure, 2 s; while the connection is down it retries every second (server errors still back
+  off 1 s, 2 s, 4 s, 5 s). Measured worst case with a silent return: **3.9 s** (was 6.6 s);
+  with the browser's `online` event: immediate.
+- **Trade-off:** a request that takes longer than 3.5 s on a very slow link now counts as a
+  failure and is retried. The data per request is small (50 changes up, 500 down), so this is
+  expected to be fine on an intranet.
+- **The 60 s timers:** none are left in the sync. The values that remain are the login rate-limit
+  windows (server), the 30 s reminder check (app and server push sweep) and the 5 s refresh of
+  public lists, the admin table and the sidebar's public-list names (it was 15 s).
+- **Diagnostics** (`client/src/sync/diagnostics.ts`) are recorded for everyone (a small ring
+  buffer) and shown to admins only, above the sync indicator.
+- Browser tests: toggle and tooltip, Settings/Admin visible with a 25-task list scrolled to the
+  bottom, diagnostics only for the admin and directly above the status, a hanging connection
+  that comes back silently (saved within 5 s, log explains it), and Chromium's own offline →
+  online switching.
+
+### Update 4: time control, phone pickers, deploy script
+
+(PRD 4.9; decisions in [Decisions.md](./Decisions.md).)
+
+- `client/src/app/timeField.ts` (tested) and `components/TimeField.tsx` replace `<input type="time">`.
+  The control keeps a local draft value so two quick changes (hour, then minute) do not use stale
+  props; a browser test caught that.
+- `attachmentPickers(touchScreen)` (tested) decides the pickers; browser tests use a phone
+  emulation (`isMobile`, `hasTouch`). Real Android behaviour could not be tested here.
+- `deploy.sh` adds `/release` to the target itself; `--dry-run` prints it (tested in
+  `server/test/deploy-script.test.ts`, which also showed the old script would have started a
+  build for any unknown argument).
+- The browser tests share two users, because the server limits sign-ups to 20 per hour per address.
+
+**Test counts after update 4:** shared 95, server 228, client 246, integration 31, browser (e2e)
+41 (13 MVP + 28 v1 scenarios).
+
+**Superseded counts (update 3):** shared 95, server 221, client 237, integration 31,
+browser (e2e) 38 (13 MVP + 25 v1 scenarios).
 
 **Not done / ideas for later**
 

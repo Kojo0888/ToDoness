@@ -223,6 +223,23 @@ h3 {
   padding: 1rem;
   border-right: 1px solid var(--border);
   background: var(--surface);
+  /* Always as tall as the screen, so Settings and Admin never scroll away with a long list. */
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* The lists scroll inside the sidebar; the footer (sync status, Settings, Admin) stays. */
+.nav-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .brand {
@@ -266,6 +283,7 @@ h3 {
 }
 
 .nav-foot {
+  flex: none;
   margin-top: auto;
 }
 
@@ -519,18 +537,58 @@ h2.nav-heading {
 }
 
 .switch {
-  display: flex;
-  align-items: flex-start;
+  display: inline-flex;
+  align-items: center;
   gap: 0.6rem;
   margin: 0.5rem 0;
-  font-weight: 400;
+  font-weight: 600;
+  cursor: pointer;
 }
 
+/* A toggle: the checkbox itself is drawn as a track with a knob. */
 .switch input {
-  margin-top: 0.3rem;
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 2.6rem;
+  height: 1.5rem;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.switch input::before {
+  content: '';
+  position: absolute;
+  top: 0.2rem;
+  left: 0.2rem;
   width: 1.1rem;
   height: 1.1rem;
-  flex: none;
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.3);
+  transition: transform 0.15s;
+}
+
+.switch input:checked {
+  background: var(--accent);
+}
+
+.switch input:checked::before {
+  transform: translateX(1.1rem);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .badge {
@@ -620,8 +678,55 @@ h2.nav-heading {
 
 .due-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+  gap: 0.5rem;
+}
+
+.field-label {
+  display: block;
+  margin: 0.75rem 0 0.25rem;
+  font-weight: 600;
+}
+
+.time-selects {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.time-selects select {
+  width: 5rem;
+  padding: 0.55rem 0.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.chip {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: 0.9rem;
+}
+
+.chip .hint {
+  font-size: 0.8rem;
+}
+
+.chip.is-selected {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.chip.is-selected .hint {
+  color: inherit;
 }
 
 .reminder-region {
@@ -647,6 +752,97 @@ h2.nav-heading {
   margin: 1rem 0;
 }
 
+.sync-diag {
+  margin-bottom: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.sync-flags {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0 0 0.25rem;
+}
+
+.sync-flags .flag {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.sync-flags dt {
+  color: var(--muted);
+}
+
+.sync-flags dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.flag-ok dd {
+  color: var(--ok);
+}
+
+.flag-warn dd {
+  color: var(--warn);
+  font-weight: 700;
+}
+
+.flag-busy dd {
+  color: var(--accent);
+}
+
+/* Beside the sidebar (which would cut it off, and must stay clickable). */
+.sync-log {
+  position: fixed;
+  left: 16.5rem;
+  bottom: 1rem;
+  z-index: 30;
+  width: min(34rem, 94vw);
+  max-height: 60vh;
+  overflow: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 8px 30px rgb(0 0 0 / 0.3);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+}
+
+.sync-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.sync-log ol {
+  margin: 0.4rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sync-log li {
+  padding: 0.1rem 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+.sync-log time {
+  color: var(--muted);
+}
+
+.log-kind {
+  display: inline-block;
+  min-width: 4.2rem;
+  font-weight: 700;
+}
+
 .facts {
   margin: 0 0 1rem;
 }
@@ -662,6 +858,15 @@ h2.nav-heading {
 /* ---------- phones ---------- */
 
 @media (max-width: 760px) {
+  /* On a phone the log covers the screen; it has its own Close button. */
+  .sync-log {
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    width: auto;
+    z-index: 40;
+  }
+
   .shell {
     display: block;
   }

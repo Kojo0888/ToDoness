@@ -11,6 +11,7 @@ function fakeEngine(results: SyncResult[] = []) {
       calls.push(Date.now());
       return results[Math.min(i++, results.length - 1)] ?? { ok: true };
     }),
+    abort: vi.fn(),
     markOffline: vi.fn(() => {
       engine.status = { state: 'offline', lastSyncAt: null };
     }),
@@ -22,23 +23,28 @@ function fakeEngine(results: SyncResult[] = []) {
     calls: number[];
     sync: ReturnType<typeof vi.fn>;
     markOffline: ReturnType<typeof vi.fn>;
+    abort: ReturnType<typeof vi.fn>;
   };
 }
 
 function fakeEnv() {
-  const handlers: Record<string, Set<() => void>> = { online: new Set(), visible: new Set() };
+  const handlers: Record<string, Set<() => void>> = {
+    online: new Set(),
+    offline: new Set(),
+    visible: new Set(),
+  };
   const env = {
     online: true,
     visible: true,
     isOnline: () => env.online,
     isVisible: () => env.visible,
-    on: (event: 'online' | 'visible', h: () => void) => {
+    on: (event: 'online' | 'offline' | 'visible', h: () => void) => {
       handlers[event]!.add(h);
       return () => handlers[event]!.delete(h);
     },
     random: () => 0.5,
-    fire: (event: 'online' | 'visible') => handlers[event]!.forEach((h) => h()),
-    listeners: () => handlers.online!.size + handlers.visible!.size,
+    fire: (event: 'online' | 'offline' | 'visible') => handlers[event]!.forEach((h) => h()),
+    listeners: () => handlers.online!.size + handlers.offline!.size + handlers.visible!.size,
   };
   return env satisfies RunnerEnv & Record<string, unknown>;
 }
@@ -53,6 +59,55 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe('browser connection events (offline → online speed)', () => {
+  it('"offline" shows Offline at once and gives up on waiting requests', async () => {
+    const engine = fakeEngine([ok]);
+    const env = fakeEnv();
+    createSyncRunner({ engine, env }).start();
+    await flush();
+    env.online = false;
+    env.fire('offline');
+    expect(engine.abort).toHaveBeenCalled();
+    expect(engine.markOffline).toHaveBeenCalled();
+    expect(engine.status.state).toBe('offline');
+  });
+
+  it('"online" during a hanging sync aborts it and runs again straight away', async () => {
+    let finishFirst!: (r: SyncResult) => void;
+    const engine = fakeEngine([ok]);
+    engine.sync.mockImplementationOnce(() => new Promise<SyncResult>((r) => (finishFirst = r)));
+    const env = fakeEnv();
+    createSyncRunner({ engine, env, intervalMs: 600_000 }).start();
+    await flush(); // the first sync is waiting on a dead connection
+    expect(engine.sync).toHaveBeenCalledTimes(1);
+
+    env.fire('online');
+    expect(engine.abort).toHaveBeenCalledTimes(1);
+    finishFirst(offline); // the abort makes the waiting request fail
+    await flush();
+    expect(engine.sync).toHaveBeenCalledTimes(2); // again at once: no retry delay
+  });
+
+  it('"online" while nothing is running does not abort anything', async () => {
+    const engine = fakeEngine([ok]);
+    const env = fakeEnv();
+    createSyncRunner({ engine, env }).start();
+    await flush();
+    env.fire('online');
+    await flush();
+    expect(engine.abort).not.toHaveBeenCalled();
+  });
+
+  it('removes its listeners when stopped', () => {
+    const env = fakeEnv();
+    const runner = createSyncRunner({ engine: fakeEngine([ok]), env });
+    runner.start();
+    expect(env.listeners()).toBe(3);
+    runner.stop();
+    expect(env.listeners()).toBe(0);
+  });
 });
 
 describe('createSyncRunner', () => {
@@ -91,21 +146,55 @@ describe('createSyncRunner', () => {
     expect(engine.sync).toHaveBeenCalledTimes(2);
   });
 
-  it('retries after failures with growing delays, and starts over after a success', async () => {
-    const engine = fakeEngine([offline, offline, offline, ok]);
-    createSyncRunner({ engine, env: fakeEnv(), intervalMs: 600_000 }).start(); // isolate retries from the timer
-    await flush(); // fails (attempt 0) -> retry in 1s
+  it('while the connection is down it retries every second, not slower', async () => {
+    const engine = fakeEngine([offline, offline, offline, offline, offline, ok]);
+    createSyncRunner({ engine, env: fakeEnv(), intervalMs: 600_000 }).start();
+    await flush(); // fails -> retry in 1s
     expect(engine.sync).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(999);
     expect(engine.sync).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(1); // second try, fails -> retry in 2s
+    await vi.advanceTimersByTimeAsync(1);
     expect(engine.sync).toHaveBeenCalledTimes(2);
-    await vi.advanceTimersByTimeAsync(2000); // third try, fails -> retry in 4s
+    for (let n = 3; n <= 6; n++) {
+      await vi.advanceTimersByTimeAsync(1000); // never more than a second apart
+      expect(engine.sync).toHaveBeenCalledTimes(n);
+    }
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(engine.sync).toHaveBeenCalledTimes(6); // it worked: no more retries
+  });
+
+  it('after server errors it backs off 1 s, 2 s, 4 s, then stays at 5 s at most', async () => {
+    const serverError: SyncResult = { ok: false, kind: 'server', message: 'Server answered 500' };
+    const engine = fakeEngine([serverError]);
+    createSyncRunner({ engine, env: fakeEnv(), intervalMs: 600_000 }).start();
+    await flush();
+    expect(engine.sync).toHaveBeenCalledTimes(1);
+    for (const [wait, calls] of [
+      [1000, 2],
+      [2000, 3],
+      [4000, 4],
+      [5000, 5],
+      [5000, 6],
+    ] as const) {
+      await vi.advanceTimersByTimeAsync(wait - 1);
+      expect(engine.sync).toHaveBeenCalledTimes(calls - 1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(engine.sync).toHaveBeenCalledTimes(calls);
+    }
+  });
+
+  it('starts over with a short delay after a success', async () => {
+    const serverError: SyncResult = { ok: false, kind: 'server', message: 'x' };
+    const engine = fakeEngine([serverError, serverError, ok, serverError, ok]);
+    const runner = createSyncRunner({ engine, env: fakeEnv(), intervalMs: 600_000 });
+    runner.start();
+    await vi.advanceTimersByTimeAsync(0 + 1000 + 2000); // fails, fails, works
     expect(engine.sync).toHaveBeenCalledTimes(3);
-    await vi.advanceTimersByTimeAsync(4000); // fourth try works
+    runner.trigger(); // the next failure starts at 1 s again, not at 4 s
+    await vi.advanceTimersByTimeAsync(0);
     expect(engine.sync).toHaveBeenCalledTimes(4);
-    await vi.advanceTimersByTimeAsync(3_000);
-    expect(engine.sync).toHaveBeenCalledTimes(4); // no more retries
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(engine.sync).toHaveBeenCalledTimes(5);
   });
 
   it('syncs at once when the browser comes back online, skipping the wait', async () => {

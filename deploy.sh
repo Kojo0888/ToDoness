@@ -3,30 +3,40 @@
 # The server runs docker-compose.folder.yml and restarts the app by itself;
 # this script does not touch Docker. Needs Node 22, pnpm, rsync and ssh here.
 #
-# Usage: ./deploy.sh user@server:/path/to/todoness/release
-#    or: DEPLOY_TARGET=user@server:/path/to/todoness/release ./deploy.sh
+# Usage: ./deploy.sh user@server:/path/to/todoness
+#    or: DEPLOY_TARGET=user@server:/path/to/todoness ./deploy.sh
+# Give the project folder on the server; the script adds the "release" folder itself
+# (a path that already ends in /release also works, it is not added twice).
+# ./deploy.sh --dry-run <target> only prints where the files would go.
 set -eu
 cd "$(dirname "$0")"
 
+dry_run=0
+if [ "${1:-}" = "--dry-run" ]; then
+  dry_run=1
+  shift
+fi
+
 target="${1:-${DEPLOY_TARGET:-}}"
 if [ -z "$target" ]; then
-  echo "Usage: $0 user@server:/path/to/todoness/release" >&2
+  echo "Usage: $0 [--dry-run] user@server:/path/to/todoness" >&2
   exit 1
 fi
+
+# The release folder is part of the layout, so it is not something to remember:
+# give the project folder and it is added (a path already ending in /release is kept).
+target="${target%/}"
+case "$target" in
+  */release | *:release) ;;
+  *) target="$target/release" ;;
+esac
 
 # Safety checks. rsync --delete below makes the target an exact copy of the
 # release, so a wrong target destroys whatever else lives there (docker-compose
 # files, backups, the server's own ./release folder). That is also what causes
 # "cannot delete non-empty directory: release": node_modules is excluded from
-# deletion, so rsync cannot remove a folder that contains it.
-case "$target" in
-  */release | */release/) ;;
-  *)
-    echo "Refusing: the target must be the server's release folder (a path ending in /release), got: $target" >&2
-    exit 1
-    ;;
-esac
-
+# deletion, so rsync cannot remove a folder that contains it. Because the release
+# folder is added above, the target always ends in it here.
 case "$target" in
   *:*) host="${target%%:*}"; path="${target#*:}" ;;
   *) host=""; path="$target" ;;
@@ -40,6 +50,11 @@ if [ -z "$host" ]; then
     echo "Run deploy.sh from your build machine, or use ./update.sh on the server." >&2
     exit 1
   fi
+fi
+
+if [ "$dry_run" = 1 ]; then
+  echo "$target"
+  exit 0
 fi
 
 # --ignore-scripts: nothing native is needed to build. The server installs the

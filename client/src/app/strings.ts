@@ -77,7 +77,7 @@ export const t = {
     movedTo: (name: string) => `Moved to ${name}.`,
     public: 'Public list',
     publicHint:
-      'Every user of the app can read and edit the tasks of this list. Only you can rename or delete it.',
+      'Public list: every user of the app can read and edit the tasks of this list. Only you can rename or delete it.',
   },
 
   publicPage: {
@@ -112,6 +112,11 @@ export const t = {
     notes: 'Notes',
     dueDate: 'Due date',
     dueTime: 'Due time (optional)',
+    timeHour: 'Hour',
+    timeMinute: 'Minute',
+    timeClear: 'Clear time',
+    timeClearShort: 'Clear',
+    timePresets: 'Common times',
     remind: 'Remind me',
     reminders: {
       none: 'No reminder',
@@ -150,6 +155,11 @@ export const t = {
   attachments: {
     title: 'Attachments',
     add: 'Add files',
+    pick: {
+      files: 'Add files',
+      media: 'Add photos or videos',
+      documents: 'Add documents',
+    },
     none: 'No attachments.',
     remove: (name: string) => `Remove ${name}`,
     removeLabel: 'Remove',
@@ -170,6 +180,33 @@ export const t = {
       server: 'The server had a problem. Try again in a moment.',
       network: 'Cannot reach the server. Check your connection.',
       cancelled: 'Upload cancelled.',
+    },
+  },
+
+  syncDiag: {
+    title: 'Sync diagnostics (admin)',
+    browser: 'Browser',
+    online: 'online',
+    offline: 'offline',
+    sync: 'Sync',
+    request: 'Request',
+    none: '–',
+    waiting: (what: string, s: string) => `${what} waiting ${s}`,
+    last: (what: string, ms: string, outcome: string) => `${what} ${ms}, ${outcome}`,
+    nextTry: 'Next try',
+    reconnect: 'Online event → saved',
+    outage: 'Outage (first failure → saved)',
+    showLog: 'Log',
+    hideLog: 'Hide log',
+    closeLog: 'Close log',
+    logTitle: 'Sync log (newest first)',
+    empty: 'Nothing yet.',
+    states: {
+      idle: 'idle',
+      syncing: 'syncing',
+      offline: 'offline',
+      error: 'error',
+      auth_required: 'login needed',
     },
   },
 

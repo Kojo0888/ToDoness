@@ -20,6 +20,27 @@ export function formatSize(bytes: number): string {
   return `${text} ${UNITS[unit]}`;
 }
 
+export interface FilePicker {
+  id: 'files' | 'media' | 'documents';
+  /** The `accept` of the file input; none = any file. */
+  accept: string | undefined;
+}
+
+/**
+ * Which file pickers to offer. On a phone, an input that accepts "anything" (or audio)
+ * makes Android list its recorders, so the browser asks for camera and microphone access.
+ * Photos/videos and documents, asked for separately and without audio, open the system's
+ * media and file pickers instead.
+ */
+export function attachmentPickers(touchScreen: boolean): FilePicker[] {
+  return touchScreen
+    ? [
+        { id: 'media', accept: 'image/*,video/*' },
+        { id: 'documents', accept: 'application/*,text/*' },
+      ]
+    : [{ id: 'files', accept: undefined }];
+}
+
 export function checkFileSize(size: number, maxBytes: number): 'ok' | 'empty' | 'too_large' {
   if (size === 0) return 'empty';
   return size > maxBytes ? 'too_large' : 'ok';

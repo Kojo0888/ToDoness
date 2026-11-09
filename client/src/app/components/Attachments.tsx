@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import type { Attachment } from '@todoness/shared';
 import {
+  attachmentPickers,
   checkFileSize,
   downloadUrl,
   fetchAttachments,
@@ -43,7 +44,12 @@ export function AttachmentsSection({ todoId }: { todoId: string }) {
   const [max, setMax] = useState<number | undefined>(undefined);
   const [running, setRunning] = useState<Running | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const input = useRef<HTMLInputElement>(null);
+  const inputs = useRef<Record<string, HTMLInputElement | null>>({});
+  // A phone or tablet: ask the system for photos/videos and documents separately.
+  const [touchScreen] = useState(
+    () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches,
+  );
+  const pickers = attachmentPickers(touchScreen);
 
   const reload = useCallback(async () => {
     const list = await fetchAttachments(todoId);
@@ -147,21 +153,28 @@ export function AttachmentsSection({ todoId }: { todoId: string }) {
         </p>
       )}
 
-      <input
-        ref={input}
-        type="file"
-        multiple
-        hidden
-        data-testid="attachment-input"
-        onChange={(e) => void onPick(e)}
-      />
-      <button
-        type="button"
-        disabled={!online || running !== null}
-        onClick={() => input.current?.click()}
-      >
-        {t.attachments.add}
-      </button>
+      {pickers.map((p) => (
+        <span key={p.id}>
+          <input
+            ref={(el) => {
+              inputs.current[p.id] = el;
+            }}
+            type="file"
+            multiple
+            hidden
+            accept={p.accept}
+            data-testid={p.id === 'files' ? 'attachment-input' : `attachment-input-${p.id}`}
+            onChange={(e) => void onPick(e)}
+          />
+          <button
+            type="button"
+            disabled={!online || running !== null}
+            onClick={() => inputs.current[p.id]?.click()}
+          >
+            {t.attachments.pick[p.id]}
+          </button>{' '}
+        </span>
+      ))}
       {max !== undefined && <p className="hint">{t.attachments.maxSize(formatSize(max))}</p>}
     </section>
   );

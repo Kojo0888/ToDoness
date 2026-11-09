@@ -3,9 +3,10 @@ import { countPending } from '../../data/queries';
 import { useOnline, useSyncStatus } from '../hooks';
 import { db } from '../services';
 import { t } from '../strings';
+import { SyncDiagnostics } from './SyncDiagnostics';
 
 /** Shows whether the data is safe (FR-18). */
-export function SyncBadge() {
+export function SyncBadge({ admin = false }: { admin?: boolean }) {
   const status = useSyncStatus();
   const online = useOnline();
   const pending = useLiveQuery(() => countPending(db), [], 0);
@@ -30,14 +31,17 @@ export function SyncBadge() {
   }
 
   return (
-    <p
-      className={`sync-badge sync-${tone}`}
-      role="status"
-      aria-live="polite"
-      data-testid="sync-status"
-    >
-      <span className="sync-dot" aria-hidden="true" />
-      {text}
-    </p>
+    <>
+      {admin && <SyncDiagnostics />}
+      <p
+        className={`sync-badge sync-${tone}`}
+        role="status"
+        aria-live="polite"
+        data-testid="sync-status"
+      >
+        <span className="sync-dot" aria-hidden="true" />
+        {text}
+      </p>
+    </>
   );
 }
