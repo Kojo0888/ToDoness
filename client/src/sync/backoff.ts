@@ -6,8 +6,12 @@ const MAX_MS = 5000;
  * up to 5 seconds (never more, jitter included), with up to 20% random variation
  * so many browsers do not all come back at the same moment.
  */
-export function nextDelay(attempt: number, random: () => number = Math.random): number {
+export function nextDelay(
+  attempt: number,
+  random: () => number = Math.random,
+  maxMs: number = MAX_MS,
+): number {
   const steps = Math.min(Math.max(0, attempt), 30);
-  const base = Math.min(MAX_MS, BASE_MS * 2 ** steps);
-  return Math.min(MAX_MS, Math.round(base * (0.8 + 0.4 * random())));
+  const base = Math.min(maxMs, BASE_MS * 2 ** steps);
+  return Math.min(maxMs, Math.round(base * (0.8 + 0.4 * random())));
 }

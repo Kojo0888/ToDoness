@@ -136,6 +136,16 @@ and makes tasks richer:
 | FR-65 | Push needs HTTPS (or localhost), the user's permission, and outbound HTTPS from the **server** to the browser vendor's push service. Where it is not available, Settings says why and reminders still appear inside the app. | Must |
 | FR-66 | A reminder shown by the app itself (app open) and the same reminder pushed by the server use the same notification tag, so the user sees one notification, not two. | Should |
 
+### 4.8 Switch, sidebar and sync diagnostics (FR-67 – FR-71)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-67 | The "Public list" setting is a **toggle**. Its explanation is a **tooltip** (and a description for screen readers), not text on the page. | Must |
+| FR-68 | The sidebar is as tall as the screen and does not scroll with the page: the sync status, **Settings** and **Admin** are always visible, however long the task list is. The lists scroll inside the sidebar if there are many. | Must |
+| FR-69 | **Offline → online takes at most 5 seconds** from the moment the connection works again, also when requests hang and the browser does not report the return. When the browser reports it, syncing continues at once (a waiting request is abandoned). Requests give up after 3.5 s (2 s after a failure) and a dead connection is retried every second. | Must |
+| FR-70 | The browser's `offline` event shows **Offline** at once. | Should |
+| FR-71 | **Admin only:** above the "All changes saved" indicator, flags show the browser's online state, the sync state, the request in flight (with how long it has waited) or the last one (time and result), the next planned try, and the last measured *online event → saved* and *outage* times. A **Log** shows the last 100 sync events with times (what triggered a sync, each request and its result, retries). | Must |
+
 ## 5. Non-functional requirements (changes and additions)
 
 | Area | Requirement |
