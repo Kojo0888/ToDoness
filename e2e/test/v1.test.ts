@@ -215,6 +215,48 @@ describe('v1: drag and drop (FR-37 – FR-41)', () => {
     expect(await titlesOnPage(page)).toEqual(['B', 'A', 'C']);
   });
 
+  it('a released task stays where it was dropped: it never jumps back to its old place', async () => {
+    const { page } = await newUser('smooth');
+    for (const title of ['A', 'B', 'C', 'D']) await addTask(page, title);
+    expect(await titlesOnPage(page)).toEqual(['D', 'C', 'B', 'A']);
+    const from = await page.getByRole('button', { name: 'Drag to reorder: A' }).boundingBox();
+    const to = await page.getByRole('button', { name: 'Drag to reorder: D' }).boundingBox();
+    await page.mouse.move(from!.x + 10, from!.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(from!.x + 10, from!.y - 10, { steps: 5 });
+    await page.mouse.move(to!.x + 10, to!.y + 5, { steps: 20 });
+    await page.waitForTimeout(400); // the other rows have made room
+
+    // From the release on, note where the row of A is drawn in every frame.
+    await page.evaluate(() => {
+      const w = window as unknown as { tops: number[] };
+      w.tops = [];
+      const rowOf = () =>
+        [...document.querySelectorAll('.todos .todo')].find(
+          (r) => r.querySelector('.todo-title')?.textContent === 'A',
+        );
+      const start = performance.now();
+      const frame = () => {
+        const row = rowOf();
+        if (row) w.tops.push(row.getBoundingClientRect().top);
+        if (performance.now() - start < 1000) requestAnimationFrame(frame);
+      };
+      window.addEventListener('pointerup', () => requestAnimationFrame(frame), {
+        once: true,
+        capture: true,
+      });
+    });
+    const target = await page.locator('.todos .todo').first().boundingBox();
+    await page.mouse.up();
+    await page.waitForTimeout(1200);
+
+    expect(await titlesOnPage(page)).toEqual(['A', 'D', 'C', 'B']);
+    const tops = await page.evaluate(() => (window as unknown as { tops: number[] }).tops);
+    expect(tops.length).toBeGreaterThan(10);
+    // Not a single frame back at the bottom, where A was before the drag.
+    expect(Math.max(...tops)).toBeLessThan(target!.y + target!.height);
+  });
+
   it('dropping a task on a list in the sidebar moves it there', async () => {
     const { page } = await newUser('move');
     await addList(page, 'Work');
@@ -646,11 +688,20 @@ describe('update 3: toggle, sticky Settings/Admin, sync diagnostics', () => {
     expect(top!.y + top!.height).toBeLessThanOrEqual(viewport.height);
   });
 
-  it('only the admin sees the sync diagnostics, above the sync status', async () => {
+  it('only the admin sees the sync diagnostics, folded away above the sync status', async () => {
     const { bob } = await getPair();
     const page = bob.page;
     await page.getByTestId('sync-status').waitFor();
+    expect(await page.getByRole('button', { name: 'Sync diagnostics' }).count()).toBe(0);
     expect(await page.getByTestId('sync-diagnostics').count()).toBe(0);
+
+    // Folded away at first: only the button that opens it.
+    const toggle = admin.page.getByRole('button', { name: 'Sync diagnostics' });
+    await toggle.waitFor();
+    expect(await toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(await admin.page.getByTestId('sync-diagnostics').count()).toBe(0);
+    await toggle.click();
+    expect(await toggle.getAttribute('aria-expanded')).toBe('true');
 
     const flags = admin.page.getByTestId('sync-diagnostics');
     await flags.waitFor();
@@ -658,6 +709,7 @@ describe('update 3: toggle, sticky Settings/Admin, sync diagnostics', () => {
       'Browser says',
       'App found',
       'Last check',
+      'Check took',
       'Sync',
       'Request',
       'Next try',
@@ -666,10 +718,65 @@ describe('update 3: toggle, sticky Settings/Admin, sync diagnostics', () => {
     ]) {
       await flags.getByText(name, { exact: true }).waitFor();
     }
+    // The time of the last check and how long it took are separate rows.
+    await flags
+      .locator('.flag', { hasText: 'Last check' })
+      .getByText(/^\d+(\.\d)? (ms|s) ago$/)
+      .waitFor();
+    await flags
+      .locator('.flag', { hasText: 'Check took' })
+      .getByText(/^(answered|no answer) \d+(\.\d)? (ms|s)$/)
+      .waitFor();
     const diag = await flags.boundingBox();
     const badge = await admin.page.getByTestId('sync-status').boundingBox();
-    expect(diag!.y + diag!.height).toBeLessThanOrEqual(badge!.y + 1); // directly above
+    expect(diag!.y + diag!.height).toBeLessThanOrEqual(badge!.y + 1); // above
+
+    // It stays open after a reload, and folds away again.
+    await admin.page.reload();
+    await admin.page.getByTestId('sync-diagnostics').waitFor();
+    await admin.page.getByRole('button', { name: 'Sync diagnostics' }).click();
+    await admin.page.getByTestId('sync-diagnostics').waitFor({ state: 'detached' });
+    await admin.page.getByRole('button', { name: 'Sync diagnostics' }).click();
+    await admin.page.getByTestId('sync-diagnostics').waitFor();
   });
+
+  it('the admin sees the queued changes raw', async () => {
+    const context = admin.context;
+    const page = admin.page;
+    await page.getByRole('navigation').getByRole('link', { name: 'Inbox' }).click();
+    await waitSaved(page);
+    await page.getByTestId('sync-diagnostics').waitFor();
+
+    await page.getByRole('button', { name: 'Queued changes' }).click();
+    const queue = page.getByRole('region', { name: 'Queued changes (raw)' });
+    await queue.waitFor();
+    const raw = () => queue.locator('pre').textContent();
+    expect(JSON.parse((await raw())!)).toEqual({ outbox: [], publicOutbox: [] });
+
+    await context.setOffline(true);
+    await page.getByTestId('sync-status').filter({ hasText: 'Offline' }).waitFor({ timeout: 5000 });
+    await addTask(page, 'Queued while offline');
+    await queue.getByText(/Queued while offline/).waitFor();
+    const queued = JSON.parse((await raw())!) as {
+      outbox: { entity: string; type: string; patch: { title: string }; attempts: number }[];
+    };
+    expect(queued.outbox).toHaveLength(1);
+    expect(queued.outbox[0]).toMatchObject({
+      entity: 'todo',
+      type: 'create',
+      patch: { title: 'Queued while offline' },
+    });
+
+    await context.setOffline(false);
+    await waitSaved(page);
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[aria-label="Queued changes (raw)"] pre')?.textContent ===
+        JSON.stringify({ outbox: [], publicOutbox: [] }, null, 2),
+    );
+    await page.getByRole('button', { name: 'Close queued changes' }).click();
+    await queue.waitFor({ state: 'detached' });
+  }, 60_000);
 
   it('offline → online: saved within 5 seconds, also when requests hang and nobody says the connection is back', async () => {
     const page = admin.page;

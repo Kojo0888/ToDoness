@@ -105,6 +105,25 @@ describe('module switch (FR-83 – FR-87)', () => {
     await inbox(page).waitFor();
   });
 
+  it('without public notes on the device yet, the hint is a tooltip, not a line of text', async () => {
+    const email = uniqueEmail('tooltip');
+    const context = await newDevice(browser, app);
+    // The server never answers for the public notes on this device.
+    await context.route('**/api/public/notes*', (route) => route.abort());
+    const page = await newPage(context);
+    await signUp(page, email);
+    await openNotes(page);
+    const link = page.getByRole('navigation').getByRole('link', { name: /Public notes/ });
+    await page.waitForFunction(() =>
+      [...document.querySelectorAll('nav a')].some((a) =>
+        a.getAttribute('title')?.includes('Public notes need a connection the first time.'),
+      ),
+    );
+    expect(await link.getAttribute('title')).toBe('Public notes need a connection the first time.');
+    expect(await page.getByText('Public notes need a connection the first time.').count()).toBe(0);
+    await context.close();
+  });
+
   it('is in the top bar on a phone, without opening the menu', async () => {
     const { page } = await newUser('phone', { width: 390, height: 800 });
     const sw = modules(page);

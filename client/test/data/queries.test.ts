@@ -5,8 +5,10 @@ import {
   getInbox,
   getLists,
   getOpenTodos,
+  getQueuedChanges,
   getTodoById,
 } from '../../src/data/queries';
+import { createPublicEditor } from '../../src/services/publicEdit';
 import { fakeNow, seedInbox, testRepo } from '../helpers/db';
 
 describe('queries', () => {
@@ -68,5 +70,26 @@ describe('queries', () => {
     await repo.createTodo({ listId: inbox.id, title: 'a' });
     await repo.createTodo({ listId: inbox.id, title: 'b' });
     expect(await countPending(db)).toBe(2);
+  });
+
+  it('getQueuedChanges gives both queues raw, oldest first, for the admin', async () => {
+    const { db, repo, now } = testRepo();
+    const inbox = await seedInbox(db);
+    expect(await getQueuedChanges(db)).toEqual({ outbox: [], publicOutbox: [] });
+    await repo.createTodo({ listId: inbox.id, title: 'first' });
+    now.advance(1000);
+    await repo.createTodo({ listId: inbox.id, title: 'second' });
+    const LIST = '0192f0c1-0000-7000-8000-0000000000a1';
+    await createPublicEditor({ db, now }).createTodo(LIST, 'shared', 'a5');
+
+    const queued = await getQueuedChanges(db);
+    expect(queued.outbox.map((op) => (op.patch as { title?: string }).title)).toEqual([
+      'first',
+      'second',
+    ]);
+    // Raw: every field as stored, queue bookkeeping included.
+    expect(queued.outbox[0]).toMatchObject({ entity: 'todo', type: 'create', attempts: 0 });
+    expect(queued.publicOutbox).toHaveLength(1);
+    expect(queued.publicOutbox[0]).toMatchObject({ target: 'list', targetId: LIST });
   });
 });
