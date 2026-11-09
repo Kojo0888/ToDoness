@@ -75,6 +75,7 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
   function clearRetry() {
     clearTimeout(retryTimer);
     retryTimer = undefined;
+    diag?.retryCleared(); // otherwise "Next try" keeps counting for a retry that will not happen
   }
 
   /** What the app found out; `why` is only for the admin diagnostics. */
@@ -201,7 +202,11 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
         }),
         env.on('visible', () => runIfAllowed('tab became visible')),
       );
-      intervalTimer = setInterval(() => runIfAllowed('timer'), intervalMs);
+      diag?.nextRunAt(Date.now() + intervalMs);
+      intervalTimer = setInterval(() => {
+        diag?.nextRunAt(Date.now() + intervalMs);
+        runIfAllowed('timer');
+      }, intervalMs);
       probeTimer = setInterval(() => void probe(), probeIntervalMs);
       void run('start');
     },
@@ -212,6 +217,7 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
       clearTimeout(debounceTimer);
       clearInterval(intervalTimer);
       clearInterval(probeTimer);
+      diag?.nextRunAt(null);
       for (const off of unsubscribe.splice(0)) off();
     },
 

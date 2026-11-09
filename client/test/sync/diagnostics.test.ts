@@ -41,6 +41,15 @@ describe('sync diagnostics (admin)', () => {
     expect(diag.getSnapshot().flags.retry).toBeNull();
   });
 
+  it('forgets a planned retry that was cancelled, and tracks the next timer run', () => {
+    const { diag } = setup();
+    diag.retryScheduled(1000, 1);
+    diag.retryCleared();
+    expect(diag.getSnapshot().flags.retry).toBeNull();
+    diag.nextRunAt(6000);
+    expect(diag.getSnapshot().flags.nextRun).toBe(6000);
+  });
+
   it('measures online event → saved (reconnect) and first failure → saved (outage)', () => {
     const { diag, advance } = setup();
     diag.runEnd(false, 'offline'); // outage starts at 1000

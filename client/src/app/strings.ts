@@ -199,6 +199,7 @@ export const t = {
     waiting: (what: string, s: string) => `${what} waiting ${s}`,
     last: (what: string, ms: string, outcome: string) => `${what} ${ms}, ${outcome}`,
     nextTry: 'Next try',
+    timer: 'timer',
     reconnect: 'Online event → saved',
     outage: 'Outage (first failure → saved)',
     showLog: 'Log',

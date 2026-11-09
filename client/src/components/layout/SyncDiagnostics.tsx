@@ -42,7 +42,9 @@ export function SyncDiagnostics() {
     : t.syncDiag.none;
   const nextTry = flags.retry
     ? `${fmt(Math.max(0, flags.retry.at - now))} (#${flags.retry.attempt})`
-    : t.syncDiag.none;
+    : flags.nextRun !== null && status.state !== 'auth_required'
+      ? `${fmt(Math.max(0, flags.nextRun - now))} (${t.syncDiag.timer})`
+      : t.syncDiag.none;
 
   const rows: [string, string, string?][] = [
     [

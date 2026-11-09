@@ -20,6 +20,8 @@ export interface DiagFlags {
   lastProbe: { at: number; ok: boolean; ms: number } | null;
   /** The next attempt is planned for this time. */
   retry: { at: number; delayMs: number; attempt: number } | null;
+  /** The next regular (timer) run; shown when no retry is planned. */
+  nextRun: number | null;
   /** The last time from the browser's `online` event to "all changes saved". */
   reconnectMs: number | null;
   /** The last time from the first failure to "all changes saved". */
@@ -38,6 +40,10 @@ export interface SyncDiagnostics {
   requestEnd(id: number, outcome: string): void;
   browserOnline(online: boolean): void;
   retryScheduled(delayMs: number, attempt: number): void;
+  /** The planned retry was cancelled (or is starting now). */
+  retryCleared(): void;
+  /** The regular timer will run a sync at this time (epoch ms). */
+  nextRunAt(at: number | null): void;
   /** A connection check finished. */
   probe(ok: boolean, ms: number): void;
   /** A sync run ended. `ok` = everything saved. */
@@ -57,6 +63,7 @@ export function createSyncDiagnostics(now: () => number = Date.now): SyncDiagnos
     lastRequest: null,
     lastProbe: null,
     retry: null,
+    nextRun: null,
     reconnectMs: null,
     outageMs: null,
   };
@@ -115,6 +122,15 @@ export function createSyncDiagnostics(now: () => number = Date.now): SyncDiagnos
     retryScheduled(delayMs, attempt) {
       set({ retry: { at: now() + delayMs, delayMs, attempt } });
       add('retry', `next attempt in ${delayMs} ms (#${attempt})`);
+      emit();
+    },
+    retryCleared() {
+      if (!flags.retry) return;
+      set({ retry: null });
+      emit();
+    },
+    nextRunAt(at) {
+      set({ nextRun: at });
       emit();
     },
     runEnd(ok, detail) {
