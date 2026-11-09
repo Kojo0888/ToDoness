@@ -88,6 +88,50 @@ describe('noteTextSync', () => {
     expect(saves.at(-1)!.text).toBe('ab');
   });
 
+  it('the echo of an earlier own save does not replace newer text (review)', async () => {
+    const { sync, shown, saves } = setup('');
+    sync.focus();
+    sync.type('a');
+    vi.advanceTimersByTime(1000); // the save of "a" starts
+    sync.type('ab');
+    sync.setStored('a'); // the echo of the first save arrives late
+    sync.blur(); // the save of "ab" starts
+    saves[0]!.done();
+    saves[1]!.done();
+    await vi.runAllTimersAsync();
+    expect(shown).toEqual([]);
+    sync.setStored('ab'); // the echo of the last save
+    expect(shown).toEqual([]);
+    // Afterwards, changes from elsewhere are shown again.
+    sync.setStored('from another device');
+    expect(shown).toEqual(['from another device']);
+  });
+
+  it('an old echo arriving after the box is idle again is ignored too', async () => {
+    const { sync, shown, saves } = setup('');
+    sync.focus();
+    sync.type('a');
+    vi.advanceTimersByTime(1000);
+    sync.type('ab');
+    sync.blur();
+    saves[0]!.done();
+    saves[1]!.done();
+    await vi.runAllTimersAsync();
+    sync.setStored('a'); // late echo while idle
+    expect(shown).toEqual([]);
+  });
+
+  it('a change from elsewhere during saves is still shown afterwards', async () => {
+    const { sync, shown, saves } = setup('');
+    sync.focus();
+    sync.type('mine');
+    sync.blur();
+    sync.setStored('theirs');
+    saves[0]!.done();
+    await vi.runAllTimersAsync();
+    expect(shown).toEqual(['theirs']);
+  });
+
   it('dispose saves what was typed', () => {
     const { sync, saves } = setup();
     sync.focus();

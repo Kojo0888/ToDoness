@@ -211,6 +211,18 @@ describe('ETag on the public endpoints', () => {
     expect(changed.headers.get('etag')).not.toBe(etag);
   });
 
+  it('matches weak ETags (from a compressing proxy), lists of tags and * (review)', async () => {
+    const etag = (await c.bob.device.http.get('/api/public/notes')).headers.get('etag')!;
+    for (const header of [`W/${etag}`, `"other", ${etag}`, `"other", W/${etag}`, '*']) {
+      const res = await c.bob.device.http.get('/api/public/notes', { 'if-none-match': header });
+      expect(res.status, header).toBe(304);
+    }
+    const other = await c.bob.device.http.get('/api/public/notes', {
+      'if-none-match': '"x", W/"y"',
+    });
+    expect(other.status).toBe(200);
+  });
+
   it('also on the list of public lists and on one list', async () => {
     for (const url of ['/api/public/lists']) {
       const res = await c.bob.device.http.get(url);

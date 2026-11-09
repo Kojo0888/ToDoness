@@ -8,6 +8,7 @@
  *    focused, nothing unsaved, no save running. One that arrived while busy is shown as soon
  *    as the user is not busy any more (review fix: it used to be skipped for good when it came
  *    in during a save). Typing after it arrived replaces it (latest edit wins when saved).
+ *  - The echo of one of this box's own saves is not news and is never shown over newer text.
  *  - Finishing a save does not show the stored text again by itself: before the database
  *    echoes the save it is still the old text, and showing it would flash the old version.
  */
@@ -35,6 +36,12 @@ export function createNoteTextSync(opts: {
   let timer: ReturnType<typeof setTimeout> | undefined;
   /** A stored text arrived while busy and has not been shown yet. */
   let missed = false;
+  /**
+   * Texts this box saved whose echo has not come back yet. Their echoes are not news (review
+   * fix): a late echo of an earlier save would otherwise replace newer text for a moment.
+   */
+  const sent = new Set<string>();
+  let lastSent: string | undefined;
 
   const busy = () => focused || pending !== undefined || inFlight > 0;
 
@@ -53,6 +60,8 @@ export function createNoteTextSync(opts: {
     pending = undefined;
     if (value === undefined) return;
     inFlight++;
+    sent.add(value);
+    lastSent = value;
     // Called right away: a box that is going away cannot wait.
     let saving: Promise<void> | void;
     try {
@@ -71,6 +80,11 @@ export function createNoteTextSync(opts: {
   return {
     setStored(text) {
       stored = text;
+      if (sent.has(text)) {
+        // Echoes arrive in order: once the last save is back, no older one can follow.
+        if (text === lastSent) sent.clear();
+        return;
+      }
       missed = true;
       catchUp();
     },

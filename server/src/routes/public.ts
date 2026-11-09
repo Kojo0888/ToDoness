@@ -25,12 +25,22 @@ import type { AppEnv } from '../http/types';
  * The public data is polled every few seconds; this keeps unchanged answers tiny, and the
  * client does not rewrite its copy (docs/notes/ImplementationPlan.md, review fixes).
  */
+/**
+ * Does If-None-Match name this ETag? Compared weakly, as RFC 9110 asks for If-None-Match: a
+ * compressing proxy turns `"x"` into `W/"x"`. Also takes a list of tags, and `*`.
+ */
+export function etagMatches(header: string | undefined, etag: string): boolean {
+  if (!header) return false;
+  const opaque = (tag: string) => tag.trim().replace(/^W\//, '');
+  return header.split(',').some((tag) => tag.trim() === '*' || opaque(tag) === opaque(etag));
+}
+
 function jsonWithEtag(c: Context<AppEnv>, body: unknown) {
   const text = JSON.stringify(body);
   const etag = `"${createHash('sha1').update(text).digest('base64url')}"`;
   c.header('ETag', etag);
   c.header('Cache-Control', 'no-cache');
-  if (c.req.header('if-none-match') === etag) return c.body(null, 304);
+  if (etagMatches(c.req.header('if-none-match'), etag)) return c.body(null, 304);
   return c.body(text, 200, { 'content-type': 'application/json; charset=UTF-8' });
 }
 

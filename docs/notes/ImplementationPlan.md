@@ -370,7 +370,14 @@ Each fix has a test that was seen to fail first.
   longer hangs if the process has already exited, and it reports the server's stderr if the
   server dies on its own.
 
-**Test counts after the review fixes:** shared 105, server 249, client 376, integration 48,
+- **Second review round:** (1) the database echo of one of the box's own earlier saves could
+  replace newer text for a moment (type, pause, type more, the late echo arrives). The box now
+  remembers the texts it sent and does not treat their echoes as news; echoes arrive in order,
+  so the set is cleared when the last one comes back. (2) `If-None-Match` is compared weakly
+  (`W/` stripped, lists and `*` accepted), so 304s keep working behind a compressing proxy that
+  turns the ETag into a weak one.
+
+**Test counts after the review fixes:** shared 105, server 250, client 379, integration 48,
 browser (e2e) 62.
 
 **Test counts after the notes update:** shared 105, server 244, client 346, integration 46,
