@@ -8,7 +8,7 @@ import {
   pushResponseSchema,
   type OutboxOp,
 } from '@todoness/shared';
-import type { TodonessDB } from '../data/db';
+import type { PublicOp, TodonessDB } from '../data/db';
 import { applyChanges } from './apply-changes';
 import type { SyncDiagnostics } from './diagnostics';
 
@@ -116,7 +116,9 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
       giveUp();
     };
     waiting.add(abort);
-    const what = new URL(url, 'http://x').pathname.replace('/api/sync/', '');
+    const what = new URL(url, 'http://x').pathname
+      .replace('/api/sync/', '')
+      .replace(/^\/api\/public\/(lists|notes)\/[^/]+\/push$/, 'public $1 push');
     const id = diag?.requestStart(what) ?? 0;
     try {
       res = await Promise.race([fetch(url, { ...init, signal: controller.signal }), gaveUp]);
@@ -144,9 +146,16 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
     return id;
   }
 
-  const wire = ({ attempts, createdAt, ...op }: OutboxOp) => {
+  const wire = (o: OutboxOp | PublicOp) => {
+    const { attempts, createdAt, ...op } = o;
     void attempts;
     void createdAt;
+    if ('target' in op) {
+      const { target, targetId, ...rest } = op;
+      void target;
+      void targetId;
+      return rest;
+    }
     return op;
   };
 
@@ -222,6 +231,87 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
     }
   }
 
+  async function markPublicAttempt(ops: PublicOp[]) {
+    await db.publicOutbox
+      .where('opId')
+      .anyOf(ops.map((o) => o.opId))
+      .modify((o) => {
+        o.attempts += 1;
+      });
+  }
+
+  async function publicToDeadLetter(ops: { op: PublicOp; reason: string }[]) {
+    if (ops.length === 0) return;
+    await db.transaction('rw', db.publicOutbox, db.deadLetter, async () => {
+      for (const { op, reason } of ops) {
+        await db.deadLetter.put({ ...op, failedAt: now(), reason });
+        await db.publicOutbox.delete(op.opId);
+      }
+    });
+  }
+
+  /**
+   * Sends the queued changes to other users' public data (docs/notes/PRD.md FR-108): the
+   * oldest change first, together with the other queued changes of the same list or note,
+   * through that list's or note's restricted push. Refusals are not retried (FR-109).
+   */
+  async function pushPublic() {
+    let sent = 0;
+    let rejected = 0;
+    for (;;) {
+      const first = await db.publicOutbox.orderBy('hlc').first();
+      if (!first) return { sent, rejected };
+      const ops = (await db.publicOutbox.where('targetId').equals(first.targetId).toArray())
+        .filter((o) => o.target === first.target)
+        .sort((a, b) => (a.hlc < b.hlc ? -1 : 1))
+        .slice(0, batchSize);
+
+      const clientId = await ensureClientId();
+      const url = `/api/public/${first.target === 'list' ? 'lists' : 'notes'}/${encodeURIComponent(first.targetId)}/push`;
+      let res: Response;
+      try {
+        res = await request(url, {
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify({ clientId, ops: ops.map(wire) }),
+        });
+      } catch (err) {
+        if (err instanceof SyncError && err.kind !== 'auth') await markPublicAttempt(ops);
+        throw err;
+      }
+
+      if (res.status === 404) {
+        // Private or deleted meanwhile: nothing of this target can be saved any more.
+        const all = (
+          await db.publicOutbox.where('targetId').equals(first.targetId).toArray()
+        ).filter((o) => o.target === first.target);
+        await publicToDeadLetter(all.map((op) => ({ op, reason: 'gone' })));
+        rejected += all.length;
+        continue;
+      }
+      if (!res.ok) {
+        await publicToDeadLetter(ops.map((op) => ({ op, reason: `http_${res.status}` })));
+        rejected += ops.length;
+        continue;
+      }
+
+      const parsed = pushResponseSchema.safeParse(await res.json().catch(() => undefined));
+      if (!parsed.success || parsed.data.accepted.length + parsed.data.rejected.length === 0) {
+        await markPublicAttempt(ops);
+        throw new SyncError('server', 'Unexpected answer to a public push');
+      }
+      const byId = new Map(ops.map((o) => [o.opId, o]));
+      await db.publicOutbox.bulkDelete(parsed.data.accepted.filter((id) => byId.has(id)));
+      await publicToDeadLetter(
+        parsed.data.rejected.flatMap((r) =>
+          byId.has(r.opId) ? [{ op: byId.get(r.opId)!, reason: r.reason }] : [],
+        ),
+      );
+      sent += parsed.data.accepted.length;
+      rejected += parsed.data.rejected.length;
+    }
+  }
+
   async function pull() {
     let applied = 0;
     for (;;) {
@@ -241,6 +331,7 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
     setStatus({ state: 'syncing', lastSyncAt: status.lastSyncAt });
     try {
       await push();
+      await pushPublic();
       await pull();
       degraded = false;
       setStatus({ state: 'idle', lastSyncAt: now() });

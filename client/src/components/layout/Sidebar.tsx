@@ -1,12 +1,12 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Link, useLocation } from 'wouter';
 import { listDropId } from '../../lib/dnd';
 import { getLists, getNotes } from '../../data/queries';
-import { useModule, useOnline, usePolled } from '../../app/hooks';
-import { fetchPublicLists } from '../../services/publicApi';
-import { db, publicNotes, repo } from '../../app/container';
+import { useModule } from '../../app/hooks';
+import { usePublicLists, usePublicNotes } from '../../app/publicHooks';
+import { db, repo } from '../../app/container';
 import type { StoredUser } from '../../services/session';
 import { t } from '../../app/strings';
 import { ModuleSwitch } from './ModuleSwitch';
@@ -61,8 +61,7 @@ function TasksNav({
   const [, navigate] = useLocation();
   const lists = useLiveQuery(() => getLists(db), [], []);
   const [name, setName] = useState('');
-  const online = useOnline();
-  const publicLists = usePolled(fetchPublicLists, 5000);
+  const publicLists = usePublicLists();
 
   async function addList(e: FormEvent) {
     e.preventDefault();
@@ -88,11 +87,11 @@ function TasksNav({
         ))}
       </ul>
 
-      {(publicLists.value?.length ?? 0) > 0 && (
+      {(publicLists?.length ?? 0) > 0 && (
         <>
           <h2 className="nav-heading">{t.nav.publicLists}</h2>
           <ul className="nav-lists" aria-label={t.nav.publicLists}>
-            {publicLists.value?.map((l) => (
+            {publicLists?.map((l) => (
               <li key={l.id}>
                 <Link
                   href={`/public/${l.id}`}
@@ -108,9 +107,6 @@ function TasksNav({
             ))}
           </ul>
         </>
-      )}
-      {!online && publicLists.value === undefined && (
-        <p className="hint nav-note">{t.nav.publicNeedsConnection}</p>
       )}
 
       <form onSubmit={addList} className="new-list">
@@ -131,10 +127,7 @@ function TasksNav({
 /** The Notes module: my notes and other users' public notes, with counts. */
 function NotesNav({ location, onNavigate }: { location: string; onNavigate: () => void }) {
   const mine = useLiveQuery(async () => (await getNotes(db)).length, [], 0);
-  const online = useOnline();
-  const shared = usePolled(() => publicNotes.list(), 5000, 'notes');
-  // Saving an edit there refreshes the count at once.
-  useEffect(() => publicNotes.subscribe(shared.reload), [shared.reload]);
+  const shared = usePublicNotes();
 
   const link = (href: string, label: string, count: number | undefined) => {
     const isActive = location === href || location === `${href}/`;
@@ -159,9 +152,6 @@ function NotesNav({ location, onNavigate }: { location: string; onNavigate: () =
         {link('/notes', t.notes.myNotes, mine)}
         {link('/notes/public', t.notes.publicNotes, shared.value?.length)}
       </ul>
-      {!online && shared.value === undefined && (
-        <p className="hint nav-note">{t.notes.publicNeedsConnection}</p>
-      )}
     </>
   );
 }

@@ -37,8 +37,9 @@ export async function getTodoById(db: TodonessDB, id: string): Promise<Todo | un
   return t && t.deletedAt === null ? t : undefined;
 }
 
-export function countPending(db: TodonessDB): Promise<number> {
-  return db.outbox.count();
+/** Changes waiting to be sent: own ones and those to other users' public data. */
+export async function countPending(db: TodonessDB): Promise<number> {
+  return (await db.outbox.count()) + (await db.publicOutbox.count());
 }
 
 /** Live notes, newest first (a new note gets a key before all others). */

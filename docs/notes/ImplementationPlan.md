@@ -21,12 +21,12 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | 6 | Modules: registry, module of an address, last module on the device, start address | ☑ |
 | 7 | UI: module switch, sidebar per module, *My notes*, *Public notes*, texts, styles | ☑ |
 | 8 | Integration and browser tests, README and docs | ☑ |
-| 9 | Update 2 – Reorder notes: `Repo.reorderNote`, drag & drop on the note grid | ☐ |
-| 10 | Update 2 – Search notes: `matchesSearch`, search box on both note pages | ☐ |
-| 11 | Update 2 – Public data offline, data layer: Dexie version 4 (`publicCache`, `publicOutbox`), queued public editor, overlay of pending changes | ☐ |
-| 12 | Update 2 – Public data offline, sync: engine sends the public outbox, refusals to dead letter, pending count | ☐ |
-| 13 | Update 2 – Public data offline, UI: pages read cache + overlay, edits enabled offline, refused-changes notice, background loading | ☐ |
-| 14 | Update 2 – Integration and browser tests, docs | ☐ |
+| 9 | Update 2 – Reorder notes: `Repo.reorderNote`, drag & drop on the note grid | ☑ |
+| 10 | Update 2 – Search notes: `matchesSearch`, search box on both note pages | ☑ |
+| 11 | Update 2 – Public data offline, data layer: Dexie version 4 (`publicCache`, `publicOutbox`), queued public editor, overlay of pending changes | ☑ |
+| 12 | Update 2 – Public data offline, sync: engine sends the public outbox, refusals to dead letter, pending count | ☑ |
+| 13 | Update 2 – Public data offline, UI: pages read cache + overlay, edits enabled offline, refused-changes notice, background loading | ☑ |
+| 14 | Update 2 – Integration and browser tests, docs | ☑ |
 
 ---
 
@@ -289,9 +289,42 @@ it), offline public note, refused change after the list became private; README, 
   can lose that last edit (the IndexedDB write is cut off by the unload). The test now waits
   for "2 changes pending", as a user would see. A save is also started on `pagehide`, but a
   browser may still cut it off; this is the same for any IndexedDB write at unload.
-- **Not done / ideas for later:** reordering notes by hand (the order key is there), titles,
-  search, colours; offline editing of other people's public notes; an icon rail / bottom bar
-  once there are more than about four modules (only `ModuleSwitch` changes).
+- **Not done / ideas for later:** titles and colours for notes; offline attachments; an icon
+  rail / bottom bar once there are more than about four modules (only `ModuleSwitch` changes).
+  (Reordering, search and offline editing of public data were added in update 2, below.)
+
+### Notes on update 2 (reorder, search, public data offline)
+
+- **Reorder** reuses everything from tasks: `keyForPosition` for the new key, the existing
+  `DragAndDrop` context (drag data now has a `kind`), `resolveDrop` unchanged. The grid uses the
+  rect sorting strategy; the browser test drives the keyboard on a phone width (one column),
+  where the arrow keys mean up and down.
+- **Search** is a pure function (`lib/search.ts`); while it is active the drag handles are
+  disabled, because a position in a filtered view is ambiguous.
+- **Public data offline:** no server change. `publicCache` holds the server's answers,
+  `publicOutbox` the queued operations with their target. `PublicEditor` and
+  `PublicNotes.saveText` keep their signatures but queue; their old "send at once" unit tests
+  were rewritten to check the queued operations, the old public-notes service test was removed
+  (reading moved to `publicData`, its cases are in the new cache tests). `services/publicApi.ts`
+  is gone (replaced by `publicData`).
+- The engine sends the public queue after the own outbox, one target at a time (oldest change
+  first, then everything else queued for that target). A 404 sends the target's whole queue to
+  the dead letter as `gone`; other refusals keep their reason. The dead-letter rows keep
+  `target` / `targetId`, which is how the pages find "N of your changes were not saved".
+- Pages show `overlayListPage(copy, queue)` / `overlayNotes(copy, queue)`, refresh every 5 s and
+  after each sync; the sidebar loads each public list in the background about once a minute so
+  it can be opened offline later.
+- Three v1 integration tests assumed an immediate send (`editor.updateTodo` answering `gone`);
+  they now call `sync()` after editing and check the dead letter.
+- **Found by the browser tests:** a test race, not an app bug: right after a click, "All
+  changes saved" can still be on screen from before, so `waitSaved` passed before the owner's
+  "private" change was sent, and the visitor's queued edit was (correctly) accepted. The test
+  now waits until the owner's outbox is empty.
+- One run of the full browser suite had a single timeout in the recovery "Overwrite" scenario;
+  it passed in four later runs (alone and in the full suite). Noted here in case it returns.
+
+**Test counts after update 2:** shared 105, server 244, client 363, integration 48, browser
+(e2e) 62 (13 MVP + 32 v1 + 5 recovery + 12 notes scenarios).
 
 **Test counts after the notes update:** shared 105, server 244, client 346, integration 46,
 browser (e2e) 57 (13 MVP + 32 v1 + 5 recovery + 7 notes scenarios).

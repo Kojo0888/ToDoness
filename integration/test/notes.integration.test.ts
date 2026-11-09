@@ -2,6 +2,10 @@
 import { describe, expect, it } from 'vitest';
 import { RECOVERY_KEY, takeSnapshot } from '../../client/src/data/recovery';
 import { getNotes } from '../../client/src/data/queries';
+import type { PublicListResponse } from '@todoness/shared';
+import { overlayListPage } from '../../client/src/data/publicOverlay';
+import { createPublicData } from '../../client/src/services/publicData';
+import { createPublicEditor } from '../../client/src/services/publicEdit';
 import { createPublicNotes } from '../../client/src/services/publicNotes';
 import { createRecovery } from '../../client/src/services/recovery';
 import { Browser, startServer, twoBrowsers } from './harness';
@@ -73,7 +77,14 @@ describe('notes sync', () => {
 });
 
 describe('public notes', () => {
-  it("another user's edit lands on all of the owner's devices", async () => {
+  /** Bob's view of the public notes: the copy from the server. */
+  async function bobSees(bob: Browser) {
+    const data = createPublicData({ db: bob.db, fetch: bob.fetch, now: () => bob.time });
+    expect(await data.refreshNotes()).toBe(true);
+    return (await bob.db.publicCache.get('notes'))!.value as { id: string; text: string }[];
+  }
+
+  it("another user's edit, made offline, lands on all of the owner's devices", async () => {
     const server = startServer();
     const { a, b } = await twoBrowsers(server, 'ann@corp.test');
     const bob = new Browser(server, 'bob');
@@ -82,10 +93,7 @@ describe('public notes', () => {
     const note = await a.repo.createNote('Shared plan');
     await a.repo.setNotePublic(note.id, true);
     await a.sync();
-
-    const shared = createPublicNotes({ db: bob.db, fetch: bob.fetch, now: () => bob.time });
-    const seen = await shared.list();
-    expect(seen).toEqual([
+    expect(await bobSees(bob)).toEqual([
       {
         id: note.id,
         text: 'Shared plan',
@@ -93,25 +101,36 @@ describe('public notes', () => {
         updatedAt: expect.any(Number),
       },
     ]);
-    bob.time += 10_000;
-    expect(await shared.saveText(note.id, 'Shared plan, edited by Bob')).toEqual({ ok: true });
 
+    bob.online = false;
+    bob.time += 10_000;
+    const shared = createPublicNotes({ db: bob.db, now: () => bob.time });
+    expect(await shared.saveText(note.id, 'Shared plan, edited by Bob')).toEqual({ ok: true });
+    expect((await bob.sync()).ok).toBe(false);
+    expect(await bob.db.publicOutbox.count()).toBe(1);
+
+    bob.online = true;
+    expect(await bob.sync()).toEqual({ ok: true });
+    expect(await bob.db.publicOutbox.count()).toBe(0);
     await a.sync();
     await b.sync();
     expect(await texts(a)).toEqual(['Shared plan, edited by Bob']);
     expect(await texts(b)).toEqual(['Shared plan, edited by Bob']);
-    // Bob's own notes are untouched.
-    await bob.sync();
-    expect(await texts(bob)).toEqual([]);
+    expect(await texts(bob)).toEqual([]); // Bob's own notes are untouched
 
-    // Private again: Bob neither sees nor edits it.
+    // Private again: Bob no longer sees it, and a queued edit is refused, not lost silently.
     await a.repo.setNotePublic(note.id, false);
     await a.sync();
-    expect(await shared.list()).toEqual([]);
-    expect(await shared.saveText(note.id, 'too late')).toEqual({ ok: false, error: 'gone' });
+    expect(await bobSees(bob)).toEqual([]);
+    await shared.saveText(note.id, 'too late');
+    expect(await bob.sync()).toEqual({ ok: true });
+    expect((await bob.db.deadLetter.toArray()).map((d) => [d.targetId, d.reason])).toEqual([
+      [note.id, 'gone'],
+    ]);
+    expect(await texts(a)).toEqual(['Shared plan, edited by Bob']);
   });
 
-  it("an owner's newer offline edit beats an older public edit", async () => {
+  it("an owner's newer offline edit beats an older edit of someone else", async () => {
     const server = startServer();
     const { a } = await twoBrowsers(server, 'ann@corp.test');
     const bob = new Browser(server, 'bob');
@@ -124,13 +143,78 @@ describe('public notes', () => {
     a.time += 60_000; // Ann edits later, but offline
     await a.repo.updateNoteText(note.id, 'Ann, later');
     bob.time += 1_000;
-    const shared = createPublicNotes({ db: bob.db, fetch: bob.fetch, now: () => bob.time });
-    expect(await shared.saveText(note.id, 'Bob, earlier')).toEqual({ ok: true });
+    await createPublicNotes({ db: bob.db, now: () => bob.time }).saveText(note.id, 'Bob, earlier');
+    await bob.sync();
 
     a.online = true;
     await a.sync();
     expect(await texts(a)).toEqual(['Ann, later']);
-    expect((await shared.list())![0]!.text).toBe('Ann, later');
+    expect((await bobSees(bob))[0]!.text).toBe('Ann, later');
+  });
+});
+
+describe('public lists edited offline', () => {
+  async function setup() {
+    const server = startServer();
+    const { a, b } = await twoBrowsers(server, 'ann@corp.test');
+    const bob = new Browser(server, 'bob');
+    await bob.register('bob@corp.test');
+    const list = await a.repo.createList('Recipes');
+    await a.repo.setListPublic(list.id, true);
+    const soup = await a.repo.createTodo({ listId: list.id, title: 'Soup' });
+    await a.sync();
+    const data = createPublicData({ db: bob.db, fetch: bob.fetch, now: () => bob.time });
+    const editor = createPublicEditor({ db: bob.db, now: () => bob.time });
+    return { server, a, b, bob, list, soup, data, editor };
+  }
+
+  it('Bob reads the kept copy offline, edits, and Ann gets everything after he reconnects', async () => {
+    const { a, b, bob, list, soup, data, editor } = await setup();
+    expect(await data.refreshList(list.id)).toBe(true);
+
+    bob.online = false;
+    expect(await data.refreshList(list.id)).toBe(false); // the copy stays
+    const copy = (await bob.db.publicCache.get(`list:${list.id}`))!.value as PublicListResponse;
+    expect(copy.todos.map((x) => x.title)).toEqual(['Soup']);
+
+    bob.time += 5_000;
+    await editor.createTodo(list.id, 'Bread', copy.todos[0]!.orderKey);
+    await editor.setDone(list.id, soup.id, true);
+    await editor.updateTodo(list.id, soup.id, { title: 'Soup, edited' });
+    const queued = await bob.db.publicOutbox.toArray();
+    expect(overlayListPage(copy, queued).todos.map((x) => [x.title, x.done])).toEqual([
+      ['Bread', false],
+      ['Soup, edited', true],
+    ]);
+
+    bob.online = true;
+    expect(await bob.sync()).toEqual({ ok: true });
+    await a.sync();
+    await b.sync();
+    for (const x of [a, b]) {
+      expect(await x.titles(list.id)).toEqual(['Bread']);
+      const done = await x.db.todos.get(soup.id);
+      expect(done).toMatchObject({ title: 'Soup, edited', done: true });
+    }
+    await data.refreshList(list.id);
+    const after = (await bob.db.publicCache.get(`list:${list.id}`))!.value as PublicListResponse;
+    expect(after.todos.map((x) => x.title).sort()).toEqual(['Bread', 'Soup, edited']);
+  });
+
+  it('a list made private while Bob was offline refuses his changes', async () => {
+    const { a, bob, list, soup, editor } = await setup();
+    bob.online = false;
+    await editor.updateTodo(list.id, soup.id, { title: 'Bob was here' });
+    await a.repo.setListPublic(list.id, false);
+    await a.sync();
+
+    bob.online = true;
+    expect(await bob.sync()).toEqual({ ok: true });
+    expect((await bob.db.deadLetter.toArray()).map((d) => [d.target, d.reason])).toEqual([
+      ['list', 'gone'],
+    ]);
+    await a.sync();
+    expect((await a.db.todos.get(soup.id))!.title).toBe('Soup');
   });
 });
 

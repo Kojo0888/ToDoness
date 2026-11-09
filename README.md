@@ -10,7 +10,8 @@ connection returns.
   (top of the sidebar on a computer, top bar on a phone). The app opens in the module you used
   last on that device.
 - Tasks and lists that keep working **offline**; changes sync automatically.
-- **Notes**: simple text boxes, newest on top, saved automatically while you type. They work
+- **Notes**: simple text boxes, newest on top, saved automatically while you type, **reordered
+  by drag and drop** and **searchable** (every word, ignoring case and accents). They work
   offline and sync like tasks, can be made **public** (every user can read and edit the text;
   only the owner can delete it or make it private again), and come back with the recovery
   after a server loss.
@@ -18,6 +19,10 @@ connection returns.
 - Make a list **public**: every user can read **and edit** its tasks under "Public lists"
   (add, change, complete, delete, reorder, attach files). Only the owner can rename or
   delete the list or make it private again.
+- Other users' public lists and notes are **kept on the device** and can be read **and changed
+  offline**; the changes are queued and sent by the normal sync. A change the server refuses
+  (the list or note was made private meanwhile) is reported on the page. Attachments still
+  need a connection.
 - Reorder tasks by **drag and drop** (mouse, touch or keyboard), or drop a task on a
   list in the sidebar to move it there.
 - **Reminders**: 1 week, 1 day or 1 hour before a task is due, as a notification, also

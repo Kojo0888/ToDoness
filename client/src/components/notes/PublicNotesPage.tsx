@@ -1,33 +1,32 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { PublicNote } from '@todoness/shared';
-import { useOnline, usePolled } from '../../app/hooks';
+import { useOnline } from '../../app/hooks';
+import { usePublicNotes } from '../../app/publicHooks';
 import { publicNotes } from '../../app/container';
+import { matchesSearch } from '../../lib/search';
 import { t } from '../../app/strings';
+import { PublicQueueNotice } from '../public/PublicQueueNotice';
 import { NoteEditor } from './NoteEditor';
+import { NoteSearch } from './NoteSearch';
 import { formatChanged } from './NotesPage';
 
-const REFRESH_MS = 5000;
-
-/** Other users' public notes (docs/notes/PRD.md FR-95 – FR-97): online, everyone edits. */
+/**
+ * Other users' public notes (docs/notes/PRD.md FR-95 – FR-97, FR-103, FR-106 – FR-110):
+ * everyone edits the text, also offline; changes are queued and sent by the sync.
+ */
 export function PublicNotesPage() {
   const online = useOnline();
-  const { value, failed, reload } = usePolled(() => publicNotes.list(), REFRESH_MS, 'notes');
+  const { value, at, failed, pending, refused } = usePublicNotes();
+  const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  /** Saves a text; shows what went wrong (the note may be gone, so not on the card). */
   async function saveText(id: string, text: string) {
     const result = await publicNotes.saveText(id, text);
-    if (result.ok) return setError(null);
-    setError(
-      result.error === 'gone' ? t.publicPage.notePrivate : t.publicPage.errors[result.error],
-    );
-    reload();
+    setError(result.ok ? null : t.notes.tooLong);
   }
 
-  // Every accepted change reloads the notes at once.
-  useEffect(() => publicNotes.subscribe(reload), [reload]);
-
   const offline = !online || failed;
+  const shown = value?.filter((n) => matchesSearch([n.text, n.ownerEmail], query)) ?? [];
   return (
     <section className="notes-page" aria-labelledby="public-notes-title">
       <header className="list-head">
@@ -36,23 +35,33 @@ export function PublicNotesPage() {
       </header>
       <p className="hint">{t.notes.publicPage.intro}</p>
 
-      {value === undefined ? (
-        <p className="empty">{failed ? t.notes.publicPage.needsConnection : t.loading}</p>
+      {value === undefined || (value === null && !failed) ? (
+        <p className="empty">{t.loading}</p>
+      ) : value === null ? (
+        <p className="empty">{t.notes.publicPage.needsConnection}</p>
       ) : (
         <>
-          {offline && <p className="notice">{t.notes.publicPage.editsNeedConnection}</p>}
+          <PublicQueueNotice offline={offline} at={at} pending={pending} refused={refused} />
           {error && (
             <p className="error" role="alert">
               {error}
             </p>
           )}
-          {value.length === 0 && <p className="empty">{t.notes.publicPage.empty}</p>}
+          {value.length === 0 ? (
+            <p className="empty">{t.notes.publicPage.empty}</p>
+          ) : (
+            <NoteSearch
+              value={query}
+              onChange={setQuery}
+              shown={shown.length}
+              total={value.length}
+            />
+          )}
           <ul className="notes">
-            {value.map((note) => (
+            {shown.map((note) => (
               <PublicNoteCard
                 key={note.id}
                 note={note}
-                disabled={offline}
                 onSave={(text) => saveText(note.id, text)}
               />
             ))}
@@ -65,11 +74,9 @@ export function PublicNotesPage() {
 
 function PublicNoteCard({
   note,
-  disabled,
   onSave,
 }: {
   note: PublicNote;
-  disabled: boolean;
   onSave: (text: string) => Promise<void>;
 }) {
   return (
@@ -78,7 +85,6 @@ function PublicNoteCard({
       <NoteEditor
         stored={note.text}
         label={t.notes.publicPage.noteLabel(note.ownerEmail)}
-        disabled={disabled}
         onSave={onSave}
       />
       <div className="note-foot">

@@ -38,10 +38,10 @@ used last. The navigation is built so that more modules can be added later.
 **Non-goals (for this update)**
 
 - Rich text, formatting, Markdown preview, images or attachments in notes.
-- Folders, tags, titles, search or colours for notes.
-- Reordering notes by hand (newest on top; the order key is stored so it can come later).
+- Folders, tags, titles or colours for notes; search (*added in update 2*).
+- Reordering notes by hand (newest on top; the order key is stored so it can come later). *Added in update 2.*
 - Reminders on notes.
-- Offline editing of other people's public notes (as for public lists, decision D1 of v1).
+- Offline editing of other people's public notes (as for public lists, decision D1 of v1). *Added in update 2, for public lists too.*
 
 ## 3. User stories
 
@@ -132,6 +132,8 @@ used last. The navigation is built so that more modules can be added later.
 ---
 
 ## 8. Update 2: reorder and search notes, offline edits to public data (FR-100 – FR-111)
+
+*Status: built (see the implementation plan, steps 9 – 14).*
 
 This update lifts three of the non-goals of section 2: reordering notes by hand, search, and
 offline editing of other people's public notes **and** public task lists (the latter was v1

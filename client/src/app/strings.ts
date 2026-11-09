@@ -105,7 +105,6 @@ export const t = {
     admin: 'Admin',
     menu: 'Menu',
     publicLists: 'Public lists',
-    publicNeedsConnection: 'Public lists need a connection.',
   },
 
   list: {
@@ -141,19 +140,20 @@ export const t = {
     addTaskPlaceholder: 'Add a task to this shared list and press Enter',
     empty: 'This list has no tasks.',
     gone: 'This list is not public any more, or it was deleted.',
-    needsConnection: 'Public lists need a connection to the server.',
-    editsNeedConnection: 'You are offline. Shared lists can only be changed while you are online.',
+    needsConnection:
+      'This list is not on this device yet. Open it once while connected to the server.',
+    offlineCopy: (when: string) =>
+      `Offline copy from ${when}. Your changes are kept on this device and sent when the connection is back.`,
+    pending: (n: number) => `${n} change${n === 1 ? '' : 's'} waiting to be sent.`,
+    refused: (n: number) =>
+      `${n} of your changes ${n === 1 ? 'was' : 'were'} not saved: it is not public any more, or the change was not allowed.`,
+    dismiss: 'Dismiss',
     errors: {
-      offline: 'Cannot reach the server. Your change was not saved.',
-      gone: 'This list is not public any more. Your change was not saved.',
-      auth: 'Your login is no longer valid. Log in again.',
-      rejected: 'The server did not accept this change.',
-      server: 'The server had a problem. Try again in a moment.',
       invalid: 'That change is not valid.',
     },
-    ownerNote: 'Changes you make here are saved at once and also appear for the owner.',
+    ownerNote:
+      'Changes you make here are sent to the server (later, if you are offline) and also appear for the owner.',
     back: 'Back to my tasks',
-    notePrivate: 'This note is not public any more, or it was deleted. Your change was not saved.',
     due: (when: string) => `Due ${when}`,
     attachments: 'Attachments',
   },
@@ -162,7 +162,6 @@ export const t = {
     title: 'My notes',
     myNotes: 'My notes',
     publicNotes: 'Public notes',
-    publicNeedsConnection: 'Public notes need a connection.',
     newLabel: 'New note',
     newPlaceholder: 'Write a note…',
     add: 'Add note',
@@ -188,13 +187,13 @@ export const t = {
     tooLong: 'A note can have at most 20 000 characters.',
     publicPage: {
       title: 'Public notes',
-      intro: 'Notes other users made public. Everyone can edit them; changes are saved at once.',
+      intro:
+        'Notes other users made public. Everyone can edit them, also offline: changes are sent when the server can be reached.',
       by: (email: string) => `By ${email}`,
       noteLabel: (email: string) => `Public note by ${email}`,
       empty: 'Nobody has made a note public yet.',
-      needsConnection: 'Public notes need a connection to the server.',
-      editsNeedConnection:
-        'You are offline. Public notes can only be changed while you are online.',
+      needsConnection:
+        'Public notes are not on this device yet. Open them once while connected to the server.',
     },
   },
 

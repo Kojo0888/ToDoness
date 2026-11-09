@@ -217,19 +217,139 @@ describe('public notes (FR-94 – FR-97)', () => {
     await waitSaved(ann.page);
     await bob.page.getByText('Nobody has made a note public yet.').waitFor({ timeout: 15_000 });
   });
+});
 
-  it('says that public notes need a connection while offline', async () => {
-    const { context, page } = await newUser('lonely');
-    await openNotes(page);
-    await waitForOfflineReady(page);
-    await context.setOffline(true);
-    await page
+describe('public lists and notes offline (FR-106 – FR-111)', () => {
+  /** Ann owns a public list "Recipes" with "Soup" and a public note; Bob has opened both. */
+  async function shared() {
+    const ann = await newUser('annoff');
+    const bob = await newUser('boboff');
+    await ann.page.getByPlaceholder('New list name').fill('Recipes');
+    await ann.page.getByRole('button', { name: 'Add list' }).click();
+    await ann.page.getByRole('heading', { level: 2, name: 'Recipes' }).waitFor();
+    const add = ann.page.getByLabel('Add a task');
+    await add.fill('Soup');
+    await add.press('Enter');
+    await ann.page.getByRole('switch', { name: /Public list/ }).click();
+    await openNotes(ann.page);
+    await addNote(ann.page, 'Shared note');
+    await ann.page.getByRole('switch', { name: 'Public' }).click();
+    await waitSaved(ann.page);
+
+    await syncNow(bob.page);
+    // Earlier tests left public "Recipes" lists of other users: pick Ann's.
+    await bob.page
+      .getByRole('navigation')
+      .getByRole('link', { name: new RegExp(`Recipes.*${ann.email}`) })
+      .click();
+    await bob.page.getByRole('link', { name: 'Soup' }).waitFor();
+    await waitForOfflineReady(bob.page);
+    return { ann, bob };
+  }
+
+  it('Bob reads and edits a public list offline; Ann gets it when he is back', async () => {
+    const { ann, bob } = await shared();
+    await bob.context.setOffline(true);
+    await bob.page.reload();
+    await bob.page.getByRole('link', { name: 'Soup' }).waitFor();
+    await bob.page.getByText(/Offline copy from/).waitFor();
+
+    const input = bob.page.getByLabel('Add a task');
+    await input.fill('Bread offline');
+    await input.press('Enter');
+    await bob.page.getByRole('link', { name: 'Bread offline' }).waitFor();
+    await bob.page.getByRole('checkbox', { name: 'Mark "Soup" as done' }).click();
+    await bob.page.getByRole('button', { name: /Completed \(1\)/ }).waitFor();
+    await bob.page.getByText('2 changes waiting to be sent.').waitFor();
+    await badge(bob.page).filter({ hasText: '2 changes pending' }).waitFor();
+
+    // Kept across a reload while still offline.
+    await bob.page.reload();
+    await bob.page.getByRole('link', { name: 'Bread offline' }).waitFor();
+
+    await bob.context.setOffline(false);
+    await waitSaved(bob.page);
+    await modules(ann.page).getByRole('link', { name: 'Tasks' }).click();
+    await ann.page
+      .getByRole('navigation')
+      .getByRole('link', { name: 'Recipes', exact: true })
+      .click();
+    await syncNow(ann.page);
+    await ann.page.getByRole('link', { name: 'Bread offline' }).waitFor({ timeout: 20_000 });
+    await ann.page.getByRole('button', { name: /Completed \(1\)/ }).waitFor();
+  });
+
+  it('Bob edits a public note offline; Ann gets the text', async () => {
+    const { ann, bob } = await shared();
+    await openNotes(bob.page);
+    await bob.page
       .getByRole('navigation')
       .getByRole('link', { name: /Public notes/ })
       .click();
-    await page.getByText('Public notes need a connection to the server.').waitFor();
-    await context.setOffline(false);
-    await syncNow(page);
+    const box = bob.page.getByRole('textbox', { name: `Public note by ${ann.email}` });
+    await box.waitFor();
+
+    await bob.context.setOffline(true);
+    await box.fill('Shared note, edited offline');
+    await box.blur();
+    await bob.page.getByText('1 change waiting to be sent.').waitFor();
+    await bob.context.setOffline(false);
+    await waitSaved(bob.page);
+
+    await ann.page.waitForFunction(
+      async () => {
+        document.dispatchEvent(new Event('visibilitychange'));
+        const el = document.querySelector('.notes .note-text') as HTMLTextAreaElement | null;
+        return el?.value === 'Shared note, edited offline';
+      },
+      undefined,
+      { polling: 500, timeout: 20_000 },
+    );
+  });
+
+  it('a change to a list made private meanwhile is refused, and Bob is told', async () => {
+    const { ann, bob } = await shared();
+    await bob.context.setOffline(true);
+    await bob.page.getByRole('checkbox', { name: 'Mark "Soup" as done' }).click();
+    await bob.page.getByText('1 change waiting to be sent.').waitFor();
+
+    await modules(ann.page).getByRole('link', { name: 'Tasks' }).click();
+    await ann.page
+      .getByRole('navigation')
+      .getByRole('link', { name: 'Recipes', exact: true })
+      .click();
+    const toggle = ann.page.getByRole('switch', { name: /Public list/ });
+    await toggle.click();
+    // "All changes saved" may still be on screen from before the click: wait until the
+    // change is stored and then sent (the outbox is empty again).
+    await ann.page.waitForFunction(
+      () => (document.querySelector('input[role="switch"]') as HTMLInputElement).checked === false,
+    );
+    await ann.page.waitForFunction(
+      async () => {
+        document.dispatchEvent(new Event('visibilitychange'));
+        const open = indexedDB.open('todoness');
+        const db: IDBDatabase = await new Promise((ok) => (open.onsuccess = () => ok(open.result)));
+        const n: number = await new Promise((ok) => {
+          const q = db.transaction('outbox').objectStore('outbox').count();
+          q.onsuccess = () => ok(q.result);
+        });
+        db.close();
+        return n === 0;
+      },
+      undefined,
+      { polling: 300, timeout: 20_000 },
+    );
+
+    await bob.context.setOffline(false);
+    await waitSaved(bob.page);
+    await bob.page.getByText('1 of your changes was not saved').waitFor({ timeout: 20_000 });
+    await bob.page.getByText('not public any more').first().waitFor();
+    await bob.page.getByRole('button', { name: 'Dismiss' }).click();
+    await bob.page.getByText('1 of your changes was not saved').waitFor({ state: 'detached' });
+    expect(await ann.page.getByRole('checkbox', { name: 'Mark "Soup" as done' }).isChecked()).toBe(
+      false,
+    );
   });
 });
 
