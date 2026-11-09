@@ -359,7 +359,18 @@ Each fix has a test that was seen to fail first.
   public notes) when nothing was ever loaded on the device and there is no connection.
 - The new-note box uses `NOTE_TEXT_MAX`.
 
-**Test counts after the review fixes:** shared 105, server 246, client 376, integration 48,
+- **The intermittent browser-test timeouts were a server shutdown bug** (found while
+  re-running the suite for these fixes, not raised in the review). Stopping the server waited
+  forever for a connection the browser had opened in advance but never used: Node's
+  `server.close()` does not treat such a socket as idle. Shown with logging (one connection, no
+  request in flight, never closing), then reproduced in a unit test that fails without the fix.
+  `http/shutdown.ts` `closeServer` now closes idle connections at once, gives requests under
+  way 3 s, then closes the rest. In production this also means `docker compose stop` exits
+  cleanly instead of being killed after its 10 s limit. The e2e harness's `stop()` also no
+  longer hangs if the process has already exited, and it reports the server's stderr if the
+  server dies on its own.
+
+**Test counts after the review fixes:** shared 105, server 249, client 376, integration 48,
 browser (e2e) 62.
 
 **Test counts after the notes update:** shared 105, server 244, client 346, integration 46,
