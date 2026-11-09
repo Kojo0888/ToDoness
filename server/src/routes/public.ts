@@ -1,6 +1,7 @@
 /**
- * Public lists (docs/v1/PRD.md section 4.2). Read-only, for every logged-in user.
- * They are read on demand and are not part of anybody else's sync feed.
+ * Public lists (docs/v1/PRD.md section 4.2) and public notes (docs/notes/PRD.md section 4.3),
+ * for every logged-in user. They are read on demand and are not part of anybody else's sync
+ * feed; edits go through a restricted push into the owner's data.
  */
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
@@ -10,6 +11,7 @@ import {
   pushEnvelopeSchema,
   type PublicListResponse,
   type PublicListsResponse,
+  type PublicNotesResponse,
   type PublicTodo,
 } from '@todoness/shared';
 import { requireAuth } from '../auth/middleware';
@@ -138,6 +140,59 @@ export function publicRoutes({ db, now }: { db: Database.Database; now: () => nu
         applyPush(db, list.user_id, clientId, ops, now(), {
           actorId: c.get('user').id,
           onlyListId: id.data,
+        }),
+      );
+    },
+  );
+
+  /** The public notes of other users, newest change first (FR-95). */
+  app.get('/notes', (c) => {
+    const rows = db
+      .prepare(
+        `SELECT n.id, n.text, n.updated_at, u.email AS owner_email
+           FROM notes n JOIN users u ON u.id = n.user_id
+          WHERE n.is_public = 1 AND n.deleted_at IS NULL AND n.user_id != ?
+          ORDER BY n.updated_at DESC, n.id`,
+      )
+      .all(c.get('user').id) as {
+      id: string;
+      text: string;
+      updated_at: number;
+      owner_email: string;
+    }[];
+    const body: PublicNotesResponse = {
+      notes: rows.map((r) => ({
+        id: r.id,
+        text: r.text,
+        ownerEmail: r.owner_email,
+        updatedAt: r.updated_at,
+      })),
+    };
+    return c.json(body);
+  });
+
+  /** Change the text of a public note (FR-96): only text updates of this one note. */
+  app.post(
+    '/notes/:id/push',
+    bodyLimit({ maxSize: 1024 * 1024, onError: (c) => c.json({ error: 'too_large' }, 413) }),
+    async (c) => {
+      const id = idSchema.safeParse(c.req.param('id'));
+      const note = id.success
+        ? (db
+            .prepare(
+              'SELECT user_id FROM notes WHERE id = ? AND is_public = 1 AND deleted_at IS NULL',
+            )
+            .get(id.data) as { user_id: string } | undefined)
+        : undefined;
+      if (!id.success || !note) return c.json({ error: 'not_found' }, 404);
+
+      const parsed = pushEnvelopeSchema.safeParse(await c.req.json());
+      if (!parsed.success) return c.json({ error: 'invalid_request' }, 400);
+      const { clientId, ops } = parsed.data;
+      return c.json(
+        applyPush(db, note.user_id, clientId, ops, now(), {
+          actorId: c.get('user').id,
+          onlyNoteId: id.data,
         }),
       );
     },

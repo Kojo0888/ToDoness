@@ -109,3 +109,15 @@ export const pushEnvelopeSchema = z.object({
     .max(PUSH_BATCH_MAX),
 });
 export type PushEnvelope = z.infer<typeof pushEnvelopeSchema>;
+
+/** A public note of another user (docs/notes/PRD.md FR-95). */
+export const publicNoteSchema = z.object({
+  id: idSchema,
+  text: z.string(),
+  ownerEmail: z.string(),
+  updatedAt: z.number().int(),
+});
+export type PublicNote = z.infer<typeof publicNoteSchema>;
+
+export const publicNotesResponseSchema = z.object({ notes: z.array(publicNoteSchema) });
+export type PublicNotesResponse = z.infer<typeof publicNotesResponseSchema>;

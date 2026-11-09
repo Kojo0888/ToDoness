@@ -9,24 +9,26 @@ import {
   applyOp,
   syncOpSchema,
   type List,
+  type Note,
   type PushResponse,
   type SyncOp,
   type Todo,
 } from '@todoness/shared';
-import { getList, getTodo, listOwner, saveList, saveTodo } from './rows';
+import { getList, getNote, getTodo, listOwner, saveList, saveNote, saveTodo } from './rows';
 
 export type RejectReason =
   'invalid_operation' | 'not_found' | 'list_not_found' | 'inbox_protected' | 'forbidden';
 
 /**
- * Editing somebody else's public list (docs/v1/TechStack.md section 6): the rows stay
- * owned by the list owner (`userId`), but the operations come from `actorId` and may only
- * be task operations inside `onlyListId`.
+ * Editing somebody else's public data: the rows stay owned by the owner (`userId`), but the
+ * operations come from `actorId`.
+ *  - `onlyListId` (public list, docs/v1/TechStack.md section 6): only task operations inside
+ *    that list.
+ *  - `onlyNoteId` (public note, docs/notes/PRD.md FR-96): only text updates of that note.
  */
-export interface PushScope {
-  actorId: string;
-  onlyListId: string;
-}
+export type PushScope = { actorId: string } & (
+  { onlyListId: string; onlyNoteId?: undefined } | { onlyNoteId: string; onlyListId?: undefined }
+);
 
 type Outcome = { ok: true } | { ok: false; reason: RejectReason };
 
@@ -66,7 +68,7 @@ export function applyPush(
     if (existing && existing.userId !== userId) return { ok: false, reason: 'not_found' };
 
     const targetList = 'listId' in op.patch ? op.patch.listId : undefined;
-    if (scope) {
+    if (scope?.onlyListId !== undefined) {
       // Only inside the public list: no moving tasks in or out, no taking over other rows.
       if (existing && existing.row.listId !== scope.onlyListId) {
         return { ok: false, reason: 'not_found' };
@@ -112,6 +114,32 @@ export function applyPush(
     return { ok: true };
   }
 
+  function applyNote(op: Extract<SyncOp, { entity: 'note' }>): Outcome {
+    const existing = getNote(db, op.entityId);
+    if (existing && existing.userId !== userId) return { ok: false, reason: 'not_found' };
+
+    const r = applyOp<Note>(existing?.row, op);
+    if (!r.ok)
+      return { ok: false, reason: r.reason === 'not_found' ? 'not_found' : 'invalid_operation' };
+    if (r.changed) {
+      saveNote(db, userId, r.row);
+      writeLog(op, r.accepted);
+    }
+    return { ok: true };
+  }
+
+  /** May this operation be sent through the restricted (public) push at all? */
+  function allowedInScope(op: SyncOp): boolean {
+    if (!scope) return true;
+    if (scope.onlyListId !== undefined) return op.entity === 'todo';
+    return (
+      op.entity === 'note' &&
+      op.type === 'update' &&
+      op.entityId === scope.onlyNoteId &&
+      Object.keys(op.patch).every((k) => k === 'text')
+    );
+  }
+
   const run = db.transaction((): PushResponse => {
     const accepted: string[] = [];
     const rejected: PushResponse['rejected'] = [];
@@ -124,7 +152,7 @@ export function applyPush(
       }
       const op = parsed.data;
 
-      if (scope && op.entity === 'list') {
+      if (!allowedInScope(op)) {
         rejected.push({ opId: op.opId, reason: 'forbidden' });
         continue;
       }
@@ -135,7 +163,8 @@ export function applyPush(
         continue;
       }
 
-      const outcome = op.entity === 'todo' ? applyTodo(op) : applyList(op);
+      const outcome =
+        op.entity === 'todo' ? applyTodo(op) : op.entity === 'list' ? applyList(op) : applyNote(op);
       if (outcome.ok) {
         accepted.push(op.opId);
       } else {

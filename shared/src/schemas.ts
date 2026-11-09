@@ -11,6 +11,7 @@ import { isHlc, isValidClientId } from './hlc';
 export const TITLE_MAX = 500;
 export const NOTES_MAX = 10_000;
 export const LIST_NAME_MAX = 200;
+export const NOTE_TEXT_MAX = 20_000;
 export const ORDER_KEY_MAX = 200;
 export const PUSH_BATCH_MAX = 500;
 
@@ -47,6 +48,12 @@ const listFields = {
   isPublic: z.boolean(),
 };
 
+const noteFields = {
+  text: z.string().max(NOTE_TEXT_MAX),
+  orderKey: orderKeySchema,
+  isPublic: z.boolean(),
+};
+
 const rowMeta = {
   id: idSchema,
   fieldHlc: fieldHlcSchema,
@@ -65,7 +72,11 @@ export type Todo = z.infer<typeof todoSchema>;
 export const listSchema = z.object({ ...listFields, isInbox: z.boolean(), ...rowMeta });
 export type List = z.infer<typeof listSchema>;
 
-export type Entity = 'todo' | 'list';
+/** A note: a simple text box (docs/notes/PRD.md). */
+export const noteSchema = z.object({ ...noteFields, ...rowMeta });
+export type Note = z.infer<typeof noteSchema>;
+
+export type Entity = 'todo' | 'list' | 'note';
 export type OpType = 'create' | 'update' | 'delete' | 'restore';
 
 // ---------------------------------------------------------------------------
@@ -101,6 +112,17 @@ export const listUpdatePatchSchema = z
   .partial()
   .refine(notEmpty, NOT_EMPTY);
 export type ListPatch = z.infer<typeof listUpdatePatchSchema>;
+
+export const noteCreatePatchSchema = z.strictObject({
+  orderKey: noteFields.orderKey,
+  text: noteFields.text.optional(),
+  isPublic: noteFields.isPublic.optional(),
+});
+export const noteUpdatePatchSchema = z
+  .strictObject(noteFields)
+  .partial()
+  .refine(notEmpty, NOT_EMPTY);
+export type NotePatch = z.infer<typeof noteUpdatePatchSchema>;
 
 const emptyPatch = z.strictObject({});
 
@@ -138,6 +160,19 @@ export const syncOpSchema = z.union([
     patch: listUpdatePatchSchema,
   }),
   z.object({ ...opBase, entity: z.literal('list'), type: removeTypes, patch: emptyPatch }),
+  z.object({
+    ...opBase,
+    entity: z.literal('note'),
+    type: z.literal('create'),
+    patch: noteCreatePatchSchema,
+  }),
+  z.object({
+    ...opBase,
+    entity: z.literal('note'),
+    type: z.literal('update'),
+    patch: noteUpdatePatchSchema,
+  }),
+  z.object({ ...opBase, entity: z.literal('note'), type: removeTypes, patch: emptyPatch }),
 ]);
 export type SyncOp = z.infer<typeof syncOpSchema>;
 
@@ -165,6 +200,7 @@ const pulledTodoPatch = z.strictObject({ ...todoFields, deletedAt: nullableEpoch
 const pulledListPatch = z
   .strictObject({ ...listFields, isInbox: z.boolean(), deletedAt: nullableEpochMs })
   .partial();
+const pulledNotePatch = z.strictObject({ ...noteFields, deletedAt: nullableEpochMs }).partial();
 const opType = z.enum(['create', 'update', 'delete', 'restore']);
 const changeBase = {
   serverSeq: z.number().int().min(1),
@@ -176,6 +212,7 @@ const changeBase = {
 export const pullChangeSchema = z.union([
   z.object({ ...changeBase, entity: z.literal('todo'), patch: pulledTodoPatch }),
   z.object({ ...changeBase, entity: z.literal('list'), patch: pulledListPatch }),
+  z.object({ ...changeBase, entity: z.literal('note'), patch: pulledNotePatch }),
 ]);
 export type PullChange = z.infer<typeof pullChangeSchema>;
 
