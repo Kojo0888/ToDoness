@@ -1,6 +1,6 @@
 /** The browser's local database (docs/mvp/DBModel.md section 4). */
 import Dexie, { type Table } from 'dexie';
-import type { List, OutboxOp, Todo } from '@todoness/shared';
+import type { List, Note, OutboxOp, Todo } from '@todoness/shared';
 
 export interface MetaRow {
   key: string;
@@ -27,6 +27,7 @@ export type DeadLetter = OutboxOp & { failedAt: number; reason: string };
  *  - recoverySnapshot data of another account kept aside until the user decides (data/recovery.ts)
  *
  * `notified` remembers which reminders already fired on this device (version 2).
+ * `notes` holds the notes module (version 3, docs/notes/PRD.md).
  *
  * Only strings and numbers can be indexed, so `deletedAt` (null) and the
  * booleans have no index; they are filtered in code. The data is small.
@@ -34,6 +35,7 @@ export type DeadLetter = OutboxOp & { failedAt: number; reason: string };
 export class TodonessDB extends Dexie {
   lists!: Table<List, string>;
   todos!: Table<Todo, string>;
+  notes!: Table<Note, string>;
   outbox!: Table<OutboxOp, string>;
   deadLetter!: Table<DeadLetter, string>;
   meta!: Table<MetaRow, string>;
@@ -65,6 +67,8 @@ export class TodonessDB extends Dexie {
             t.remindBefore ??= null;
           });
       });
+    // Notes module: a new table, nothing else changes.
+    this.version(3).stores({ notes: 'id, orderKey' });
   }
 
   async getMeta<T>(key: string): Promise<T | undefined> {
@@ -83,11 +87,12 @@ export class TodonessDB extends Dexie {
   async clearAll(keep: MetaRow[] = []): Promise<void> {
     await this.transaction(
       'rw',
-      [this.lists, this.todos, this.outbox, this.deadLetter, this.meta, this.notified],
+      [this.lists, this.todos, this.notes, this.outbox, this.deadLetter, this.meta, this.notified],
       () =>
         Promise.all([
           this.lists.clear(),
           this.todos.clear(),
+          this.notes.clear(),
           this.outbox.clear(),
           this.deadLetter.clear(),
           this.meta.clear(),

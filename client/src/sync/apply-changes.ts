@@ -3,6 +3,7 @@ import {
   applyOp,
   newClientId,
   type List,
+  type Note,
   type PullChange,
   type Todo,
 } from '@todoness/shared';
@@ -23,13 +24,14 @@ export async function applyChanges(
   nextSeq: number,
   now: () => number = Date.now,
 ): Promise<number> {
-  return db.transaction('rw', [db.lists, db.todos, db.meta], async () => {
+  const tables = { todo: db.todos, list: db.lists, note: db.notes };
+  return db.transaction('rw', [db.lists, db.todos, db.notes, db.meta], async () => {
     let newest: string | undefined;
 
     for (const ch of changes) {
-      const table = (ch.entity === 'todo' ? db.todos : db.lists) as unknown as {
-        get(id: string): Promise<Todo | List | undefined>;
-        put(row: Todo | List): Promise<unknown>;
+      const table = tables[ch.entity] as unknown as {
+        get(id: string): Promise<Todo | List | Note | undefined>;
+        put(row: Todo | List | Note): Promise<unknown>;
       };
       const existing = await table.get(ch.entityId);
       const result = applyOp(existing, {

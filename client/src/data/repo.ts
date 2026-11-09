@@ -13,7 +13,9 @@ import {
   applyOp,
   newId,
   syncOpSchema,
+  type Entity,
   type List,
+  type Note,
   type OpType,
   type Todo,
   type TodoPatch,
@@ -62,6 +64,14 @@ export interface Repo {
   setListPublic(id: string, isPublic: boolean): Promise<List>;
   /** Moves a list one place up or down among the visible lists (never above the Inbox). */
   moveList(id: string, direction: 'up' | 'down'): Promise<List>;
+  /** A new note with this text, on top. Blank text is refused. */
+  createNote(text: string): Promise<Note>;
+  /** Replaces the text of a note (it may become empty). */
+  updateNoteText(id: string, text: string): Promise<Note>;
+  /** Makes a note readable and editable (or not) by every logged-in user. */
+  setNotePublic(id: string, isPublic: boolean): Promise<Note>;
+  deleteNote(id: string): Promise<Note>;
+  restoreNote(id: string): Promise<Note>;
   /**
    * Puts the data of another account (kept aside at sign-up) into this one, as normal queued
    * changes. `append` keeps what is here; `overwrite` deletes the live tasks and lists first
@@ -78,18 +88,25 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
   const now = opts.now ?? Date.now;
 
   const inTx = <T>(fn: () => Promise<T>) =>
-    db.transaction('rw', [db.todos, db.lists, db.outbox, db.meta], fn);
+    db.transaction('rw', [db.todos, db.lists, db.notes, db.outbox, db.meta], fn);
+
+  type AnyRow = Todo | List | Note;
+  const tableOf = <T extends AnyRow>(entity: Entity) =>
+    ({ todo: db.todos, list: db.lists, note: db.notes })[entity] as unknown as Dexie.Table<
+      T,
+      string
+    >;
 
   const nextHlc = () => nextHlcOf(db, now);
 
   /** Validates, applies and queues one operation. Returns the resulting row. */
-  async function commit<T extends Todo | List>(
-    entity: 'todo' | 'list',
+  async function commit<T extends AnyRow>(
+    entity: Entity,
     type: OpType,
     entityId: string,
     patch: Record<string, unknown>,
   ): Promise<T> {
-    const table = (entity === 'todo' ? db.todos : db.lists) as unknown as Dexie.Table<T, string>;
+    const table = tableOf<T>(entity);
     const existing = await table.get(entityId);
 
     const parsed = syncOpSchema.safeParse({
@@ -124,6 +141,12 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
     const l = await db.lists.get(id);
     if (!l || l.deletedAt !== null) throw new RepoError('not_found', 'List not found');
     return l;
+  }
+
+  async function liveNote(id: string): Promise<Note> {
+    const n = await db.notes.get(id);
+    if (!n || n.deletedAt !== null) throw new RepoError('not_found', 'Note not found');
+    return n;
   }
 
   /** Todos of a list that are not deleted, in key order. */
@@ -206,6 +229,46 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         if (choice.kind === 'same') return todo;
         if (choice.kind === 'missing') throw new RepoError('not_found', 'Task or target not found');
         return commit<Todo>('todo', 'update', id, { orderKey: choice.key });
+      }),
+
+    createNote: (text) =>
+      inTx(async () => {
+        if (!text.trim()) throw new RepoError('invalid', 'A new note needs text');
+        const first = await db.notes.orderBy('orderKey').first();
+        return commit<Note>('note', 'create', newId(now()), {
+          text,
+          orderKey: generateKeyBetween(null, first?.orderKey ?? null),
+        });
+      }),
+
+    updateNoteText: (id, text) =>
+      inTx(async () => {
+        const note = await liveNote(id);
+        if (note.text === text) return note;
+        return commit<Note>('note', 'update', id, { text });
+      }),
+
+    setNotePublic: (id, isPublic) =>
+      inTx(async () => {
+        const note = await liveNote(id);
+        if (note.isPublic === isPublic) return note;
+        return commit<Note>('note', 'update', id, { isPublic });
+      }),
+
+    deleteNote: (id) =>
+      inTx(async () => {
+        const note = await db.notes.get(id);
+        if (!note) throw new RepoError('not_found', 'Note not found');
+        if (note.deletedAt !== null) return note;
+        return commit<Note>('note', 'delete', id, {});
+      }),
+
+    restoreNote: (id) =>
+      inTx(async () => {
+        const note = await db.notes.get(id);
+        if (!note) throw new RepoError('not_found', 'Note not found');
+        if (note.deletedAt === null) return note;
+        return commit<Note>('note', 'restore', id, {});
       }),
 
     setListPublic: (id, isPublic) =>
