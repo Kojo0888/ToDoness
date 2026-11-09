@@ -14,7 +14,7 @@ import {
 } from '@todoness/shared';
 import { requireAuth } from '../auth/middleware';
 import { applyPush } from '../sync/apply-ops';
-import type { AppEnv } from '../types';
+import type { AppEnv } from '../http/types';
 
 export function publicRoutes({ db, now }: { db: Database.Database; now: () => number }) {
   const app = new Hono<AppEnv>();

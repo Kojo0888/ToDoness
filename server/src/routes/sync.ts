@@ -4,7 +4,7 @@ import { bodyLimit } from 'hono/body-limit';
 import { pushEnvelopeSchema, type PullResponse } from '@todoness/shared';
 import { requireAuth } from '../auth/middleware';
 import { applyPush } from '../sync/apply-ops';
-import type { AppEnv } from '../types';
+import type { AppEnv } from '../http/types';
 
 const PULL_DEFAULT = 500;
 const PULL_MAX = 1000;

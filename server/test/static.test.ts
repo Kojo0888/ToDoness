@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { staticMiddleware } from '../src/static';
+import { staticMiddleware } from '../src/http/static';
 
 let app: Hono;
 

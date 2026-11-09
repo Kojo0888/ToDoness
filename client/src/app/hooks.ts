@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { connectivity, engine, reminderFeed, session } from './services';
+import { connectivity, engine, reminderFeed, session } from './container';
 
 export function useSession() {
   return useSyncExternalStore(session.subscribe, session.getState);

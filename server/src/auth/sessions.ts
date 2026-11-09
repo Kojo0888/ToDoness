@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3';
 import { createHash, randomBytes } from 'node:crypto';
 import type { Role } from '@todoness/shared';
-import type { AuthUser } from '../types';
+import type { AuthUser } from '../http/types';
 
 export const SESSION_COOKIE = 'todoness_session';
 export const SESSION_MS = 90 * 24 * 60 * 60 * 1000;

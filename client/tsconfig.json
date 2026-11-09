@@ -6,5 +6,5 @@
     "types": ["vite/client", "vite-plugin-pwa/client"]
   },
   "include": ["src", "test", "vite.config.ts", "vitest.config.ts"],
-  "exclude": ["src/sw.ts"]
+  "exclude": ["src/sw/sw.ts"]
 }

@@ -4,5 +4,5 @@
     "lib": ["ES2023", "WebWorker"],
     "types": []
   },
-  "include": ["src/sw.ts", "src/sw-logic.ts"]
+  "include": ["src/sw"]
 }

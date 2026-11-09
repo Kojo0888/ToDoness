@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
-import { InitialSync, OfflineNoSession, Splash } from './components/Splash';
-import { UpdateBanner } from './components/UpdateBanner';
-import { LoginScreen } from './components/LoginScreen';
-import { Shell } from './components/Shell';
+import { InitialSync, OfflineNoSession, Splash } from '../components/common/Splash';
+import { UpdateBanner } from '../components/common/UpdateBanner';
+import { LoginScreen } from '../components/account/LoginScreen';
+import { Shell } from '../components/layout/Shell';
 import { applyTheme, readTheme, useSession } from './hooks';
-import { session } from './services';
+import { session } from './container';
 
 export function App() {
   const state = useSession();
