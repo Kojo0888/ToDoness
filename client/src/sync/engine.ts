@@ -10,6 +10,7 @@ import {
 } from '@todoness/shared';
 import type { TodonessDB } from '../data/db';
 import { applyChanges } from './apply-changes';
+import type { SyncDiagnostics } from './diagnostics';
 
 export type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -40,6 +41,8 @@ export interface SyncEngine {
   /** Push, then pull. Never throws: problems are returned and set on `status`. */
   sync(): Promise<SyncResult>;
   markOffline(): void;
+  /** Gives up on every request that is waiting (the connection changed): they fail at once. */
+  abort(): void;
   subscribe(listener: (status: SyncStatus) => void): () => void;
 }
 
@@ -51,6 +54,10 @@ export interface EngineOptions {
   pullLimit?: number;
   /** A request that gets no answer within this time counts as offline. */
   requestTimeoutMs?: number;
+  /** The same, while the last sync failed: the next try must not wait long again. */
+  degradedTimeoutMs?: number;
+  /** Records timings for the admin diagnostics. */
+  diag?: SyncDiagnostics;
 }
 
 const JSON_HEADERS = { 'content-type': 'application/json' };
@@ -62,7 +69,9 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
     now = Date.now,
     batchSize = 50,
     pullLimit = 500,
-    requestTimeoutMs = 5000,
+    requestTimeoutMs = 3500,
+    degradedTimeoutMs = 2000,
+    diag,
   } = opts;
 
   let status: SyncStatus = { state: 'idle', lastSyncAt: null };
@@ -74,25 +83,46 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
     for (const l of listeners) l(status);
   }
 
+  /** Requests that are waiting for an answer, so `abort()` can end them. */
+  const waiting = new Set<() => void>();
+  /** True after a failed sync until one works: requests then give up sooner. */
+  let degraded = false;
+
   async function request(url: string, init?: RequestInit): Promise<Response> {
     let res: Response;
     // A connection that dies silently never answers. Without a time limit the sync
     // would wait forever and the runner would never start another one.
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const timedOut = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => {
+    let giveUp!: () => void;
+    let how = 'timeout' as 'timeout' | 'aborted';
+    const gaveUp = new Promise<never>((_, reject) => {
+      giveUp = () => {
         controller.abort();
-        reject(new Error('timeout'));
-      }, requestTimeoutMs);
+        reject(new Error(how));
+      };
+      timer = setTimeout(
+        giveUp,
+        degraded ? Math.min(degradedTimeoutMs, requestTimeoutMs) : requestTimeoutMs,
+      );
     });
+    const abort = () => {
+      how = 'aborted';
+      giveUp();
+    };
+    waiting.add(abort);
+    const what = new URL(url, 'http://x').pathname.replace('/api/sync/', '');
+    const id = diag?.requestStart(what) ?? 0;
     try {
-      res = await Promise.race([fetch(url, { ...init, signal: controller.signal }), timedOut]);
+      res = await Promise.race([fetch(url, { ...init, signal: controller.signal }), gaveUp]);
     } catch {
+      diag?.requestEnd(id, how === 'aborted' ? 'aborted' : 'no answer (timeout)');
       throw new SyncError('offline', 'Cannot reach the server');
     } finally {
       clearTimeout(timer);
+      waiting.delete(abort);
     }
+    diag?.requestEnd(id, `answered ${res.status}`);
     if (res.status === 401) throw new SyncError('auth', 'Login required');
     if (res.status >= 500 || res.status === 408 || res.status === 429) {
       throw new SyncError('server', `Server answered ${res.status}`);
@@ -207,11 +237,13 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
     try {
       await push();
       await pull();
+      degraded = false;
       setStatus({ state: 'idle', lastSyncAt: now() });
       return { ok: true };
     } catch (err) {
       const kind: SyncErrorKind = err instanceof SyncError ? err.kind : 'server';
       const message = err instanceof Error ? err.message : String(err);
+      degraded = true;
       const state = kind === 'offline' ? 'offline' : kind === 'auth' ? 'auth_required' : 'error';
       setStatus({ state, lastSyncAt: status.lastSyncAt, error: message });
       return { ok: false, kind, message };
@@ -229,6 +261,9 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
         inFlight = undefined;
       });
       return inFlight;
+    },
+    abort() {
+      for (const stop of [...waiting]) stop();
     },
     markOffline() {
       setStatus({ state: 'offline', lastSyncAt: status.lastSyncAt });

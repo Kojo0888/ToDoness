@@ -97,18 +97,19 @@ export function ListPage({ listId, todoId }: { listId: string; todoId?: string }
           )}
         </header>
 
-        <label className="switch list-public">
+        <label className="switch list-public" title={t.list.publicHint}>
           <input
             type="checkbox"
             role="switch"
             checked={list.isPublic}
+            aria-describedby="public-hint"
             onChange={(e) => void repo.setListPublic(listId, e.target.checked)}
           />
-          <span>
-            {t.list.public}
-            <span className="hint"> · {t.list.publicHint}</span>
-          </span>
+          {t.list.public}
         </label>
+        <span id="public-hint" className="sr-only">
+          {t.list.publicHint}
+        </span>
 
         <QuickAdd listId={listId} />
 

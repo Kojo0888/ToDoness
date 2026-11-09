@@ -16,7 +16,9 @@ connection returns.
 - **Reminders**: 1 week, 1 day or 1 hour before a task is due, as a notification, also
   when the app is closed (**web push**, needs HTTPS, see below).
 - **Attachments** on tasks, up to a configurable size per file.
-- The admin screen shows **who is online**.
+- The admin screen shows **who is online**, and admins see **sync diagnostics** (flags and a
+  log of the last 100 sync events with timings) above the "All changes saved" indicator, to
+  find out why a reconnect was slow.
 
 ## Documentation
 

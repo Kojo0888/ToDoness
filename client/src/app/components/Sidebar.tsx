@@ -22,7 +22,7 @@ export function Sidebar({ user, open, onNavigate }: Props) {
   const lists = useLiveQuery(() => getLists(db), [], []);
   const [name, setName] = useState('');
   const online = useOnline();
-  const publicLists = usePolled(fetchPublicLists, 15_000);
+  const publicLists = usePolled(fetchPublicLists, 5000);
 
   async function addList(e: FormEvent) {
     e.preventDefault();
@@ -39,57 +39,59 @@ export function Sidebar({ user, open, onNavigate }: Props) {
   return (
     <nav className={`sidebar${open ? ' open' : ''}`} aria-label={t.nav.lists}>
       <h1 className="brand">{t.appName}</h1>
-      <ul className="nav-lists">
-        {lists.map((l) => (
-          <ListLink
-            key={l.id}
-            id={l.id}
-            name={l.name}
-            active={active(`/l/${l.id}`)}
-            onNavigate={onNavigate}
+      <div className="nav-scroll">
+        <ul className="nav-lists">
+          {lists.map((l) => (
+            <ListLink
+              key={l.id}
+              id={l.id}
+              name={l.name}
+              active={active(`/l/${l.id}`)}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </ul>
+
+        {(publicLists.value?.length ?? 0) > 0 && (
+          <>
+            <h2 className="nav-heading">{t.nav.publicLists}</h2>
+            <ul className="nav-lists" aria-label={t.nav.publicLists}>
+              {publicLists.value?.map((l) => (
+                <li key={l.id}>
+                  <Link
+                    href={`/public/${l.id}`}
+                    className={active(`/public/${l.id}`) ? 'active' : ''}
+                    aria-current={active(`/public/${l.id}`) ? 'page' : undefined}
+                    onClick={onNavigate}
+                    title={l.ownerEmail}
+                  >
+                    {l.name}
+                    <span className="nav-owner">{l.ownerEmail}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        {!online && publicLists.value === undefined && (
+          <p className="hint nav-note">{t.nav.publicNeedsConnection}</p>
+        )}
+
+        <form onSubmit={addList} className="new-list">
+          <input
+            type="text"
+            aria-label={t.nav.newList}
+            placeholder={t.nav.newList}
+            value={name}
+            maxLength={200}
+            onChange={(e) => setName(e.target.value)}
           />
-        ))}
-      </ul>
-
-      {(publicLists.value?.length ?? 0) > 0 && (
-        <>
-          <h2 className="nav-heading">{t.nav.publicLists}</h2>
-          <ul className="nav-lists" aria-label={t.nav.publicLists}>
-            {publicLists.value?.map((l) => (
-              <li key={l.id}>
-                <Link
-                  href={`/public/${l.id}`}
-                  className={active(`/public/${l.id}`) ? 'active' : ''}
-                  aria-current={active(`/public/${l.id}`) ? 'page' : undefined}
-                  onClick={onNavigate}
-                  title={l.ownerEmail}
-                >
-                  {l.name}
-                  <span className="nav-owner">{l.ownerEmail}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-      {!online && publicLists.value === undefined && (
-        <p className="hint nav-note">{t.nav.publicNeedsConnection}</p>
-      )}
-
-      <form onSubmit={addList} className="new-list">
-        <input
-          type="text"
-          aria-label={t.nav.newList}
-          placeholder={t.nav.newList}
-          value={name}
-          maxLength={200}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <button type="submit">{t.nav.addList}</button>
-      </form>
+          <button type="submit">{t.nav.addList}</button>
+        </form>
+      </div>
 
       <div className="nav-foot">
-        <SyncBadge />
+        <SyncBadge admin={user.role === 'admin'} />
         <Link href="/settings" onClick={onNavigate} className={active('/settings') ? 'active' : ''}>
           {t.nav.settings}
         </Link>

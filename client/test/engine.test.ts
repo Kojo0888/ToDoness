@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { compareHlc, newId } from '@todoness/shared';
 import { createRepo } from '../src/data/repo';
 import { createSyncEngine, SyncError } from '../src/sync/engine';
@@ -358,5 +358,79 @@ describe('sync() and status', () => {
     engine.markOffline();
     expect(engine.status.state).toBe('offline');
     expect(f.calls).toHaveLength(0);
+  });
+});
+
+describe('timeouts and abort (offline → online speed)', () => {
+  const never = () => new Promise<never>(() => {}); // a dead connection: never answers
+
+  async function setup(opts: { diag?: import('../src/sync/diagnostics').SyncDiagnostics } = {}) {
+    const db = testDb();
+    await seedInbox(db);
+    const f = fakeFetch(() => never());
+    const engine = createSyncEngine({ db, fetch: f, ...opts });
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+    });
+    return { engine, f };
+  }
+  /** Moves the fake clock in small steps, letting IndexedDB (real async I/O) finish in between. */
+  async function pass(ms: number) {
+    for (let t = 0; t < ms; t += 100) {
+      await vi.advanceTimersByTimeAsync(Math.min(100, ms - t));
+      for (let i = 0; i < 3; i++) await new Promise((r) => setImmediate(r));
+    }
+  }
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('gives up on a silent connection after 3.5 s, and reports offline', async () => {
+    const { engine } = await setup();
+    const result = engine.sync();
+    await pass(3400);
+    expect(engine.status.state).toBe('syncing');
+    await pass(200);
+    expect(await result).toMatchObject({ ok: false, kind: 'offline' });
+  });
+
+  it('after a failure the next request only waits 2 s', async () => {
+    const { engine } = await setup();
+    const first = engine.sync();
+    await pass(3600);
+    await first;
+    const second = engine.sync();
+    await pass(1900);
+    expect(engine.status.state).toBe('syncing');
+    await pass(200);
+    expect(await second).toMatchObject({ ok: false, kind: 'offline' });
+  });
+
+  it('abort() ends a waiting request at once', async () => {
+    const { engine } = await setup();
+    const result = engine.sync();
+    await pass(300);
+    engine.abort();
+    await pass(100);
+    expect(await result).toMatchObject({ ok: false, kind: 'offline' });
+  });
+
+  it('abort() with nothing waiting does nothing', async () => {
+    const { engine } = await setup();
+    expect(() => engine.abort()).not.toThrow();
+  });
+
+  it('records request timings for the admin diagnostics', async () => {
+    const { createSyncDiagnostics } = await import('../src/sync/diagnostics');
+    const diag = createSyncDiagnostics(() => Date.now()); // read the (fake) clock each time
+    const { engine } = await setup({ diag });
+    const result = engine.sync();
+    await pass(3700);
+    await result;
+    expect(diag.getSnapshot().flags.lastRequest).toMatchObject({
+      what: 'pull',
+      outcome: 'no answer (timeout)',
+    });
+    expect(diag.getSnapshot().flags.lastRequest!.ms).toBeGreaterThanOrEqual(3500);
   });
 });
