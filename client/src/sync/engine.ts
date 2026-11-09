@@ -43,6 +43,8 @@ export interface SyncEngine {
   markOffline(): void;
   /** Gives up on every request that is waiting (the connection changed): they fail at once. */
   abort(): void;
+  /** Is the server reachable? Any answer counts, even an error. Never changes the status. */
+  ping(): Promise<boolean>;
   subscribe(listener: (status: SyncStatus) => void): () => void;
 }
 
@@ -56,6 +58,8 @@ export interface EngineOptions {
   requestTimeoutMs?: number;
   /** The same, while the last sync failed: the next try must not wait long again. */
   degradedTimeoutMs?: number;
+  /** How long a connection check waits for an answer. */
+  pingTimeoutMs?: number;
   /** Records timings for the admin diagnostics. */
   diag?: SyncDiagnostics;
 }
@@ -71,6 +75,7 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
     pullLimit = 500,
     requestTimeoutMs = 3500,
     degradedTimeoutMs = 2000,
+    pingTimeoutMs = 2000,
     diag,
   } = opts;
 
@@ -261,6 +266,27 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
         inFlight = undefined;
       });
       return inFlight;
+    },
+    async ping() {
+      const controller = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timedOut = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error('timeout'));
+        }, pingTimeoutMs);
+      });
+      try {
+        await Promise.race([
+          fetch('/api/health', { signal: controller.signal, cache: 'no-store' }),
+          timedOut,
+        ]);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        clearTimeout(timer);
+      }
     },
     abort() {
       for (const stop of [...waiting]) stop();

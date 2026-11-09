@@ -655,7 +655,9 @@ describe('update 3: toggle, sticky Settings/Admin, sync diagnostics', () => {
     const flags = admin.page.getByTestId('sync-diagnostics');
     await flags.waitFor();
     for (const name of [
-      'Browser',
+      'Browser says',
+      'App found',
+      'Last check',
       'Sync',
       'Request',
       'Next try',
@@ -786,9 +788,9 @@ describe('update 4: time control and phone file pickers', () => {
     await page.getByRole('link', { name: 'From my phone' }).click();
     await page.getByRole('complementary', { name: 'Task details' }).waitFor();
 
-    await page.getByRole('button', { name: 'Add photos or videos' }).waitFor();
-    await page.getByRole('button', { name: 'Add documents' }).waitFor();
-    expect(await page.getByRole('button', { name: 'Add files' }).count()).toBe(0);
+    await page.getByText('Add photos or videos').waitFor();
+    await page.getByText('Add documents').waitFor();
+    expect(await page.getByText('Add files').count()).toBe(0);
     expect(await page.getByTestId('attachment-input-media').getAttribute('accept')).toBe(
       'image/*,video/*',
     );
@@ -812,6 +814,118 @@ describe('update 4: time control and phone file pickers', () => {
     await addTask(page, 'Desktop picker');
     await openTask(page, 'Desktop picker');
     expect(await page.getByTestId('attachment-input').getAttribute('accept')).toBeNull();
-    await page.getByRole('button', { name: 'Add files' }).waitFor();
+    await page.getByText('Add files').waitFor();
+  });
+});
+
+describe('update 5: connection check, file pickers after a cancel, sticky Close log', () => {
+  it('works when the browser wrongly says it is offline: syncs, shows Online, features stay on', async () => {
+    const { bob } = await getPair();
+    const page = bob.page;
+    // The browser flag is stuck on "offline" and no `online` event ever comes.
+    await page.addInitScript(() => {
+      Object.defineProperty(Navigator.prototype, 'onLine', {
+        get: () => false,
+        configurable: true,
+      });
+    });
+    await page.reload();
+    await page.getByTestId('sync-status').waitFor();
+    expect(await page.evaluate(() => navigator.onLine)).toBe(false); // the lie is in place
+
+    await page.getByRole('navigation').getByRole('link', { name: 'Inbox' }).click();
+    await addTask(page, 'Browser thinks I am offline');
+    await waitSaved(page); // it synced although the browser says offline
+    await page.getByTestId('sync-status').filter({ hasText: 'All changes saved' }).waitFor();
+    expect(await page.getByTestId('sync-status').innerText()).not.toMatch(/Offline/);
+
+    // features that need a connection are available (they used to follow the browser flag)
+    await openTask(page, 'Browser thinks I am offline');
+    await expect
+      .poll(() => page.getByTestId('attachment-input').isDisabled(), { timeout: 8000 })
+      .toBe(false);
+  });
+
+  it('the app notices a real loss of connection within about 5 seconds, without any browser event', async () => {
+    const { bob } = await getPair();
+    const page = bob.page;
+    await page.getByRole('navigation').getByRole('link', { name: 'Inbox' }).click();
+    await waitSaved(page);
+    await page.route('**/api/**', () => new Promise(() => {})); // every request hangs
+    const t0 = Date.now();
+    await page.getByTestId('sync-status').filter({ hasText: 'Offline' }).waitFor({ timeout: 8000 });
+    expect(Date.now() - t0).toBeLessThanOrEqual(6000);
+    await page.unroute('**/api/**');
+    const t1 = Date.now();
+    await page
+      .getByTestId('sync-status')
+      .filter({ hasText: 'All changes saved' })
+      .waitFor({ timeout: 8000 });
+    expect(Date.now() - t1).toBeLessThanOrEqual(5000);
+  }, 40_000);
+
+  it('the file picker opens again after it was cancelled, on a computer and on a phone', async () => {
+    for (const phone of [false, true]) {
+      const context = phone
+        ? await newDevice(
+            browser,
+            app,
+            { width: 390, height: 780 },
+            { isMobile: true, hasTouch: true },
+          )
+        : await newDevice(browser, app);
+      const page = await newPage(context);
+      if (phone) await signUp(page, uniqueEmail('picker'));
+      else {
+        const { ann } = await getPair();
+        await logIn(page, ann.email);
+      }
+      await addTask(page, `Picker ${phone ? 'phone' : 'computer'}`);
+      await openTask(page, `Picker ${phone ? 'phone' : 'computer'}`);
+      const label = page.getByText(phone ? 'Add documents' : 'Add files');
+
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        // open the picker and leave it unanswered (cancelled): it must open again each time
+        const [chooser] = await Promise.all([
+          page.waitForEvent('filechooser', { timeout: 5000 }),
+          label.click(),
+        ]);
+        expect(chooser, `attempt ${attempt}`).toBeTruthy();
+        await page.waitForTimeout(150);
+      }
+      // and a real pick still works afterwards
+      const [chooser] = await Promise.all([page.waitForEvent('filechooser'), label.click()]);
+      await chooser.setFiles({
+        name: 'after-cancel.txt',
+        mimeType: 'text/plain',
+        buffer: Buffer.from('ok'),
+      });
+      await page.getByRole('link', { name: 'after-cancel.txt' }).waitFor();
+      await context.close();
+    }
+  }, 90_000);
+
+  it('the Close log button stays visible while the log is scrolled', async () => {
+    const page = admin.page;
+    await page.getByRole('navigation').getByRole('link', { name: 'Inbox' }).click();
+    // many log lines: every "tab became visible" starts a sync
+    for (let i = 0; i < 25; i++) {
+      await syncNow(page);
+      await page.waitForTimeout(40);
+    }
+    await page.getByRole('button', { name: 'Log', exact: true }).click();
+    const log = page.getByRole('log');
+    await log.waitFor();
+    await log.evaluate((el) => (el.scrollTop = el.scrollHeight)); // read the oldest lines
+    expect(await log.evaluate((el) => el.scrollTop)).toBeGreaterThan(100); // it really scrolled
+
+    const close = page.getByRole('button', { name: 'Close log' });
+    const box = await close.boundingBox();
+    const area = await log.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeGreaterThanOrEqual(area!.y - 1);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(area!.y + 80); // still at the top of the popup
+    await close.click(); // and it can be clicked without scrolling up
+    await log.waitFor({ state: 'detached' });
   });
 });

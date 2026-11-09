@@ -16,6 +16,8 @@ export interface DiagFlags {
   /** A request that has been sent and has not answered yet. */
   inFlight: { what: string; since: number } | null;
   lastRequest: { what: string; ms: number; outcome: string } | null;
+  /** The last connection check (`GET /api/health`). */
+  lastProbe: { at: number; ok: boolean; ms: number } | null;
   /** The next attempt is planned for this time. */
   retry: { at: number; delayMs: number; attempt: number } | null;
   /** The last time from the browser's `online` event to "all changes saved". */
@@ -36,6 +38,8 @@ export interface SyncDiagnostics {
   requestEnd(id: number, outcome: string): void;
   browserOnline(online: boolean): void;
   retryScheduled(delayMs: number, attempt: number): void;
+  /** A connection check finished. */
+  probe(ok: boolean, ms: number): void;
   /** A sync run ended. `ok` = everything saved. */
   runEnd(ok: boolean, detail: string): void;
   subscribe(listener: () => void): () => void;
@@ -51,6 +55,7 @@ export function createSyncDiagnostics(now: () => number = Date.now): SyncDiagnos
     browserOnline: true,
     inFlight: null,
     lastRequest: null,
+    lastProbe: null,
     retry: null,
     reconnectMs: null,
     outageMs: null,
@@ -100,6 +105,11 @@ export function createSyncDiagnostics(now: () => number = Date.now): SyncDiagnos
       set({ browserOnline: online });
       if (online) reconnectFrom = now();
       add(online ? 'browser' : 'browser', online ? 'online event' : 'offline event');
+      emit();
+    },
+    probe(ok, ms) {
+      set({ lastProbe: { at: now(), ok, ms } });
+      add('probe', ok ? `server answered after ${ms} ms` : `no answer after ${ms} ms`);
       emit();
     },
     retryScheduled(delayMs, attempt) {

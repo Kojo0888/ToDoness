@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { engine, reminderFeed, session } from './services';
+import { connectivity, engine, reminderFeed, session } from './services';
 
 export function useSession() {
   return useSyncExternalStore(session.subscribe, session.getState);
@@ -13,18 +13,12 @@ export function useReminderMessages() {
   return useSyncExternalStore(reminderFeed.subscribe, reminderFeed.getSnapshot);
 }
 
-function subscribeOnline(callback: () => void) {
-  window.addEventListener('online', callback);
-  window.addEventListener('offline', callback);
-  return () => {
-    window.removeEventListener('online', callback);
-    window.removeEventListener('offline', callback);
-  };
-}
-
-/** The browser's own idea of whether it is online (a hint, not a guarantee). */
+/**
+ * Can the server be reached? What the app found out itself (a request worked, a check
+ * every 3 seconds answered); the browser's own flag is only a hint and can be wrong.
+ */
 export function useOnline() {
-  return useSyncExternalStore(subscribeOnline, () => navigator.onLine);
+  return useSyncExternalStore(connectivity.subscribe, () => connectivity.getSnapshot().online);
 }
 
 export type Theme = 'system' | 'light' | 'dark';

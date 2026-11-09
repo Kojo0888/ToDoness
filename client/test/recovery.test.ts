@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRepo } from '../src/data/repo';
+import { createConnectivity } from '../src/sync/connectivity';
 import { createSyncEngine } from '../src/sync/engine';
 import { createSyncRunner, type RunnerEnv } from '../src/sync/runner';
 import { fakeNow, seedInbox, testDb } from './helpers';
@@ -43,10 +44,11 @@ function setup() {
   };
   const db = testDb();
   const engine = createSyncEngine({ db, fetch: answering });
-  const runner = createSyncRunner({ engine, env });
+  const connectivity = createConnectivity(true);
+  const runner = createSyncRunner({ engine, env, connectivity });
   const repo = createRepo(db, { now: fakeNow() });
   const fire = (event: 'online' | 'offline') => handlers[event]!.forEach((h) => h());
-  return { db, engine, runner, repo, net, env, fire };
+  return { db, engine, runner, repo, net, env, fire, connectivity };
 }
 
 /** Moves the fake clock in 100 ms steps, letting IndexedDB (real async I/O) finish in between. */
@@ -116,6 +118,24 @@ describe('offline → online recovery time', () => {
     const bad = worst.filter(([, ms]) => ms > LIMIT_MS);
     expect(bad, `slower than ${LIMIT_MS} ms: ${JSON.stringify(bad)}`).toEqual([]);
   }, 120_000);
+
+  it('is saved within 5 seconds even if the browser insists it is offline (it is wrong)', async () => {
+    const { db, runner, repo, env, connectivity } = setup();
+    env.online = false; // the browser flag is stuck on "offline"; the network works
+    const inbox = await seedInbox(db);
+    db.outbox.hook('creating', () => runner.notifyChange());
+    runner.start();
+    await pass(100);
+    await repo.createTodo({ listId: inbox.id, title: 'the browser is wrong' });
+    let waited = 0;
+    while ((await db.outbox.count()) > 0 && waited < 10_000) {
+      await pass(100);
+      waited += 100;
+    }
+    expect(waited).toBeLessThanOrEqual(2500); // the debounce (1 s) plus the sync, no gate
+    expect(connectivity.getSnapshot().online).toBe(true);
+    runner.stop();
+  });
 
   it('a browser "offline" event shows Offline at once, without waiting for a failed request', async () => {
     const { runner, engine, env, fire } = setup();

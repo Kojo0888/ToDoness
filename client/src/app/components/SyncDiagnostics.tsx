@@ -37,12 +37,21 @@ export function SyncDiagnostics() {
           flags.lastRequest.outcome,
         )
       : t.syncDiag.none;
+  const check = flags.lastProbe
+    ? `${flags.lastProbe.ok ? t.syncDiag.answered : t.syncDiag.noAnswer} ${fmt(flags.lastProbe.ms)}, ${fmt(now - flags.lastProbe.at)} ${t.syncDiag.ago}`
+    : t.syncDiag.none;
   const nextTry = flags.retry
     ? `${fmt(Math.max(0, flags.retry.at - now))} (#${flags.retry.attempt})`
     : t.syncDiag.none;
 
   const rows: [string, string, string?][] = [
-    [t.syncDiag.browser, online ? t.syncDiag.online : t.syncDiag.offline, online ? 'ok' : 'warn'],
+    [
+      t.syncDiag.browser,
+      flags.browserOnline ? t.syncDiag.online : t.syncDiag.offline,
+      flags.browserOnline ? 'ok' : 'warn',
+    ],
+    [t.syncDiag.app, online ? t.syncDiag.online : t.syncDiag.offline, online ? 'ok' : 'warn'],
+    [t.syncDiag.check, check],
     [t.syncDiag.sync, t.syncDiag.states[status.state], status.state === 'idle' ? 'ok' : 'warn'],
     [t.syncDiag.request, request, flags.inFlight ? 'busy' : undefined],
     [t.syncDiag.nextTry, nextTry],
