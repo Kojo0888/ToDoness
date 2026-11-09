@@ -71,6 +71,11 @@ export interface Repo {
   /** Makes a note readable and editable (or not) by every logged-in user. */
   setNotePublic(id: string, isPublic: boolean): Promise<Note>;
   deleteNote(id: string): Promise<Note>;
+  /**
+   * Puts a note directly before another live note (`null` = at the end). One `orderKey`
+   * update; nothing happens if the position would not change.
+   */
+  reorderNote(id: string, beforeId: string | null): Promise<Note>;
   restoreNote(id: string): Promise<Note>;
   /**
    * Puts the data of another account (kept aside at sign-up) into this one, as normal queued
@@ -253,6 +258,18 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         const note = await liveNote(id);
         if (note.isPublic === isPublic) return note;
         return commit<Note>('note', 'update', id, { isPublic });
+      }),
+
+    reorderNote: (id, beforeId) =>
+      inTx(async () => {
+        const note = await liveNote(id);
+        const live = (await db.notes.orderBy('orderKey').toArray()).filter(
+          (n) => n.deletedAt === null,
+        );
+        const choice = keyForPosition(live, id, beforeId);
+        if (choice.kind === 'same') return note;
+        if (choice.kind === 'missing') throw new RepoError('not_found', 'Note or target not found');
+        return commit<Note>('note', 'update', id, { orderKey: choice.key });
       }),
 
     deleteNote: (id) =>

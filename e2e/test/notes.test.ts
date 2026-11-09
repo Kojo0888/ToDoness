@@ -276,3 +276,74 @@ describe('recovery with notes (FR-98, FR-99)', () => {
     }
   });
 });
+
+describe('reorder notes (FR-100 – FR-102)', () => {
+  it('with the keyboard on a phone, kept after a reload', async () => {
+    const { page } = await newUser('kbnotes', { width: 390, height: 900 });
+    await modules(page).getByRole('link', { name: 'Notes' }).click();
+    await myNotesHeading(page).waitFor();
+    for (const text of ['A', 'B', 'C']) await addNote(page, text);
+    expect(await noteTexts(page)).toEqual(['C', 'B', 'A']);
+
+    await page.getByRole('button', { name: 'Drag to reorder note 3' }).focus();
+    for (const key of ['Space', 'ArrowUp', 'ArrowUp', 'Space']) {
+      await page.keyboard.press(key);
+      await page.waitForTimeout(250);
+    }
+    await page.waitForFunction(
+      () => (document.querySelector('.notes .note-text') as HTMLTextAreaElement)?.value === 'A',
+    );
+    expect(await noteTexts(page)).toEqual(['A', 'C', 'B']);
+    // The sync status is in the closed menu on a phone: it is there, just not visible.
+    await badge(page)
+      .filter({ hasText: 'All changes saved' })
+      .waitFor({ state: 'attached', timeout: 20_000 });
+    await page.reload();
+    await myNotesHeading(page).waitFor();
+    await page.waitForFunction(() => document.querySelectorAll('.notes .note-text').length === 3);
+    expect(await noteTexts(page)).toEqual(['A', 'C', 'B']);
+  });
+
+  it('with the mouse', async () => {
+    const { page } = await newUser('mousenotes');
+    await openNotes(page);
+    for (const text of ['A', 'B', 'C']) await addNote(page, text);
+    const from = await page.getByRole('button', { name: 'Drag to reorder note 1' }).boundingBox();
+    const to = await page.getByRole('button', { name: 'Drag to reorder note 3' }).boundingBox();
+    await page.mouse.move(from!.x + 10, from!.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(from!.x + 30, from!.y + 10, { steps: 5 });
+    await page.mouse.move(to!.x + 20, to!.y + 10, { steps: 15 });
+    await page.mouse.up();
+    await page.waitForFunction(
+      () => (document.querySelector('.notes .note-text') as HTMLTextAreaElement)?.value !== 'C',
+    );
+    expect(await noteTexts(page)).toEqual(['B', 'A', 'C']);
+  });
+});
+
+describe('search notes (FR-103 – FR-105)', () => {
+  it('filters by every word, ignoring case and accents; Escape clears', async () => {
+    const { page } = await newUser('search');
+    await openNotes(page);
+    for (const text of ['Café menu', 'Team lunch', 'Lunch: café Friday']) await addNote(page, text);
+    const search = page.getByRole('searchbox', { name: 'Search notes' });
+    await search.fill('cafe LUNCH');
+    await page.getByText('1 of 3 notes matches.').waitFor();
+    expect(await noteTexts(page)).toEqual(['Lunch: café Friday']);
+    // No reordering of a filtered view.
+    await expect(
+      page.getByRole('button', { name: 'Drag to reorder note 1' }).isDisabled(),
+    ).resolves.toBe(true);
+
+    await search.fill('nothing like this');
+    await page.getByText('No notes match.').waitFor();
+    await search.press('Escape');
+    await page.waitForFunction(() => document.querySelectorAll('.notes .note-text').length === 3);
+
+    // Adding a note clears the search, so the new note is visible.
+    await search.fill('menu');
+    await addNote(page, 'Brand new');
+    await expect(search.inputValue()).resolves.toBe('');
+  });
+});

@@ -102,6 +102,7 @@ textarea {
 input[type='text'],
 input[type='email'],
 input[type='password'],
+input[type='search'],
 input[type='date'],
 select,
 textarea {
@@ -657,8 +658,14 @@ h2.nav-heading {
   background: var(--surface);
 }
 
-.todo.is-dragging {
+.todo.is-dragging,
+.note.is-dragging {
   opacity: 0.35;
+}
+
+.drag-handle:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
 }
 
 .drag-overlay {
@@ -1007,10 +1014,44 @@ h2.nav-heading {
   gap: 0.25rem 0.75rem;
 }
 
+.note-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.note-head .hint,
 .note-foot .hint {
-  flex: 1 1 100%;
   margin: 0;
   font-size: 0.85rem;
+}
+
+.note-foot .hint {
+  flex: 1 1 100%;
+}
+
+.note-search {
+  max-width: 40rem;
+  margin: 0 0 1rem;
+}
+
+.note-search input {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.note-search .hint {
+  margin: 0.35rem 0 0;
+}
+
+.notice.public-queue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .note-foot .switch {
@@ -1151,6 +1192,7 @@ h2.nav-heading {
   input[type='text'],
   input[type='email'],
   input[type='password'],
+  input[type='search'],
   input[type='date'],
   select,
   textarea {

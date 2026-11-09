@@ -176,6 +176,14 @@ export const t = {
     delete: 'Delete',
     deleteLabel: (n: number) => `Delete note ${n}`,
     deleted: 'Note deleted.',
+    drag: (n: number) => `Drag to reorder note ${n}`,
+    search: 'Search notes',
+    searchPlaceholder: 'Search notes',
+    clearSearch: 'Clear',
+    matches: (n: number, total: number) =>
+      `${n} of ${total} note${total === 1 ? '' : 's'} match${n === 1 ? 'es' : ''}.`,
+    noMatches: 'No notes match.',
+    dragOffWhileSearching: 'Clear the search to reorder notes.',
     saveFailed: 'Could not save this note.',
     tooLong: 'A note can have at most 20 000 characters.',
     publicPage: {
