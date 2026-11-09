@@ -128,3 +128,56 @@ used last. The navigation is built so that more modules can be added later.
 5. **Public:** A makes a note public. B sees it under *Public notes* with A's e-mail, edits the text. A's devices show B's text after the next sync. B cannot delete it or make it private. A makes it private → it disappears for B at the next refresh; an edit B sends after that is refused with a message.
 6. **Recovery:** A device holding the old account's notes (and maybe tasks) signs up on a fresh server → the popup counts the notes; Append restores them; Overwrite also removes the notes the new account had.
 7. **Old data:** A database and a browser from before the update keep working after upgrading; nothing is lost.
+
+---
+
+## 8. Update 2: reorder and search notes, offline edits to public data (FR-100 – FR-111)
+
+This update lifts three of the non-goals of section 2: reordering notes by hand, search, and
+offline editing of other people's public notes **and** public task lists (the latter was v1
+decision D1).
+
+### 8.1 Reorder notes (FR-100 – FR-102)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-100 | Each of my notes has a **drag handle**. Dragging a note before or after another one changes its place; mouse, touch and keyboard work as for tasks (Space to pick up, arrow keys, Space to drop, Escape to cancel), with screen-reader announcements. | Must |
+| FR-101 | A new position is **one change** (one new order key), works offline and is merged like any other field. Dropping a note where it was changes nothing. A new note still lands on top. | Must |
+| FR-102 | Only the owner orders their notes; *Public notes* of others stay sorted by last change (as before) and have no handle. While a search is active, dragging is off (the shown order is incomplete). | Must |
+
+### 8.2 Search notes (FR-103 – FR-105)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-103 | *My notes* and *Public notes* have a **search box**. Typing filters the notes at once to those containing **every word** typed, ignoring upper/lower case and accents (`cafe` finds `Café`); on *Public notes* the owner's e-mail is searched too. | Must |
+| FR-104 | The page says how many notes match, and "No notes match" with a **Clear** button when none do. Escape in the box clears it. Adding a note clears the search, so the new note is visible. | Must |
+| FR-105 | Search works offline (it runs on the device) and is not remembered across reloads. | Must |
+
+### 8.3 Offline edits to public lists and notes (FR-106 – FR-111)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-106 | Other users' public lists (the list of them, and each list with its tasks) and public notes are **kept on the device** each time they are loaded, and every public list in the sidebar is loaded in the background about once a minute, so they can be **read offline**. A page shows when the copy is from ("Offline copy from 10:42"). A list never loaded on this device says it is not available offline. | Must |
+| FR-107 | Everything other users may change in public data can now also be done **offline**: add, edit, complete, delete (with Undo), reorder tasks of a public list; change the text of a public note. Changes are shown at once and **queued** on the device; they survive a reload. Attachments still need a connection (v1 D3). | Must |
+| FR-108 | Queued public changes are sent by the **normal sync** (same retry and timing as own changes), as soon as the server can be reached, and count in the "N changes pending" indicator and in the warning before logging out. Each change is applied with the usual per-field "last write wins" rule, by the time it was made: an offline edit made earlier than someone else's later edit does not overwrite it. | Must |
+| FR-109 | If the server refuses a queued change (the list or note was made **private or deleted** meanwhile, or the change is not allowed), it is dropped from the queue and kept aside, and the page of that list or note (or *Public notes*) says how many changes were not saved, with a **Dismiss** button. | Must |
+| FR-110 | After sending, the page shows the server's version (which includes everybody's changes). | Must |
+| FR-111 | Logging out or another user logging in removes the offline copies and the queue (like own data). Queued public changes are **not** part of the recovery after a server loss (they belong to other accounts). | Must |
+
+### 8.4 Decisions
+
+| # | Topic | Decision |
+|---|-------|----------|
+| N8 | How is public data made offline-capable without changing the sync model? | Two **local** tables, not a change in the per-user change feed: a **cache** of the server's answers (refreshed when online) and a **public outbox** of operations, each tagged with its target list or note. The sync engine sends that outbox through the existing restricted push endpoints after the own outbox. The page shows *cache + pending operations*. The server and its merge rules do not change at all, so v1 decision D1's concern (a heavy per-user feed of other people's data) does not come back. |
+| N9 | Conflicts | The operations carry the device's clock time of the edit, as own operations do, and the server merges per field. An offline change therefore wins only over older edits. While a change is still queued, the page shows it on top of the cached copy (the user's view), and switches to the server's result once it is sent. |
+| N10 | Refused changes | Not retried (the list is private or gone: retrying cannot help). They go to the existing dead-letter table with their target, so the page can say so. Nothing is silently lost without a message. |
+| N11 | Reordering by drag only | Same interaction as tasks, so nothing new to learn; the keyboard path of the drag-and-drop library is the accessible alternative. No "move up / down" buttons, to keep the cards small. |
+| N12 | Search is plain text matching | Every word must occur, case and accents ignored. No index: a person's notes are few and already in memory. |
+
+### 8.5 Acceptance criteria
+
+1. **Reorder:** drag the third note to the top with the mouse, then move it back with the keyboard; reload → order kept; a second device shows the same order after syncing.
+2. **Search:** with notes "Café menu", "Team lunch", "Lunch: café Friday", typing `cafe lunch` shows only the last one; Escape shows all again.
+3. **Offline public list:** Bob opens Ann's public list, goes offline, reloads, still sees it, adds a task, completes another, edits a title. "3 changes pending". Online again → Ann sees all three after her next sync, and Bob's page shows the server version.
+4. **Offline public note:** Bob edits Ann's public note offline; online again → Ann gets the text.
+5. **Refused:** Bob edits offline; Ann makes the list private; Bob goes online → the edit is not applied, Bob's page says 1 change was not saved.

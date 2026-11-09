@@ -21,6 +21,12 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | 6 | Modules: registry, module of an address, last module on the device, start address | ☑ |
 | 7 | UI: module switch, sidebar per module, *My notes*, *Public notes*, texts, styles | ☑ |
 | 8 | Integration and browser tests, README and docs | ☑ |
+| 9 | Update 2 – Reorder notes: `Repo.reorderNote`, drag & drop on the note grid | ☐ |
+| 10 | Update 2 – Search notes: `matchesSearch`, search box on both note pages | ☐ |
+| 11 | Update 2 – Public data offline, data layer: Dexie version 4 (`publicCache`, `publicOutbox`), queued public editor, overlay of pending changes | ☐ |
+| 12 | Update 2 – Public data offline, sync: engine sends the public outbox, refusals to dead letter, pending count | ☐ |
+| 13 | Update 2 – Public data offline, UI: pages read cache + overlay, edits enabled offline, refused-changes notice, background loading | ☐ |
+| 14 | Update 2 – Integration and browser tests, docs | ☐ |
 
 ---
 
@@ -176,6 +182,85 @@ public note edited by another user and seen by the owner; offline note sync.
 **Docs**: README (features, docs table, structure), this plan, PRD.
 
 ---
+
+## Update 2: reorder, search, public data offline (PRD section 8)
+
+### Design
+
+**Reorder.** `Repo.reorderNote(id, beforeId)` uses the existing `keyForPosition` over the live
+notes in order (one `orderKey` update; `same` = nothing). The note grid is a `SortableContext`
+(rect strategy) inside the existing `DragAndDrop` context; drag data gets a `kind`
+(`'todo' | 'note'`) and `onDragEnd` calls `reorderNote` for notes. `resolveDrop` is reused
+unchanged (it works on ids).
+
+**Search.** `lib/search.ts`: `normalize` (lower case, accents removed with NFD) and
+`matchesSearch(text, query)` (every word of the query occurs). Pure, unit tested.
+
+**Public data offline.**
+
+```text
+Dexie version 4
+  publicCache   key            { key: 'lists' | 'notes' | 'list:<id>', value, at }
+                               value = the server's answer, or 'gone' for a list page
+  publicOutbox  opId, hlc, targetId
+                               SyncOp + { target: 'list' | 'note', targetId, attempts, createdAt }
+```
+
+- `services/publicData.ts`: `refreshLists()`, `refreshList(id)`, `refreshNotes()` fetch and
+  write the cache (404 on a list → `'gone'`); `prefetchLists(maxAgeMs)` loads every public list
+  whose copy is older than a minute.
+- `PublicEditor` (lists) and `PublicNotes.saveText` keep their API but **queue** the operation
+  in `publicOutbox` instead of sending it; result `{ ok: true }` or `invalid`.
+- `data/publicOverlay.ts` (pure): `overlayListPage(page, ops)` and `overlayNotes(notes, ops)`
+  apply pending operations, in clock order, to the cached copy (create adds, update merges the
+  visible fields, delete hides, restore shows again).
+- Engine: after the own outbox, `pushPublic()` takes the oldest queued operation, sends every
+  queued operation of the same target (up to the batch size) to
+  `/api/public/lists/:id/push` or `/api/public/notes/:id/push`; accepted → removed; refused →
+  dead letter (with target); 404 → the target's whole queue to dead letter (`gone`); network /
+  5xx / 401 behave as for the own outbox. `countPending` adds the public outbox.
+- The runner is notified on every new public operation (Dexie hook), like the own outbox.
+- `clearAll` clears both tables.
+- Hooks `usePublicLists`, `usePublicList(id)`, `usePublicNotes()`: live query of cache +
+  queue + dead letter for the target, polling refresh while online and after every sync.
+
+### Step 9 – Reorder notes
+
+**Tests first:** `reorderNote` to the top, into the middle, to the end; same place = no
+operation; unknown → not found; deleted notes are skipped; equal keys from two devices; one
+valid operation per move; browser: drag with the mouse and with the keyboard, order kept after
+a reload.
+
+### Step 10 – Search notes
+
+**Tests first:** `matchesSearch`: empty query matches all; every word must occur; case and
+accents ignored; extra spaces; browser: filters, count, Escape clears, no handles while
+searching.
+
+### Step 11 – Public offline data layer
+
+**Tests first:** Dexie 3 → 4 upgrade keeps data; queued edits are valid operations with the
+right target, nothing is sent; overlays (create on top / at key, update, delete, delete + restore,
+note text, operations of other targets ignored, `'gone'` stays gone); refresh writes the cache
+and `'gone'`; offline refresh keeps the old copy; `clearAll` empties both tables.
+
+### Step 12 – Public offline sync
+
+**Tests first** (engine with scripted fetch): sends own then public ops; groups by target and
+uses the right URL; accepted removed; refused → dead letter with target; 404 → whole target to
+dead letter; network error keeps the queue and counts an attempt; 401 → `auth`; pending count
+includes public ops. Integration: Bob edits Ann's list and note offline, reconnects, Ann's devices
+get it; an older offline edit loses to a newer one; a list made private meanwhile → dead letter.
+
+### Step 13 – UI
+
+Pages and sidebar read the hooks; inputs are no longer disabled offline (attachments are);
+notices: "Offline copy from …", "N changes waiting", "N changes were not saved – Dismiss".
+
+### Step 14 – Browser tests and docs
+
+Browser: offline public list (reload offline, add / complete / rename, back online, owner sees
+it), offline public note, refused change after the list became private; README, this plan.
 
 ## Implementation notes
 
