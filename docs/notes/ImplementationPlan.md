@@ -13,14 +13,14 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 
 | Step | Content | Status |
 |------|---------|--------|
-| 1 | Shared: `note` entity (schema, patches, sync operations, pull changes, merge defaults) | ☐ |
-| 2 | Server: migration 004, note rows, push / pull of notes, public notes API | ☐ |
-| 3 | Client data: Dexie version 3, repo note operations, queries, pulled changes, `clearAll` | ☐ |
-| 4 | Recovery: notes in the snapshot, restore (append / overwrite), offer counts | ☐ |
-| 5 | Public notes, client: read service and online editor | ☐ |
-| 6 | Modules: registry, module of an address, last module on the device, start address | ☐ |
-| 7 | UI: module switch, sidebar per module, *My notes*, *Public notes*, texts, styles | ☐ |
-| 8 | Integration and browser tests, README and docs | ☐ |
+| 1 | Shared: `note` entity (schema, patches, sync operations, pull changes, merge defaults) | ☑ |
+| 2 | Server: migration 004, note rows, push / pull of notes, public notes API | ☑ |
+| 3 | Client data: Dexie version 3, repo note operations, queries, pulled changes, `clearAll` | ☑ |
+| 4 | Recovery: notes in the snapshot, restore (append / overwrite), offer counts | ☑ |
+| 5 | Public notes, client: read service and online editor | ☑ |
+| 6 | Modules: registry, module of an address, last module on the device, start address | ☑ |
+| 7 | UI: module switch, sidebar per module, *My notes*, *Public notes*, texts, styles | ☑ |
+| 8 | Integration and browser tests, README and docs | ☑ |
 
 ---
 
@@ -81,27 +81,32 @@ whatever is in `change_log`; only the response schema learns `note`. The client'
 
 ```ts
 MODULES = [
-  { id: 'tasks', home: '/',      owns: (path) => path === '/' || /^\/(l|public)(\/|$)/.test(path) },
+  { id: 'tasks', home: '/tasks', owns: (path) => /^\/(tasks|l|public)(\/|$)/.test(path) },
   { id: 'notes', home: '/notes', owns: (path) => /^\/notes(\/|$)/.test(path) },
 ]
-moduleOfPath(path): ModuleId | undefined       // settings, admin → undefined
+moduleOfPath(path): ModuleId | undefined       // '/', settings, admin → undefined
 readLastModule(storage) / saveLastModule(storage, id)   // localStorage key 'todoness.module'
 ```
 
 - `Shell` watches the address: when it belongs to a module, that module is saved as the last
   one; when it does not (Settings, Admin), the sidebar keeps the last module.
-- `Home` (`/`): last module `notes` → redirect to `/notes`, otherwise to the Inbox (as before).
-  The Tasks entry of the switch links to `/` for the same reason; `/` itself counts as Tasks.
-- `ModuleSwitch` renders the registry as links; it is placed in the sidebar (computer) and in
-  the top bar (phone, CSS decides which one is shown, both are the same component).
+- `Start` (`/` and unknown addresses): redirects to the home of the last module. `/tasks` is
+  the Tasks home and redirects to the Inbox (what `/` did before).
+- The switch links to the page last shown in each module during this visit (kept in memory),
+  or to the module's home.
+- `ModuleSwitch` renders the registry as a labelled group of links; it is placed in the sidebar
+  (computer) and in the top bar (phone); CSS decides which one is shown, both are the same
+  component.
 - The sidebar body is chosen by module: `TasksNav` (the old content) or `NotesNav`.
 
 ### Pages
 
-- `NotesPage` (`/notes`): add form (textarea, Add note, Ctrl/⌘ + Enter), then one `NoteCard`
-  per live note (newest first, live query). `NoteCard` holds the text locally while focused,
-  saves 1 s after the last key and on blur (and on `pagehide`), takes the stored text when not
-  focused; Public toggle; Delete with Undo toast.
+- `NotesPage` (`/notes`): add form (textarea, Add note, Ctrl/⌘ + Enter), then one card per
+  live note (newest first, live query): `NoteEditor`, changed time, Public toggle, Delete with
+  Undo toast.
+- `NoteEditor` (shared by both pages) holds the text locally, saves 1 s after the last key, on
+  blur, on `pagehide` and when it goes away; it takes a new stored text only while the user is
+  not focused in it, has nothing unsaved and no save in flight.
 - `PublicNotesPage` (`/notes/public`): polls every 5 s; one card per note with the owner's
   e-mail; editing as above through the public editor; read-only while offline; errors shown
   on the card.
@@ -174,4 +179,34 @@ public note edited by another user and seen by the owner; offline note sync.
 
 ## Implementation notes
 
-(Filled in while building; see the end of the file.)
+- Built in the order of the steps, each with its tests written first and seen to fail
+  (missing schema / module / function), then the code.
+- **Migration 004** rebuilds `change_log` to widen its `entity` CHECK. The copy keeps every
+  `server_seq`, and the `sqlite_sequence` value is carried over explicitly: without that,
+  `AUTOINCREMENT` would restart after the highest *remaining* row and could hand out a number
+  that was used by a row deleted before (a test covers exactly this).
+- **Public push scope** became a union: `{ actorId, onlyListId }` (public list, unchanged) or
+  `{ actorId, onlyNoteId }` (public note: only `update` of that note with a `text`-only
+  patch). Everything else is `forbidden`, checked before the operation is marked processed.
+- **`/` is no longer the Inbox.** It opens the last module. Remembering the module while `/`
+  counted as Tasks would have saved "tasks" in the same render that redirects to Notes, so
+  `/tasks` was added as the Tasks home and `/` belongs to no module. Links that meant "back
+  to my tasks" now go to `/tasks`.
+- **The switch is not a `nav` landmark.** The existing browser tests address the sidebar as
+  *the* navigation (`getByRole('navigation')`, strict); a second landmark would be ambiguous
+  for screen readers too. It is a labelled `group`.
+- **The last module is read from storage during render** (no React state): the effect that saves
+  it runs whenever a module page is shown, so Settings / Admin read the right value.
+- **Recovery:** the snapshot type has `notes`, but copies kept before this update do not; every
+  reader uses `notes ?? []` (tested with a snapshot without the field). The popup names notes
+  only when there are some, so the old wording is unchanged for task-only data.
+- **Found by the browser tests:** reloading the page in the same instant a note box is left
+  can lose that last edit (the IndexedDB write is cut off by the unload). The test now waits
+  for "2 changes pending", as a user would see. A save is also started on `pagehide`, but a
+  browser may still cut it off; this is the same for any IndexedDB write at unload.
+- **Not done / ideas for later:** reordering notes by hand (the order key is there), titles,
+  search, colours; offline editing of other people's public notes; an icon rail / bottom bar
+  once there are more than about four modules (only `ModuleSwitch` changes).
+
+**Test counts after the notes update:** shared 105, server 244, client 346, integration 46,
+browser (e2e) 57 (13 MVP + 32 v1 + 5 recovery + 7 notes scenarios).

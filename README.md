@@ -1,12 +1,19 @@
 # ToDoness
 
-Simple to-do list app for internal use that keeps working offline. Changes made
-without a connection are saved on the device and sent automatically when the
+Simple to-do list and notes app for internal use that keeps working offline. Changes
+made without a connection are saved on the device and sent automatically when the
 connection returns.
 
 ## Features
 
+- Two modules, **Tasks** and **Notes**, with a **Tasks | Notes switch** that is always visible
+  (top of the sidebar on a computer, top bar on a phone). The app opens in the module you used
+  last on that device.
 - Tasks and lists that keep working **offline**; changes sync automatically.
+- **Notes**: simple text boxes, newest on top, saved automatically while you type. They work
+  offline and sync like tasks, can be made **public** (every user can read and edit the text;
+  only the owner can delete it or make it private again), and come back with the recovery
+  after a server loss.
 - Change your **password** in Settings; the admin can still reset a forgotten one.
 - Make a list **public**: every user can read **and edit** its tasks under "Public lists"
   (add, change, complete, delete, reorder, attach files). Only the owner can rename or
@@ -17,7 +24,7 @@ connection returns.
   when the app is closed (**web push**, needs HTTPS, see below).
 - **Attachments** on tasks, up to a configurable size per file.
 - **Recovery after a server loss**: if the server's database is lost and you sign up again on a
-  device that still holds your old tasks, the app offers to push them back (and asks whether to
+  device that still holds your old tasks and notes, the app offers to push them back (and asks whether to
   **append** to or **overwrite** what the new account holds). Only attachments cannot come back.
 - The admin screen shows **who is online**, and admins see **sync diagnostics** (flags and a
   log of the last 100 sync events with timings) above the "All changes saved" indicator, to
@@ -25,10 +32,11 @@ connection returns.
 
 ## Documentation
 
-| Folder                   | Contents                                                                                                                                                                                  |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`docs/v1/`](docs/v1/)   | Version 1: [PRD](docs/v1/PRD.md), [implementation plan with status](docs/v1/ImplementationPlan.md), [tech stack changes](docs/v1/TechStack.md), [decisions and why](docs/v1/Decisions.md) |
-| [`docs/mvp/`](docs/mvp/) | The MVP: [PRD](docs/mvp/PRD.md), [tech stack](docs/mvp/TechStack.md), [database model](docs/mvp/DBModel.md), [build plan](docs/mvp/MVPImplementationSteps.md)                             |
+| Folder                       | Contents                                                                                                                                                                                  |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`docs/notes/`](docs/notes/) | The Notes module and module switch: [PRD with decisions](docs/notes/PRD.md), [implementation plan with design and status](docs/notes/ImplementationPlan.md)                               |
+| [`docs/v1/`](docs/v1/)       | Version 1: [PRD](docs/v1/PRD.md), [implementation plan with status](docs/v1/ImplementationPlan.md), [tech stack changes](docs/v1/TechStack.md), [decisions and why](docs/v1/Decisions.md) |
+| [`docs/mvp/`](docs/mvp/)     | The MVP: [PRD](docs/mvp/PRD.md), [tech stack](docs/mvp/TechStack.md), [database model](docs/mvp/DBModel.md), [build plan](docs/mvp/MVPImplementationSteps.md)                             |
 
 ## Development
 
@@ -61,11 +69,11 @@ server/src/
 client/src/
   main.tsx     entry point
   app/         App root, the long-lived service container, React hooks, UI strings
-  components/  React components by area: common, layout, lists, public, account
+  components/  React components by area: common, layout, lists, notes, public, account
   services/    browser-side logic without UI: session, push, reminders, public lists, …
   data/        IndexedDB (Dexie) database, repository and queries
   sync/        sync engine, runner, connectivity and diagnostics
-  lib/         small pure helpers (dates, time field, drag-and-drop)
+  lib/         small pure helpers (dates, time field, drag-and-drop, the module list)
   sw/          the service worker and its tested logic
 integration/   client sync engine against a real in-process server
 e2e/           browser tests against the built app

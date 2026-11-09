@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft – ready to build |
+| **Status** | v1.0 – built (see [ImplementationPlan.md](./ImplementationPlan.md)) |
 | **Builds on** | v1 ([`../v1/PRD.md`](../v1/PRD.md)) and the MVP ([`../mvp/PRD.md`](../mvp/PRD.md)) |
 | **Related docs** | [ImplementationPlan.md](./ImplementationPlan.md) (plan, design, decisions) |
 
@@ -64,11 +64,11 @@ used last. The navigation is built so that more modules can be added later.
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| FR-83 | A **module switch** with the entries **Tasks** and **Notes** is always visible: on a computer at the top of the sidebar (under the app name), on a phone in the top bar next to the menu button (the sidebar is hidden there). One tap or click opens the module. It is a set of links (`nav`), the current module is marked (`aria-current="page"`), and it works with the keyboard. | Must |
+| FR-83 | A **module switch** with the entries **Tasks** and **Notes** is always visible: on a computer at the top of the sidebar (under the app name), on a phone in the top bar next to the menu button (the sidebar is hidden there). One tap or click opens the module (on a phone at least 44 px tall). It is a labelled group of links ("Modules"), the current module is marked (`aria-current`), and it works with the keyboard. Switching back to a module returns to the page last open in it during this visit. | Must |
 | FR-84 | The sidebar shows the navigation of the **current** module: Tasks shows the lists, public lists and "Add list" as before; Notes shows **My notes** and **Public notes** (notes other users made public). Sync status, Settings and Admin stay at the bottom in both. Settings and Admin keep the sidebar of the module the user came from. | Must |
 | FR-85 | The modules are defined in **one place** (name, address, how to tell whether a page belongs to it). Adding a module means adding one entry and its pages; the switch and the "open where I left" logic pick it up. **[Decision N1]** | Must |
 | FR-86 | The app **remembers the last module** on the device. Opening the app (the start address `/`) shows that module: the Inbox for Tasks, *My notes* for Notes. Opening a direct link (for example a reminder's link to a task) still opens that page. **[Decision N2]** | Must |
-| FR-87 | Addresses: Tasks keep theirs (`/l/…`, `/public/…`). Notes use `/notes` (my notes) and `/notes/public` (public notes of others). | Must |
+| FR-87 | Addresses: Tasks keep theirs (`/l/…`, `/public/…`) and start at `/tasks` (the Inbox). Notes use `/notes` (my notes) and `/notes/public` (public notes of others). The start address `/` belongs to no module: it opens the last one. | Must |
 
 ### 4.2 Notes (FR-88 – FR-93)
 
@@ -104,7 +104,7 @@ used last. The navigation is built so that more modules can be added later.
 | **Compatibility** | Old devices keep working: the server accepts the old operations unchanged, the local database is upgraded in place (Dexie version 3), and a recovery copy written before this update (without notes) still restores. |
 | **Migration** | Migration `004_notes.sql` adds the `notes` table and lets the change feed carry notes. It keeps every existing row and `server_seq` (client cursors stay valid). |
 | **Privacy** | A public note exposes its text and the owner's e-mail to all logged-in users, and lets them change the text. The toggle is off by default and explained. |
-| **Accessibility** | The module switch is a labelled `nav` with `aria-current`; every note box has a label; the toggle is a `switch`. Phone touch targets at least 44 px. |
+| **Accessibility** | The module switch is a labelled group of links with `aria-current` (not a second `nav` landmark: the sidebar is the one navigation); every note box has a label; the toggle is a `switch`. Phone touch targets at least 44 px. |
 | **Performance** | Typing does not create one operation per key: a note is saved after a pause or on leaving the box. |
 
 ## 6. Decisions
