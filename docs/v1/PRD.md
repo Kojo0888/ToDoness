@@ -161,6 +161,21 @@ and makes tasks richer:
 | FR-75 | Everything that needs a connection (the Offline badge, attachments, change password, public lists and their editing, the admin screen) follows this state, so a wrong browser flag no longer disables features. The first check that gets an answer after an outage starts a sync at once. | Must |
 | FR-76 | In the admin diagnostics the browser's flag ("Browser says"), the app's finding ("App found") and the last check (result, time, how long ago) are shown side by side; the **Close log** button stays visible while the log is scrolled. | Must |
 
+### 4.11 Recovery after the server lost its data (FR-77 – FR-82)
+
+Scenario: the server's database is lost and a fresh instance is set up. A user signs up
+again **on a device that still holds the tasks of the old account**. Everything except
+attachments (which only live on the server) is still on that device.
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-77 | When someone **creates an account**, or **logs in with the same e-mail address the device's data belongs to** (the account was re-created, for example from another device first, or an earlier sign-up half-failed), on a device that still holds data of a **different** account (a different user id) (at least one task, or a list other than the Inbox), the data is **not** thrown away. It is kept aside on the device until the user decides. | Must |
+| FR-78 | Once the new account has finished its first sync, a **popup** says that the account is empty on the server but that data is stored offline on this device (number of tasks and lists, and the e-mail of the old account), and asks: *"Would you like to push all offline data to the server?"* **Yes** or **No**. If the account is not empty after all, the popup says how many tasks it already holds. | Must |
+| FR-79 | On **Yes** the user is asked whether to **overwrite** or **append**. *Append* keeps what the account already holds and adds the offline data. *Overwrite* deletes every task and every list the account holds (only the Inbox list itself stays) and replaces them with the offline data. Signing up again while an earlier question is unanswered asks for confirmation before the kept data is replaced. Cancelling the question changes nothing and leaves the popup open. | Must |
+| FR-80 | The offline data is sent as ordinary queued changes: it works offline, survives a reload and is sent by the normal sync. Lists keep their name, order and public flag; tasks keep title, notes, due date, reminder, priority, done state and order. Tasks of the old Inbox go to the **new** Inbox. Deleted tasks and lists are not restored. | Must |
+| FR-81 | **No** discards the offline data. The popup says so, and attachments are explicitly named as not restorable (they only exist on the server). | Must |
+| FR-82 | The question survives a reload or closing the app: it is asked again at the next start until answered. Logging in as the **same** account (same user id) behaves as before, and so does logging in with a **different e-mail** address (no offer: the data belongs to someone else) (a warning if changes were not sent, then the old data is cleared). | Must |
+
 ## 5. Non-functional requirements (changes and additions)
 
 | Area | Requirement |
@@ -182,6 +197,8 @@ and makes tasks richer:
 | D3 | Offline attachments? | No. Files up to 100 MB do not fit the "small queue of tiny changes" offline model (browser storage quota, retries). Attach, list and download need a connection. |
 | D4 | Due time | Added as an optional time next to the date. Overdue highlighting still works by day (a task due today at 09:00 is not marked overdue until tomorrow). |
 | D5 | Reminders while the app is closed | **Web Push** (section 4.7). The server sends the push; delivery goes through the browser vendor's push service (Google, Mozilla, Apple), so the server needs outbound HTTPS access to it. Without push, the app still catches up at the next start (FR-46). |
+| D7 | Where is the offline data kept while the user decides, and why only at sign-up? | In the device's own database (`meta` key `recoverySnapshot`), so a reload or crash cannot lose it. Only **sign-up**, or a **login with the e-mail the data belongs to**, triggers it: after a server loss that is how the owner gets back in. A login with another e-mail must never pull foreign data into that account (shared devices). |
+| D8 | Restored rows keep their ids | The same ids are sent again, so restoring the same data from two devices of one user merges instead of duplicating. The old Inbox is not recreated: its tasks move to the new Inbox. |
 | D6 | Who counts as "online" | Last authenticated request within 30 s. A browser tab in the background may be throttled and show as offline after a while; that is accepted. |
 
 **Risks**
@@ -204,3 +221,4 @@ and makes tasks richer:
 7. **Online indicator:** User B opens the app → the admin sees B with the green *Online* indicator within about 5 seconds; B closes the app → *Offline* within about 30 seconds plus one refresh.
 8. **Offline still works:** Everything from the MVP acceptance list still passes.
 9. **Web push:** On an HTTPS site the user allows notifications and sets a reminder, then **closes the app**. At the reminder time a notification appears; clicking it opens the task. It appears once even if the user has two devices subscribed on one account (one per device) and not again after a reload. Logging out on a device stops pushes to it.
+10. **Recovery after server loss:** On a device with lists "Work" (public) and tasks (one done, one with a due date, one in the Inbox), delete the server's database and start a fresh server. Sign up. The first sync finishes and a popup says the account is empty but data is stored offline. Press **No** → the data is gone and the popup does not return. Repeat; press **Yes**, then **Append** → all lists and tasks are back, in the same order, the old Inbox tasks are in the new Inbox, and a second device that logs in sees the same. Repeat with an account that already holds one task and choose **Overwrite** → only the offline data remains; with **Append** → both. Reload while the popup is open → it is shown again.

@@ -13,6 +13,7 @@
 import { meResponseSchema, type MeResponse } from '@todoness/shared';
 import type { TodonessDB } from '../data/db';
 import { countPending } from '../data/queries';
+import { RECOVERY_KEY, takeSnapshot, type RecoverySnapshot } from '../data/recovery';
 import type { FetchFn, SyncEngine } from '../sync/engine';
 
 export type StoredUser = MeResponse;
@@ -82,6 +83,9 @@ export interface Session {
 
 const plural = (n: number) => `${n} change${n === 1 ? '' : 's'}`;
 
+const KEPT_ASIDE =
+  'This device also holds offline data of an old account that you have not restored yet; it would be lost too.';
+
 export function createSession(deps: SessionDeps): Session {
   const { db, engine, fetch, resumeSync, stopSync, confirm, beforeLogout } = deps;
   const beforeLogoutTimeoutMs = deps.beforeLogoutTimeoutMs ?? 3000;
@@ -123,10 +127,18 @@ export function createSession(deps: SessionDeps): Session {
     }
   }
 
-  /** The server accepted this login: switch the device to this user. */
-  async function enter(me: StoredUser) {
+  /** Offline data of an old account that the user has not decided about yet. */
+  const hasKeptAside = async () => (await db.getMeta(RECOVERY_KEY)) !== undefined;
+
+  /**
+   * The server accepted this login: switch the device to this user. `keep` is data of the
+   * previous account that survives the clearing (see data/recovery.ts).
+   */
+  async function enter(me: StoredUser, keep?: RecoverySnapshot) {
     const stored = await storedUser();
-    if (stored && stored.id !== me.id) await db.clearAll();
+    if (stored && stored.id !== me.id) {
+      await db.clearAll(keep ? [{ key: RECOVERY_KEY, value: keep }] : []);
+    }
     await db.meta.delete('pendingLogout');
     await db.setMeta('user', me);
     if (await db.getMeta<boolean>('initialSyncDone')) {
@@ -167,13 +179,33 @@ export function createSession(deps: SessionDeps): Session {
     const me = parsed.data;
 
     const stored = await storedUser();
+    let keep: RecoverySnapshot | undefined;
     if (stored && stored.id !== me.id) {
+      // After the server lost its data the owner gets back in by signing up, or by logging in
+      // with the same e-mail (the account was re-created from another device first). The old
+      // data is then kept aside and the user is asked about it once the account is ready,
+      // which replaces the warning below. Another e-mail is someone else's data: never offered.
+      const owner = stored.email.toLowerCase() === me.email.toLowerCase();
+      if (path === '/api/auth/register' || owner) keep = await takeSnapshot(db, stored.email);
       const pending = await countPending(db);
+      const aside = await hasKeptAside();
+      // A new copy replaces an earlier one that is still unanswered, so that counts as a loss
+      // too. Without a new copy the unsent changes are lost as well.
+      const loses = keep ? aside : pending > 0 || aside;
       if (
-        pending > 0 &&
+        loses &&
         !confirm(
-          `This device still has ${plural(pending)} of ${stored.email} that were not sent to the server. ` +
-            `Logging in as ${me.email} will delete them. Continue?`,
+          [
+            !keep && pending > 0
+              ? `This device still has ${plural(pending)} of ${stored.email} that were not sent to the server.`
+              : '',
+            aside ? KEPT_ASIDE : '',
+            keep
+              ? `Signing up as ${me.email} will replace it with the offline data of ${stored.email}. Continue?`
+              : `Logging in as ${me.email} will delete them. Continue?`,
+          ]
+            .filter(Boolean)
+            .join(' '),
         )
       ) {
         await post('/api/auth/logout').catch(() => undefined);
@@ -181,7 +213,7 @@ export function createSession(deps: SessionDeps): Session {
       }
     }
 
-    await enter(me);
+    await enter(me, keep);
     return { ok: true };
   }
 
@@ -246,11 +278,17 @@ export function createSession(deps: SessionDeps): Session {
 
     async logout() {
       const pending = await countPending(db);
+      const aside = await hasKeptAside();
       if (
-        pending > 0 &&
+        (pending > 0 || aside) &&
         !confirm(
-          `${plural(pending)} have not been sent to the server yet. ` +
+          [
+            pending > 0 ? `${plural(pending)} have not been sent to the server yet.` : '',
+            aside ? KEPT_ASIDE : '',
             'If you log out now, they will be lost. Log out anyway?',
+          ]
+            .filter(Boolean)
+            .join(' '),
         )
       ) {
         return false;

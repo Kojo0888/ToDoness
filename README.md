@@ -16,6 +16,9 @@ connection returns.
 - **Reminders**: 1 week, 1 day or 1 hour before a task is due, as a notification, also
   when the app is closed (**web push**, needs HTTPS, see below).
 - **Attachments** on tasks, up to a configurable size per file.
+- **Recovery after a server loss**: if the server's database is lost and you sign up again on a
+  device that still holds your old tasks, the app offers to push them back (and asks whether to
+  **append** to or **overwrite** what the new account holds). Only attachments cannot come back.
 - The admin screen shows **who is online**, and admins see **sync diagnostics** (flags and a
   log of the last 100 sync events with timings) above the "All changes saved" indicator, to
   find out why a reconnect was slow.

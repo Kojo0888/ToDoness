@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { connectivity, engine, reminderFeed, session } from './container';
+import { connectivity, engine, recovery, reminderFeed, session } from './container';
 
 export function useSession() {
   return useSyncExternalStore(session.subscribe, session.getState);
@@ -7,6 +7,10 @@ export function useSession() {
 
 export function useSyncStatus() {
   return useSyncExternalStore(engine.subscribe, () => engine.status);
+}
+
+export function useRecoveryOffer() {
+  return useSyncExternalStore(recovery.subscribe, recovery.getOffer);
 }
 
 export function useReminderMessages() {

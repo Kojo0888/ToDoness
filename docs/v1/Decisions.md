@@ -110,3 +110,24 @@
     reported "both buttons stopped working after cancelling" was most likely the false-offline flag
     above (the buttons were disabled by it); the picker change is a precaution, and the native
     behaviour of phones could not be tested here.
+
+## Recovery (added later)
+
+21. **Only sign-up triggers the offer, and the data is kept aside first.** After the server loses its
+    database, signing up is the only way into the fresh server, and it is the moment the old
+    account's data on the device would be deleted (a different user). A login must never pull
+    another account's data into a working account. The copy is stored in the device's own
+    database in the same transaction that clears it, so a crash cannot lose it, and it stays
+    until the user answers, also across reloads. Escape does not answer the popup: both answers
+    are deliberate.
+22. **Restore is a set of normal queued changes with the old ids.** No special server API: the data
+    is as valid as anything the user could have typed offline, it works offline, survives a reload
+    and is sent by the usual sync. Keeping the ids means restoring the same data twice (two
+    devices of one user) merges instead of duplicating. The old Inbox is not recreated; its tasks
+    go to the new Inbox. Deleted rows are not restored.
+23. **Overwrite deletes, it does not wipe.** It marks the account's tasks and lists (not the Inbox)
+    as deleted first, as the user could do by hand, so other devices follow through the normal
+    sync. The popup shows what the account holds (refreshed after each sync) so the user knows what
+    overwrite would remove. A new account is empty, so there both choices give the same result;
+    the question is asked anyway because another device may have added data meanwhile.
+

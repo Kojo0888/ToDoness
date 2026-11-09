@@ -1,4 +1,6 @@
 /** All visible text in one place (English only), ready for translation later. */
+const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
 export const t = {
   appName: 'ToDoness',
   loading: 'Loading…',
@@ -40,6 +42,30 @@ export const t = {
       'Cannot reach the server. A connection is needed the first time you log in on a device.',
     server: 'The server had a problem. Try again in a moment.',
     retry: 'Try again',
+  },
+
+  recovery: {
+    title: 'Offline data found',
+    emptyAccount: (email: string, todos: number, lists: number) =>
+      `Your new account is empty on the server, but ${count(todos, 'task')} and ${count(lists, 'list')} (besides the Inbox) of ${email} are still stored offline on this device.`,
+    filledAccount: (email: string, todos: number, lists: number, accountTodos: number) =>
+      `Your new account already holds ${count(accountTodos, 'task')}, and ${count(todos, 'task')} and ${count(lists, 'list')} (besides the Inbox) of ${email} are still stored offline on this device.`,
+    question: 'Would you like to push all offline data to the server?',
+    attachments: 'Attachments are only stored on the server and cannot be restored.',
+    no: 'No, discard it',
+    yes: 'Yes, push it',
+    noWarning: 'The offline data will be deleted from this device.',
+    chooseTitle: 'Overwrite or append?',
+    chooseText:
+      'Append adds the offline data to what the account already holds. Overwrite deletes all tasks and all lists the account holds now (only the empty Inbox list itself stays) and replaces them with the offline data.',
+    append: 'Append',
+    overwrite: 'Overwrite',
+    back: 'Back',
+    working: 'Pushing offline data…',
+    errors: {
+      no_inbox: 'The account is not ready yet. Try again in a moment.',
+      failed: 'Something went wrong. The offline data is still kept. Try again.',
+    },
   },
 
   nav: {

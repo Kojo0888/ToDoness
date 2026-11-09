@@ -10,6 +10,7 @@ import { DragAndDrop } from '../common/DragAndDrop';
 import { ListPage } from '../lists/ListPage';
 import { PublicListPage } from '../public/PublicListPage';
 import { Reminders } from '../account/Reminders';
+import { RecoveryDialog } from '../account/RecoveryDialog';
 import { Settings } from '../account/Settings';
 import { Sidebar } from './Sidebar';
 import { ToastProvider } from '../common/Toast';
@@ -64,6 +65,7 @@ export function Shell({ user }: { user: StoredUser }) {
               onClick={() => setMenuOpen(false)}
             />
           )}
+          <RecoveryDialog />
           <Sidebar user={user} open={menuOpen} onNavigate={() => setMenuOpen(false)} />
           <main className="content">
             <Reminders />

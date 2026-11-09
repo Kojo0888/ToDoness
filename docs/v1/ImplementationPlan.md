@@ -35,6 +35,10 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | 12 | Web push, server: migration 003, VAPID keys, subscription API, reminder sweep, sender | ☑ |
 | 13 | Web push, client: own service worker, subscribe / unsubscribe, Settings, logout | ☑ |
 | 14 | Docs, README, final checks of the update | ☑ |
+| 15 | Recovery data layer: snapshot, `Repo.restoreSnapshot` (overwrite / append), `clearAll(keep)` | ☑ |
+| 16 | Recovery service + session: keep data aside at sign-up, offer, accept, decline | ☑ |
+| 17 | Recovery popup (UI), integration scenario (server loses its database), e2e, docs | ☑ |
+| 18 | Recovery also after a login with the same e-mail (second device, half-failed sign-up) | ☑ |
 
 ---
 
@@ -269,6 +273,93 @@ README (VAPID settings, outbound access note), PRD/plan status, all test suites.
 
 ---
 
+---
+
+## Update 6: recovery after the server lost its data
+
+(PRD 4.11, FR-77 – FR-82; decisions D7, D8.)
+
+### Step 15 – Recovery data layer
+
+**Build**
+- `data/db.ts`: `clearAll(keep?: MetaRow[])` clears everything but writes the given `meta`
+  rows in the **same transaction**, so the data kept aside cannot be lost between "clear" and
+  "save".
+- `data/recovery.ts` (pure, on the database): `takeSnapshot(db, fromEmail)` returns the live
+  lists (not the Inbox) and live tasks of non-deleted lists, or `undefined` if there is nothing
+  worth restoring; `summarize(snapshot, db)`.
+- `data/repo.ts`: `restoreSnapshot(snapshot, mode)` in one transaction. `overwrite` first deletes
+  the account's live tasks and non-Inbox lists; both modes then create the lists, then the tasks
+  (same ids, tasks of the old Inbox go to the current Inbox) as normal outbox operations.
+
+**Tests first**
+- `takeSnapshot`: nothing for an empty device and for one holding only an empty Inbox; skips
+  deleted tasks and lists and tasks of deleted lists; keeps all task and list fields.
+- `restoreSnapshot` append: server data kept, offline lists and tasks added, order and fields
+  kept, old Inbox tasks land in the new Inbox, every outbox operation is valid for the server,
+  lists come before their tasks.
+- `restoreSnapshot` overwrite: server tasks and lists deleted first, the Inbox stays.
+- Restoring the same snapshot twice does not duplicate (same ids merge).
+- `clearAll(keep)` keeps exactly the given rows.
+
+**Done when:** client tests pass.
+
+### Step 16 – Recovery service and session
+
+**Build**
+- `services/session.ts`: on **sign-up** with a different stored user, take the snapshot **before**
+  clearing and store it under `meta.recoverySnapshot` through `clearAll(keep)`. The "will delete
+  your unsent changes" question is not asked in that case (the recovery question replaces it).
+  Login behaves as before.
+- `services/recovery.ts`: `createRecovery({ db, repo })` with `load()`, `getOffer()`,
+  `subscribe()`, `accept(mode)`, `decline()`. The offer holds the old e-mail, the number of
+  tasks and lists, and how many tasks the account already has. `accept` restores and removes
+  the snapshot in the same step; `decline` only removes it. Both fail cleanly (snapshot kept) if
+  the new Inbox is not there.
+
+**Tests first**
+- Session: sign-up on a device with another user's data keeps a snapshot and clears the rest;
+  no confirm question; sign-up on a device with only an empty Inbox keeps nothing; login as a
+  different user still asks and clears and keeps nothing; the same user signing up again
+  (same id) keeps everything and takes no snapshot.
+- Recovery: no offer without a snapshot; offer after load; accept append / overwrite writes the
+  outbox and removes the snapshot; decline removes it; the offer survives a new service instance
+  (reload); accept without an Inbox fails and keeps the snapshot.
+
+**Done when:** client tests pass.
+
+### Step 17 – Popup, integration, browser test, docs
+
+**Build**
+- `components/account/RecoveryDialog.tsx`: native `<dialog>`; step 1 asks Yes / No, step 2 asks
+  Overwrite / Append / Back; mounted in `Shell`. Texts in `app/strings.ts`.
+- README feature list; this plan's notes; Decisions.
+
+**Tests first**
+- Integration (real server in memory): browser A fills an account, the server is replaced by a
+  fresh one, A signs up again, restores with append, a second browser sees the same data;
+  overwrite on an account that already has data; decline leaves the account empty; restore done
+  offline is sent after reconnecting.
+- Browser (e2e): the popup appears after sign-up on a device with another account's data;
+  No / Yes + Append / Yes + Overwrite; reload keeps the question.
+
+**Done when:** all suites, `pnpm typecheck`, `pnpm lint` and `pnpm format:check` pass.
+
+### Step 18 – Recovery after a login with the same e-mail
+
+**Build**
+- `services/session.ts`: the snapshot is also taken on **login** when the stored user's e-mail
+  equals the logged-in e-mail (case-insensitive) but the user id differs. A login with a
+  different e-mail is unchanged.
+
+**Tests first**
+- Session: login with the same e-mail and a new id keeps a snapshot, asks nothing; login with a
+  different e-mail still asks / clears / keeps nothing; same e-mail and same id keeps everything.
+- Integration: the phone signs up first on the fresh server, then the laptop (holding the old
+  data) logs in, is offered the data, sees the phone's data in the count, and appends.
+
+**Done when:** all suites, typecheck and lint pass.
+
 ## Implementation notes
 
 Every step was built test first: the tests were written and run (and seen to fail)
@@ -384,6 +475,35 @@ and `pnpm format:check`.
   tests open the chooser repeatedly without answering. This passed with the old button too, which
   supports the explanation that the phone problem was the disabled state, not the picker.
 - Log popup: the header with **Close log** is sticky; a browser test scrolls the log and clicks it.
+
+### Update 6: recovery after the server lost its data
+
+(PRD 4.11, FR-77 – FR-82; Decisions 21–23.)
+
+- Sign-up on a device holding another account's data keeps a copy in `meta.recoverySnapshot`
+  (written by `clearAll(keep)` in the same transaction as the clearing). The popup
+  (`RecoveryDialog`, mounted in `Shell`) asks after the first sync of the new account; **No**
+  deletes the copy, **Yes** then asks **Append** or **Overwrite** and `Repo.restoreSnapshot`
+  queues the data as ordinary outbox operations (lists first, then tasks; same ids; tasks of the
+  old Inbox go to the new Inbox).
+- Logging out, or logging in as another user, while the question is unanswered now warns that the
+  kept data would be lost (it counts like unsent changes).
+- Found by the browser tests: (1) after a reload the popup was built from local data before the
+  first sync and could say "empty" for an account that was not; it now refreshes after every sync
+  (and a slow refresh cannot bring back an answered question; unit test with a held read).
+  (2) The dialog's accessible name changes with the step (a test finding, not a bug).
+- The integration tests simulate the server loss with a second in-memory server and
+  `Browser.switchServer`; the browser tests stop the app and start another one on the **same
+  port** (same origin, so the local data stays) with a new database.
+- Update 6b (step 18): a login with the same e-mail (new user id) also keeps the data aside, found
+  while reviewing the risks: the second device of a user whose account another device re-created
+  first would otherwise lose its data silently. A login with another e-mail is unchanged (shared
+  devices).
+- Not covered: the real-life browser reload during the second step (it is the same state as the
+  first step; the step is not stored), and attachments (they only live on the server).
+
+**Test counts after update 6:** shared 95, server 230, client 300, integration 39, browser (e2e)
+50 (13 MVP + 32 v1 + 5 recovery scenarios).
 
 **Test counts after update 5:** shared 95, server 228, client 263, integration 31, browser (e2e)
 45 (13 MVP + 32 v1 scenarios).

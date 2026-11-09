@@ -21,6 +21,7 @@ import {
 import { nextHlc as nextHlcOf } from './clock';
 import type { TodonessDB } from './db';
 import { keyForPosition } from './order';
+import type { RecoverySnapshot, RestoreMode } from './recovery';
 
 export type RepoErrorCode = 'invalid' | 'not_found' | 'inbox_protected';
 
@@ -61,6 +62,16 @@ export interface Repo {
   setListPublic(id: string, isPublic: boolean): Promise<List>;
   /** Moves a list one place up or down among the visible lists (never above the Inbox). */
   moveList(id: string, direction: 'up' | 'down'): Promise<List>;
+  /**
+   * Puts the data of another account (kept aside at sign-up) into this one, as normal queued
+   * changes. `append` keeps what is here; `overwrite` deletes the live tasks and lists first
+   * (never the Inbox). Rows keep their ids, so doing it twice merges. Tasks of the old Inbox
+   * go to this account's Inbox.
+   */
+  restoreSnapshot(
+    snapshot: RecoverySnapshot,
+    mode: RestoreMode,
+  ): Promise<{ lists: number; todos: number }>;
 }
 
 export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): Repo {
@@ -248,6 +259,59 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
           else lo = null;
         }
         return commit<List>('list', 'update', id, { orderKey: generateKeyBetween(lo, hi) });
+      }),
+
+    restoreSnapshot: (snapshot, mode) =>
+      inTx(async () => {
+        const inbox = (await db.lists.toArray()).find((l) => l.isInbox && l.deletedAt === null);
+        if (!inbox) throw new RepoError('not_found', 'The Inbox is not here yet');
+
+        if (mode === 'overwrite') {
+          for (const t of await db.todos.toArray()) {
+            if (t.deletedAt === null) await commit<Todo>('todo', 'delete', t.id, {});
+          }
+          for (const l of await db.lists.toArray()) {
+            if (l.deletedAt === null && !l.isInbox) await commit<List>('list', 'delete', l.id, {});
+          }
+        }
+
+        /** Creates the row, or merges into the one that is already here; undeletes it. */
+        async function put<T extends Todo | List>(
+          entity: 'todo' | 'list',
+          id: string,
+          patch: Record<string, unknown>,
+        ) {
+          const table = (entity === 'todo' ? db.todos : db.lists) as unknown as Dexie.Table<
+            T,
+            string
+          >;
+          const existing = await table.get(id);
+          await commit<T>(entity, 'create', id, patch);
+          if (existing && existing.deletedAt !== null) await commit<T>(entity, 'restore', id, {});
+        }
+
+        const listIds = new Set(snapshot.lists.map((l) => l.id));
+        for (const l of snapshot.lists) {
+          await put<List>('list', l.id, {
+            name: l.name,
+            orderKey: l.orderKey,
+            isPublic: l.isPublic,
+          });
+        }
+        for (const t of snapshot.todos) {
+          await put<Todo>('todo', t.id, {
+            listId: listIds.has(t.listId) ? t.listId : inbox.id,
+            title: t.title,
+            orderKey: t.orderKey,
+            notes: t.notes,
+            done: t.done,
+            completedAt: t.completedAt,
+            dueAt: t.dueAt,
+            priority: t.priority,
+            remindBefore: t.remindBefore,
+          });
+        }
+        return { lists: snapshot.lists.length, todos: snapshot.todos.length };
       }),
 
     deleteList: (id) =>
