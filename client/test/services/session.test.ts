@@ -333,6 +333,26 @@ describe("recovery: sign-up on a device that holds another account's data", () =
     expect(await ctx.db.getMeta(RECOVERY_KEY)).toBeUndefined();
   });
 
+  it('login with the SAME e-mail but a new user id (account re-created elsewhere) keeps the data aside', async () => {
+    const ANN2 = { ...ANN, id: '0192f0c1-0000-7000-8000-0000000000aa' };
+    const ctx = setup(routes(ANN2));
+    await annsDevice(ctx, { sent: true });
+    expect(await ctx.session.login('ANN@corp.test', 'anns password')).toEqual({ ok: true });
+    expect(ctx.deps.confirm).not.toHaveBeenCalled();
+    expect(await ctx.db.todos.count()).toBe(0);
+    const kept = (await ctx.db.getMeta<{ fromEmail: string; todos: unknown[] }>(RECOVERY_KEY))!;
+    expect(kept.fromEmail).toBe(ANN.email);
+    expect(kept.todos).toHaveLength(2);
+  });
+
+  it('login with the same e-mail and the same user id keeps everything, no snapshot', async () => {
+    const ctx = setup(routes(ANN));
+    await annsDevice(ctx);
+    await ctx.session.login(ANN.email, 'anns password');
+    expect(await ctx.db.todos.count()).toBe(2);
+    expect(await ctx.db.getMeta(RECOVERY_KEY)).toBeUndefined();
+  });
+
   it('boot with a server session of a different user keeps nothing', async () => {
     const ctx = setup({ 'GET /api/me': () => json(200, BOB), ...okSync });
     await annsDevice(ctx, { sent: true });

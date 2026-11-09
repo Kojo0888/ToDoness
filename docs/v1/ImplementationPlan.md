@@ -38,6 +38,7 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | 15 | Recovery data layer: snapshot, `Repo.restoreSnapshot` (overwrite / append), `clearAll(keep)` | ☑ |
 | 16 | Recovery service + session: keep data aside at sign-up, offer, accept, decline | ☑ |
 | 17 | Recovery popup (UI), integration scenario (server loses its database), e2e, docs | ☑ |
+| 18 | Recovery also after a login with the same e-mail (second device, half-failed sign-up) | ☑ |
 
 ---
 
@@ -344,6 +345,21 @@ README (VAPID settings, outbound access note), PRD/plan status, all test suites.
 
 **Done when:** all suites, `pnpm typecheck`, `pnpm lint` and `pnpm format:check` pass.
 
+### Step 18 – Recovery after a login with the same e-mail
+
+**Build**
+- `services/session.ts`: the snapshot is also taken on **login** when the stored user's e-mail
+  equals the logged-in e-mail (case-insensitive) but the user id differs. A login with a
+  different e-mail is unchanged.
+
+**Tests first**
+- Session: login with the same e-mail and a new id keeps a snapshot, asks nothing; login with a
+  different e-mail still asks / clears / keeps nothing; same e-mail and same id keeps everything.
+- Integration: the phone signs up first on the fresh server, then the laptop (holding the old
+  data) logs in, is offered the data, sees the phone's data in the count, and appends.
+
+**Done when:** all suites, typecheck and lint pass.
+
 ## Implementation notes
 
 Every step was built test first: the tests were written and run (and seen to fail)
@@ -479,10 +495,14 @@ and `pnpm format:check`.
 - The integration tests simulate the server loss with a second in-memory server and
   `Browser.switchServer`; the browser tests stop the app and start another one on the **same
   port** (same origin, so the local data stays) with a new database.
+- Update 6b (step 18): a login with the same e-mail (new user id) also keeps the data aside, found
+  while reviewing the risks: the second device of a user whose account another device re-created
+  first would otherwise lose its data silently. A login with another e-mail is unchanged (shared
+  devices).
 - Not covered: the real-life browser reload during the second step (it is the same state as the
   first step; the step is not stored), and attachments (they only live on the server).
 
-**Test counts after update 6:** shared 95, server 230, client 298, integration 38, browser (e2e)
+**Test counts after update 6:** shared 95, server 230, client 300, integration 39, browser (e2e)
 50 (13 MVP + 32 v1 + 5 recovery scenarios).
 
 **Test counts after update 5:** shared 95, server 228, client 263, integration 31, browser (e2e)

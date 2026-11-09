@@ -181,9 +181,12 @@ export function createSession(deps: SessionDeps): Session {
     const stored = await storedUser();
     let keep: RecoverySnapshot | undefined;
     if (stored && stored.id !== me.id) {
-      // Signing up after the server lost its data: the old data is kept aside and the user is
-      // asked about it once the new account is ready. That replaces the warning below.
-      if (path === '/api/auth/register') keep = await takeSnapshot(db, stored.email);
+      // After the server lost its data the owner gets back in by signing up, or by logging in
+      // with the same e-mail (the account was re-created from another device first). The old
+      // data is then kept aside and the user is asked about it once the account is ready,
+      // which replaces the warning below. Another e-mail is someone else's data: never offered.
+      const owner = stored.email.toLowerCase() === me.email.toLowerCase();
+      if (path === '/api/auth/register' || owner) keep = await takeSnapshot(db, stored.email);
       const pending = await countPending(db);
       const aside = await hasKeptAside();
       // A new copy replaces an earlier one that is still unanswered, so that counts as a loss

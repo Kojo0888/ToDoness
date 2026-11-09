@@ -181,4 +181,31 @@ describe('recovery after the server lost its database', () => {
     const titles = (await a.db.todos.toArray()).filter((t) => !t.deletedAt).map((t) => t.title);
     expect(titles.sort()).toEqual(['Buy milk', 'Old news', 'Report']);
   });
+
+  it('another device signed up first: the laptop logs in with the same e-mail and is offered its data', async () => {
+    const { a } = await oldAccount();
+    const fresh = startServer();
+
+    // The phone (empty, new) signs up first on the fresh server and adds a task.
+    const phone = new Browser(fresh, 'phone');
+    await phone.register('ann@corp.test');
+    await phone.repo.createTodo({ listId: await phone.inboxId(), title: 'Phone task' });
+    await phone.sync();
+
+    // The laptop logs in (what the session does for the same e-mail but a new user id).
+    const snapshot = await takeSnapshot(a.db, 'ann@corp.test', () => a.time);
+    await a.db.clearAll(snapshot ? [{ key: RECOVERY_KEY, value: snapshot }] : []);
+    a.switchServer(fresh);
+    await a.login('ann@corp.test');
+    await a.sync();
+    const recovery = createRecovery({ db: a.db, repo: a.repo });
+    await recovery.load();
+    expect(recovery.getOffer()).toMatchObject({ todos: 3, lists: 1, accountTodos: 1 });
+
+    await recovery.accept('append');
+    await a.sync();
+    await phone.sync();
+    expect((await phone.titles(await phone.inboxId())).sort()).toEqual(['Buy milk', 'Phone task']);
+    expect(await phone.snapshot()).toEqual(await a.snapshot());
+  });
 });
