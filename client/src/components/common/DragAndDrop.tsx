@@ -4,18 +4,21 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCenter,
+  defaultDropAnimationSideEffects,
   pointerWithin,
   useSensor,
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
   type DragStartEvent,
+  type DropAnimation,
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState, type ReactNode } from 'react';
 import { getLists } from '../../data/queries';
-import { LIST_PREFIX, resolveDrop } from '../../lib/dnd';
+import { LIST_PREFIX, orderAfterDrop, resolveDrop } from '../../lib/dnd';
+import { dropOrder, dropScope } from '../../lib/dropOrder';
 import type { Keyed } from '../../data/order';
 import { db, publicEditor, repo } from '../../app/container';
 import { t } from '../../app/strings';
@@ -43,6 +46,21 @@ export interface NoteDragData {
 
 type DragData = TodoDragData | NoteDragData;
 
+/** Which list (for the pending order after a drop) a dragged item belongs to. */
+const scopeOf = (data: DragData) =>
+  data.kind === 'note'
+    ? dropScope.notes
+    : data.remote
+      ? dropScope.publicList(data.remote.listId)
+      : dropScope.list(data.listId);
+
+/** The dragged copy glides into the row's new place, quickly. */
+const DROP_ANIMATION: DropAnimation = {
+  duration: 180,
+  easing: 'cubic-bezier(0.2, 0, 0, 1)',
+  sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0.35' } } }),
+};
+
 const isListTarget = (id: unknown) => String(id).startsWith(LIST_PREFIX);
 
 /**
@@ -67,6 +85,8 @@ export function DragAndDrop({ children }: { children: ReactNode }) {
   const showToast = useUndoToast();
   const lists = useLiveQuery(() => getLists(db), [], []);
   const [active, setActive] = useState<DragData | null>(null);
+  // A task dropped on another list leaves this one: no flying back to its old place.
+  const [animateDrop, setAnimateDrop] = useState(true);
 
   const sensors = useSensors(
     // Moving a few pixels starts a drag, so a plain tap on the handle is not a drag.
@@ -79,6 +99,7 @@ export function DragAndDrop({ children }: { children: ReactNode }) {
   const listName = (id: string) => lists.find((l) => l.id === id)?.name ?? '';
 
   function onDragStart(e: DragStartEvent) {
+    setAnimateDrop(true);
     setActive(dataOf(e) ?? null);
   }
 
@@ -93,6 +114,11 @@ export function DragAndDrop({ children }: { children: ReactNode }) {
       openIds: data.openIds,
       currentListId: data.kind === 'note' ? '' : data.listId,
     });
+    setAnimateDrop(action.kind !== 'move');
+    // Show the new order in the very same render as the release (before anything is
+    // written), so the row settles where it was dropped instead of jumping back first.
+    const shown = orderAfterDrop(data.openIds, action);
+    if (shown) dropOrder.set(scopeOf(data), shown);
     if (data.kind === 'note') {
       if (action.kind === 'reorder') await repo.reorderNote(action.todoId, action.beforeId);
       return;
@@ -125,7 +151,10 @@ export function DragAndDrop({ children }: { children: ReactNode }) {
       collisionDetection={collisionDetection}
       onDragStart={onDragStart}
       onDragEnd={(e) => void onDragEnd(e)}
-      onDragCancel={() => setActive(null)}
+      onDragCancel={() => {
+        setAnimateDrop(true);
+        setActive(null);
+      }}
       accessibility={{
         screenReaderInstructions: { draggable: t.todo.dragInstructions },
         announcements: {
@@ -148,7 +177,7 @@ export function DragAndDrop({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-      <DragOverlay>
+      <DragOverlay dropAnimation={animateDrop ? DROP_ANIMATION : null}>
         {active && (
           <div className={`${active.kind === 'note' ? 'note' : 'todo'} drag-overlay`}>
             {active.title}

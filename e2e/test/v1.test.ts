@@ -227,10 +227,11 @@ describe('v1: drag and drop (FR-37 – FR-41)', () => {
     await page.mouse.move(to!.x + 10, to!.y + 5, { steps: 20 });
     await page.waitForTimeout(400); // the other rows have made room
 
-    // From the release on, note where the row of A is drawn in every frame.
+    // From the release on, note where the row of A and the dragged copy are drawn in every frame.
     await page.evaluate(() => {
-      const w = window as unknown as { tops: number[] };
+      const w = window as unknown as { tops: number[]; copy: number[] };
       w.tops = [];
+      w.copy = [];
       const rowOf = () =>
         [...document.querySelectorAll('.todos .todo')].find(
           (r) => r.querySelector('.todo-title')?.textContent === 'A',
@@ -239,6 +240,8 @@ describe('v1: drag and drop (FR-37 – FR-41)', () => {
       const frame = () => {
         const row = rowOf();
         if (row) w.tops.push(row.getBoundingClientRect().top);
+        const copy = document.querySelector('.drag-overlay');
+        if (copy) w.copy.push(copy.getBoundingClientRect().top);
         if (performance.now() - start < 1000) requestAnimationFrame(frame);
       };
       window.addEventListener('pointerup', () => requestAnimationFrame(frame), {
@@ -246,15 +249,18 @@ describe('v1: drag and drop (FR-37 – FR-41)', () => {
         capture: true,
       });
     });
-    const target = await page.locator('.todos .todo').first().boundingBox();
     await page.mouse.up();
     await page.waitForTimeout(1200);
 
     expect(await titlesOnPage(page)).toEqual(['A', 'D', 'C', 'B']);
-    const tops = await page.evaluate(() => (window as unknown as { tops: number[] }).tops);
+    const { tops, copy } = await page.evaluate(() => {
+      const w = window as unknown as { tops: number[]; copy: number[] };
+      return { tops: w.tops, copy: w.copy };
+    });
     expect(tops.length).toBeGreaterThan(10);
-    // Not a single frame back at the bottom, where A was before the drag.
-    expect(Math.max(...tops)).toBeLessThan(target!.y + target!.height);
+    const final = tops[tops.length - 1]!;
+    // Neither the row nor the dragged copy goes anywhere near its old place (three rows down).
+    for (const top of [...tops, ...copy]) expect(Math.abs(top - final)).toBeLessThan(15);
   });
 
   it('dropping a task on a list in the sidebar moves it there', async () => {

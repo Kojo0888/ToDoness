@@ -1,9 +1,11 @@
+import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useOnline, useSyncStatus } from '../../app/hooks';
-import { syncDiag } from '../../app/container';
+import { db, syncDiag } from '../../app/container';
 import { t } from '../../app/strings';
-
-const fmt = (ms: number) => (ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`);
+import { getQueuedChanges } from '../../data/queries';
+import { browserStorage } from '../../lib/modules';
+import { diagRows } from './diagRows';
 
 const clock = (at: number) => {
   const d = new Date(at);
@@ -11,15 +13,53 @@ const clock = (at: number) => {
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`;
 };
 
+/** Whether the admin left the diagnostics open on this device. */
+const OPEN_KEY = 'todoness.syncDiagOpen';
+const readOpen = () => {
+  try {
+    return browserStorage()?.getItem(OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+const saveOpen = (open: boolean) => {
+  try {
+    browserStorage()?.setItem(OPEN_KEY, open ? '1' : '0');
+  } catch {
+    // Blocked storage: it just is not remembered.
+  }
+};
+
 /**
  * Admin only: the flags and the log of the sync, shown above the "All changes saved"
  * indicator, to see exactly why going from offline to online takes as long as it does.
+ * Folded away behind a button until the admin opens it.
  */
 export function SyncDiagnostics() {
+  const [open, setOpen] = useState(readOpen);
+  const toggle = () => {
+    saveOpen(!open);
+    setOpen(!open);
+  };
+  return (
+    <div className="sync-diag-wrap">
+      <button type="button" className="link sync-diag-toggle" aria-expanded={open} onClick={toggle}>
+        <span className="sync-diag-caret" aria-hidden="true">
+          {open ? '▾' : '▸'}
+        </span>
+        {t.syncDiag.toggle}
+      </button>
+      {open && <DiagnosticsPanel />}
+    </div>
+  );
+}
+
+function DiagnosticsPanel() {
   const { events, flags } = useSyncExternalStore(syncDiag.subscribe, syncDiag.getSnapshot);
   const status = useSyncStatus();
   const online = useOnline();
   const [logOpen, setLogOpen] = useState(false);
+  const [queueOpen, setQueueOpen] = useState(false);
 
   // A clock for the live numbers (time a request has been waiting, countdown to the next try).
   const [now, setNow] = useState(() => Date.now());
@@ -28,38 +68,7 @@ export function SyncDiagnostics() {
     return () => clearInterval(timer);
   }, []);
 
-  const request = flags.inFlight
-    ? t.syncDiag.waiting(flags.inFlight.what, fmt(now - flags.inFlight.since))
-    : flags.lastRequest
-      ? t.syncDiag.last(
-          flags.lastRequest.what,
-          fmt(flags.lastRequest.ms),
-          flags.lastRequest.outcome,
-        )
-      : t.syncDiag.none;
-  const check = flags.lastProbe
-    ? `${flags.lastProbe.ok ? t.syncDiag.answered : t.syncDiag.noAnswer} ${fmt(flags.lastProbe.ms)}, ${fmt(now - flags.lastProbe.at)} ${t.syncDiag.ago}`
-    : t.syncDiag.none;
-  const nextTry = flags.retry
-    ? `${fmt(Math.max(0, flags.retry.at - now))} (#${flags.retry.attempt})`
-    : flags.nextRun !== null && status.state !== 'auth_required'
-      ? `${fmt(Math.max(0, flags.nextRun - now))} (${t.syncDiag.timer})`
-      : t.syncDiag.none;
-
-  const rows: [string, string, string?][] = [
-    [
-      t.syncDiag.browser,
-      flags.browserOnline ? t.syncDiag.online : t.syncDiag.offline,
-      flags.browserOnline ? 'ok' : 'warn',
-    ],
-    [t.syncDiag.app, online ? t.syncDiag.online : t.syncDiag.offline, online ? 'ok' : 'warn'],
-    [t.syncDiag.check, check],
-    [t.syncDiag.sync, t.syncDiag.states[status.state], status.state === 'idle' ? 'ok' : 'warn'],
-    [t.syncDiag.request, request, flags.inFlight ? 'busy' : undefined],
-    [t.syncDiag.nextTry, nextTry],
-    [t.syncDiag.reconnect, flags.reconnectMs === null ? t.syncDiag.none : fmt(flags.reconnectMs)],
-    [t.syncDiag.outage, flags.outageMs === null ? t.syncDiag.none : fmt(flags.outageMs)],
-  ];
+  const rows = diagRows({ flags, state: status.state, online, now });
 
   return (
     <div className="sync-diag" data-testid="sync-diagnostics" aria-label={t.syncDiag.title}>
@@ -71,14 +80,24 @@ export function SyncDiagnostics() {
           </div>
         ))}
       </dl>
-      <button
-        type="button"
-        className="link"
-        aria-expanded={logOpen}
-        onClick={() => setLogOpen(!logOpen)}
-      >
-        {logOpen ? t.syncDiag.hideLog : t.syncDiag.showLog}
-      </button>
+      <div className="sync-diag-actions">
+        <button
+          type="button"
+          className="link"
+          aria-expanded={logOpen}
+          onClick={() => setLogOpen(!logOpen)}
+        >
+          {logOpen ? t.syncDiag.hideLog : t.syncDiag.showLog}
+        </button>
+        <button
+          type="button"
+          className="link"
+          aria-expanded={queueOpen}
+          onClick={() => setQueueOpen(!queueOpen)}
+        >
+          {t.syncDiag.showQueue}
+        </button>
+      </div>
       {logOpen && (
         <div className="sync-log" role="log" aria-label={t.syncDiag.logTitle}>
           <div className="sync-log-head">
@@ -97,6 +116,24 @@ export function SyncDiagnostics() {
           </ol>
         </div>
       )}
+      {queueOpen && <QueuedChanges onClose={() => setQueueOpen(false)} />}
     </div>
+  );
+}
+
+/** Every queued change exactly as stored on this device, updated live. */
+function QueuedChanges({ onClose }: { onClose: () => void }) {
+  const queued = useLiveQuery(() => getQueuedChanges(db), []);
+  return (
+    <section className="sync-log sync-queue" aria-label={t.syncDiag.queueTitle}>
+      <div className="sync-log-head">
+        <strong>{t.syncDiag.queueTitle}</strong>
+        <button type="button" onClick={onClose}>
+          {t.syncDiag.closeQueue}
+        </button>
+      </div>
+      <p className="hint">{t.syncDiag.queueHint}</p>
+      {queued && <pre>{JSON.stringify(queued, null, 2)}</pre>}
+    </section>
   );
 }

@@ -37,3 +37,33 @@ export function resolveDrop(input: {
   const beforeId = to > from ? (openIds[to + 1] ?? null) : overId;
   return { kind: 'reorder', todoId: activeId, beforeId };
 }
+
+/**
+ * The order to show right after a drop, before the stored order catches up; `null` when the
+ * drop does not change the order of this list.
+ */
+export function orderAfterDrop(ids: string[], action: DropAction): string[] | null {
+  if (action.kind !== 'reorder') return null;
+  const { todoId, beforeId } = action;
+  if (!ids.includes(todoId)) return null;
+  const rest = ids.filter((id) => id !== todoId);
+  const at = beforeId === null ? rest.length : rest.indexOf(beforeId);
+  if (at < 0) return null;
+  return [...rest.slice(0, at), todoId, ...rest.slice(at)];
+}
+
+/**
+ * `items` in the given order of ids; the items unchanged without an order, or when the
+ * items are not exactly the ones the order names (one was added or removed meanwhile).
+ */
+export function inOrder<T extends { id: string }>(items: T[], ids: string[] | null): T[] {
+  if (ids === null || ids.length !== items.length) return items;
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const sorted: T[] = [];
+  for (const id of ids) {
+    const item = byId.get(id);
+    if (!item) return items;
+    sorted.push(item);
+  }
+  return sorted;
+}

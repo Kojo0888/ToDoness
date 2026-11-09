@@ -3,7 +3,8 @@ import { useState, type CSSProperties, type FormEvent } from 'react';
 import { Link, Redirect, useLocation } from 'wouter';
 import type { PublicTodo } from '@todoness/shared';
 import { formatDue } from '../../lib/dates';
-import { useOnline } from '../../app/hooks';
+import { useDropOrder, useOnline } from '../../app/hooks';
+import { dropScope } from '../../lib/dropOrder';
 import { usePublicList } from '../../app/publicHooks';
 import type { EditResult } from '../../services/publicEdit';
 import { publicEditor } from '../../app/container';
@@ -28,6 +29,11 @@ export function PublicListPage({ listId, todoId }: { listId: string; todoId?: st
   const [showDone, setShowDone] = useState(false);
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const loaded = value && value !== 'gone' ? value : null;
+  const open = useDropOrder(
+    dropScope.publicList(listId),
+    loaded?.todos.filter((x) => !x.done) ?? [],
+  );
 
   /** Queues a change; shows what went wrong, if anything (the server answers later). */
   async function act(change: Promise<EditResult>) {
@@ -51,7 +57,6 @@ export function PublicListPage({ listId, todoId }: { listId: string; todoId?: st
     );
   }
 
-  const open = value.todos.filter((x) => !x.done);
   const done = value.todos.filter((x) => x.done);
   const openIds = open.map((x) => x.id);
   const selected = todoId ? value.todos.find((x) => x.id === todoId) : undefined;

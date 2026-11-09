@@ -134,7 +134,7 @@ function NotesNav({ location, onNavigate }: { location: string; onNavigate: () =
   // The public notes page refreshes them itself; here only the copy is read then.
   const shared = usePublicNotes({ refresh: location !== '/notes/public' });
 
-  const link = (href: string, label: string, count: number | undefined) => {
+  const link = (href: string, label: string, count: number | undefined, tooltip?: string) => {
     const isActive = location === href || location === `${href}/`;
     return (
       <li>
@@ -143,9 +143,15 @@ function NotesNav({ location, onNavigate }: { location: string; onNavigate: () =
           className={isActive ? 'active' : ''}
           aria-current={isActive ? 'page' : undefined}
           onClick={onNavigate}
+          title={tooltip}
         >
           {label}
           {count !== undefined && <span className="nav-count">{count}</span>}
+          {tooltip && (
+            <span className="nav-info" aria-hidden="true">
+              ⓘ
+            </span>
+          )}
         </Link>
       </li>
     );
@@ -155,11 +161,14 @@ function NotesNav({ location, onNavigate }: { location: string; onNavigate: () =
     <>
       <ul className="nav-lists" aria-label={t.modules.notes}>
         {link('/notes', t.notes.myNotes, mine)}
-        {link('/notes/public', t.notes.publicNotes, shared.value?.length)}
+        {link(
+          '/notes/public',
+          t.notes.publicNotes,
+          shared.value?.length,
+          // Not on this device yet: said in a tooltip rather than a line in the sidebar.
+          shared.value === null && shared.failed ? t.notes.publicNeedsConnection : undefined,
+        )}
       </ul>
-      {shared.value === null && shared.failed && (
-        <p className="hint nav-note">{t.notes.publicNeedsConnection}</p>
-      )}
     </>
   );
 }

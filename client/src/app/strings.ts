@@ -282,9 +282,11 @@ export const t = {
 
   syncDiag: {
     title: 'Sync diagnostics (admin)',
+    toggle: 'Sync diagnostics',
     browser: 'Browser says',
     app: 'App found',
     check: 'Last check',
+    checkTook: 'Check took',
     answered: 'answered',
     noAnswer: 'no answer',
     ago: 'ago',
@@ -304,6 +306,10 @@ export const t = {
     closeLog: 'Close log',
     logTitle: 'Sync log (newest first)',
     empty: 'Nothing yet.',
+    showQueue: 'Queued changes',
+    closeQueue: 'Close queued changes',
+    queueTitle: 'Queued changes (raw)',
+    queueHint: 'Changes on this device not yet accepted by the server, exactly as stored.',
     states: {
       idle: 'idle',
       syncing: 'syncing',

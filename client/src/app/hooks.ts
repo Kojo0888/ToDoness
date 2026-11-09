@@ -8,6 +8,8 @@ import {
   saveLastModule,
   type ModuleId,
 } from '../lib/modules';
+import { inOrder } from '../lib/dnd';
+import { dropOrder } from '../lib/dropOrder';
 import { connectivity, engine, recovery, reminderFeed, session } from './container';
 
 export function useSession() {
@@ -138,4 +140,15 @@ export function useModule(): {
     onModulePage: fromPath !== undefined,
     hrefOf: (id) => lastPathOf.get(id) ?? homeOf(id),
   };
+}
+
+/**
+ * `items` (a sortable list) in the order they were just dropped in, until the stored order
+ * catches up, so a released row does not jump back to its old place for a moment.
+ */
+export function useDropOrder<T extends { id: string }>(scope: string, items: T[]): T[] {
+  useSyncExternalStore(dropOrder.subscribe, dropOrder.getSnapshot);
+  const key = items.map((item) => item.id).join('\n');
+  useEffect(() => dropOrder.settle(scope, key === '' ? [] : key.split('\n')), [scope, key]);
+  return inOrder(items, dropOrder.orderFor(scope));
 }

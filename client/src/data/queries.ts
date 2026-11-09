@@ -1,7 +1,7 @@
 /** Read-only queries the screens use (wrapped in live queries). */
 import Dexie from 'dexie';
-import type { List, Note, Todo } from '@todoness/shared';
-import type { TodonessDB } from './db';
+import type { List, Note, OutboxOp, Todo } from '@todoness/shared';
+import type { PublicOp, TodonessDB } from './db';
 
 export async function getLists(db: TodonessDB): Promise<List[]> {
   const all = await db.lists.orderBy('orderKey').toArray();
@@ -40,6 +40,16 @@ export async function getTodoById(db: TodonessDB, id: string): Promise<Todo | un
 /** Changes waiting to be sent: own ones and those to other users' public data. */
 export async function countPending(db: TodonessDB): Promise<number> {
   return (await db.outbox.count()) + (await db.publicOutbox.count());
+}
+
+/** Both queues of changes not yet accepted by the server, raw and oldest first (admin). */
+export async function getQueuedChanges(
+  db: TodonessDB,
+): Promise<{ outbox: OutboxOp[]; publicOutbox: PublicOp[] }> {
+  return {
+    outbox: await db.outbox.orderBy('hlc').toArray(),
+    publicOutbox: await db.publicOutbox.orderBy('hlc').toArray(),
+  };
 }
 
 /** Live notes, newest first (a new note gets a key before all others). */

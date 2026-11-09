@@ -73,7 +73,8 @@ describe('queries', () => {
   });
 
   it('getQueuedChanges gives both queues raw, oldest first, for the admin', async () => {
-    const { db, repo, now } = testRepo();
+    const now = fakeNow();
+    const { db, repo } = testRepo({ now });
     const inbox = await seedInbox(db);
     expect(await getQueuedChanges(db)).toEqual({ outbox: [], publicOutbox: [] });
     await repo.createTodo({ listId: inbox.id, title: 'first' });

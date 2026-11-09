@@ -1,5 +1,7 @@
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useDropOrder } from '../../app/hooks';
+import { dropScope } from '../../lib/dropOrder';
 import { useState, type FormEvent } from 'react';
 import { Redirect, useLocation } from 'wouter';
 import { getDoneTodos, getLists, getOpenTodos } from '../../data/queries';
@@ -18,7 +20,10 @@ export function ListPage({ listId, todoId }: { listId: string; todoId?: string }
     return l && l.deletedAt === null ? l : null;
   }, [listId]);
   const lists = useLiveQuery(() => getLists(db), [], []);
-  const open = useLiveQuery(() => getOpenTodos(db, listId), [listId], []);
+  const open = useDropOrder(
+    dropScope.list(listId),
+    useLiveQuery(() => getOpenTodos(db, listId), [listId], []),
+  );
   const done = useLiveQuery(() => getDoneTodos(db, listId), [listId], []);
 
   const [showDone, setShowDone] = useState(false);

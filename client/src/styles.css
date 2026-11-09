@@ -764,6 +764,30 @@ h2.nav-heading {
   font-size: 0.8rem;
 }
 
+.sync-diag-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.25rem;
+  font-size: 0.8rem;
+}
+
+.sync-diag-caret {
+  display: inline-block;
+  width: 0.8em;
+}
+
+.sync-diag-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.sync-queue pre {
+  margin: 0.4rem 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .sync-flags {
   display: grid;
   gap: 0.15rem;
@@ -929,6 +953,12 @@ h2.nav-heading {
 
 .topbar .module-switch {
   margin-left: auto;
+}
+
+.nav-info {
+  margin-left: 0.35rem;
+  color: var(--warn);
+  cursor: help;
 }
 
 .nav-count {

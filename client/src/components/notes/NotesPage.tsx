@@ -1,5 +1,7 @@
 import { rectSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { useDropOrder } from '../../app/hooks';
+import { dropScope } from '../../lib/dropOrder';
 import { useState, type CSSProperties, type FormEvent } from 'react';
 import { NOTE_TEXT_MAX, type Note } from '@todoness/shared';
 import { getNotes } from '../../data/queries';
@@ -33,7 +35,10 @@ export function NotesPage() {
   }
 
   const searching = query.trim() !== '';
-  const shown = notes?.filter((n) => matchesSearch(n.text, query)) ?? [];
+  const shown = useDropOrder(
+    dropScope.notes,
+    notes?.filter((n) => matchesSearch(n.text, query)) ?? [],
+  );
   const ids = shown.map((n) => n.id);
 
   return (
