@@ -7,6 +7,7 @@ import { createSyncEngine } from '../sync/engine';
 import { browserEnv, createSyncRunner } from '../sync/runner';
 import { releasePushForLogout } from '../services/push';
 import { createPublicEditor } from '../services/publicEdit';
+import { createPublicNotes } from '../services/publicNotes';
 import { createReminderFeed } from '../services/reminderFeed';
 import {
   createReminderScheduler,
@@ -21,6 +22,8 @@ const request = (url: string, init?: RequestInit) => fetch(url, init);
 export const db = new TodonessDB();
 export const repo = createRepo(db);
 export const publicEditor = createPublicEditor({ db, fetch: request });
+/** Other users' public notes: read and edited online (docs/notes/PRD.md FR-95 – FR-97). */
+export const publicNotes = createPublicNotes({ db, fetch: request });
 /**
  * Whether the server can be reached, as the app found out. The UI uses this, not the
  * browser's `navigator.onLine`, which can be wrong (see sync/connectivity.ts).

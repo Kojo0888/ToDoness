@@ -1,4 +1,13 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useLocation } from 'wouter';
+import {
+  browserStorage,
+  homeOf,
+  moduleOfPath,
+  readLastModule,
+  saveLastModule,
+  type ModuleId,
+} from '../lib/modules';
 import { connectivity, engine, recovery, reminderFeed, session } from './container';
 
 export function useSession() {
@@ -98,4 +107,35 @@ export function usePolled<T>(load: () => Promise<T | undefined>, intervalMs: num
 
   const reload = useCallback(() => reloadRef.current(), []);
   return { value, failed, reload };
+}
+
+/** The page last shown in each module during this visit, so switching back returns there. */
+const lastPathOf = new Map<ModuleId, string>();
+
+/**
+ * The current module (docs/notes/PRD.md FR-84, FR-86): the one the address belongs to, or,
+ * on pages of no module (Settings, Admin, the start address), the one used last on this
+ * device. Visiting a module's page remembers it as the last one.
+ */
+export function useModule(): {
+  current: ModuleId;
+  /** False on Settings, Admin and the like: no module page is open. */
+  onModulePage: boolean;
+  hrefOf: (id: ModuleId) => string;
+} {
+  const [location] = useLocation();
+  const fromPath = moduleOfPath(location);
+
+  useEffect(() => {
+    if (!fromPath) return;
+    lastPathOf.set(fromPath, location);
+    saveLastModule(browserStorage(), fromPath);
+  }, [fromPath, location]);
+
+  return {
+    // A module page was saved as the last one when it was shown, so storage knows it here.
+    current: fromPath ?? readLastModule(browserStorage()),
+    onModulePage: fromPath !== undefined,
+    hrefOf: (id) => lastPathOf.get(id) ?? homeOf(id),
+  };
 }

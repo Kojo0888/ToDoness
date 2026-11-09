@@ -44,7 +44,7 @@ export function PublicListPage({ listId, todoId }: { listId: string; todoId?: st
     return (
       <section className="page">
         <p className="empty">{t.publicPage.gone}</p>
-        <Link href="/">{t.publicPage.back}</Link>
+        <Link href="/tasks">{t.publicPage.back}</Link>
       </section>
     );
   }

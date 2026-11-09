@@ -90,7 +90,14 @@ export const t = {
     },
   },
 
+  modules: {
+    label: 'Modules',
+    tasks: 'Tasks',
+    notes: 'Notes',
+  },
+
   nav: {
+    main: 'Main',
     lists: 'Lists',
     newList: 'New list name',
     addList: 'Add list',
@@ -146,8 +153,41 @@ export const t = {
     },
     ownerNote: 'Changes you make here are saved at once and also appear for the owner.',
     back: 'Back to my tasks',
+    notePrivate: 'This note is not public any more, or it was deleted. Your change was not saved.',
     due: (when: string) => `Due ${when}`,
     attachments: 'Attachments',
+  },
+
+  notes: {
+    title: 'My notes',
+    myNotes: 'My notes',
+    publicNotes: 'Public notes',
+    publicNeedsConnection: 'Public notes need a connection.',
+    newLabel: 'New note',
+    newPlaceholder: 'Write a note…',
+    add: 'Add note',
+    addHint: 'Ctrl + Enter (⌘ + Enter on a Mac) adds the note.',
+    empty: 'No notes yet. Write your first one above.',
+    noteLabel: (n: number) => `Note ${n}`,
+    changed: (when: string) => `Changed ${when}`,
+    public: 'Public',
+    publicHint:
+      'Public note: every user of the app can read and edit its text. Only you can delete it or make it private.',
+    delete: 'Delete',
+    deleteLabel: (n: number) => `Delete note ${n}`,
+    deleted: 'Note deleted.',
+    saveFailed: 'Could not save this note.',
+    tooLong: 'A note can have at most 20 000 characters.',
+    publicPage: {
+      title: 'Public notes',
+      intro: 'Notes other users made public. Everyone can edit them; changes are saved at once.',
+      by: (email: string) => `By ${email}`,
+      noteLabel: (email: string) => `Public note by ${email}`,
+      empty: 'Nobody has made a note public yet.',
+      needsConnection: 'Public notes need a connection to the server.',
+      editsNeedConnection:
+        'You are offline. Public notes can only be changed while you are online.',
+    },
   },
 
   todo: {
