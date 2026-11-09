@@ -68,6 +68,8 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
   let intervalTimer: ReturnType<typeof setInterval> | undefined;
   let probeTimer: ReturnType<typeof setInterval> | undefined;
   let probing = false;
+  /** Bumped on every browser `online` event, so older failed checks can be ignored. */
+  let onlineEpoch = 0;
   const unsubscribe: (() => void)[] = [];
 
   function clearRetry() {
@@ -90,6 +92,7 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
     if (!started || probing) return;
     probing = true;
     const t0 = Date.now();
+    const epoch = onlineEpoch;
     const ok = await engine.ping().finally(() => {
       probing = false;
     });
@@ -100,6 +103,9 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
         !(connectivity?.getSnapshot().online ?? true) || engine.status.state === 'offline';
       report(true, 'the server answered a check');
       if (wasDown) runIfAllowed('connection check worked'); // do not wait for the next timer
+    } else if (epoch !== onlineEpoch) {
+      // The browser said "online" while this check was waiting: its failure is stale.
+      diag?.log('connection', 'ignored a check that failed before the connection came back');
     } else {
       report(false, 'no answer to a check');
       if (engine.status.state !== 'offline') engine.markOffline();
@@ -135,8 +141,9 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
           diag?.runEnd(false, 'login required');
           onAuthRequired?.();
         } else if (urgent) {
-          report(result.kind !== 'offline', result.message);
           // The connection came back while we were waiting for a dead one: do not wait.
+          // The failure is our own abort, so it says nothing about the connection: do not
+          // report it (that made the flag flip online -> offline for a moment).
           urgent = false;
           attempt = 0;
           again = true;
@@ -174,6 +181,7 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
       unsubscribe.push(
         env.on('online', () => {
           diag?.browserOnline(true);
+          onlineEpoch++;
           attempt = 0;
           clearRetry();
           if (running) {

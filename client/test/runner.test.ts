@@ -100,6 +100,38 @@ describe('browser connection events (offline → online speed)', () => {
     expect(engine.sync).toHaveBeenCalledTimes(2); // again at once: no retry delay
   });
 
+  it('the aborted request does not flip the connection flag back to offline', async () => {
+    let finishFirst!: (r: SyncResult) => void;
+    const engine = fakeEngine([ok]);
+    engine.sync.mockImplementationOnce(() => new Promise<SyncResult>((r) => (finishFirst = r)));
+    const env = fakeEnv();
+    const connectivity = createConnectivity(true); // a check just found the server
+    createSyncRunner({ engine, env, connectivity, intervalMs: 600_000 }).start();
+    await flush();
+    env.fire('online');
+    const seen: boolean[] = [];
+    connectivity.subscribe(() => seen.push(connectivity.getSnapshot().online));
+    finishFirst(offline); // our own abort, not a real failure
+    await flush();
+    expect(seen).not.toContain(false);
+    expect(connectivity.getSnapshot().online).toBe(true);
+  });
+
+  it('a check that started before "online" and failed after it is ignored', async () => {
+    let failPing!: (ok: boolean) => void;
+    const engine = fakeEngine([ok]);
+    const env = fakeEnv();
+    const connectivity = createConnectivity(true);
+    createSyncRunner({ engine, env, connectivity, probeIntervalMs: 1000 }).start();
+    await flush();
+    engine.ping.mockImplementationOnce(() => new Promise<boolean>((r) => (failPing = r)));
+    await vi.advanceTimersByTimeAsync(1000); // a check is now waiting
+    env.fire('online');
+    failPing(false);
+    await flush();
+    expect(connectivity.getSnapshot().online).toBe(true);
+  });
+
   it('"online" while nothing is running does not abort anything', async () => {
     const engine = fakeEngine([ok]);
     const env = fakeEnv();
