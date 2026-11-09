@@ -326,5 +326,41 @@ it), offline public note, refused change after the list became private; README, 
 **Test counts after update 2:** shared 105, server 244, client 363, integration 48, browser
 (e2e) 62 (13 MVP + 32 v1 + 5 recovery + 12 notes scenarios).
 
+### Review fixes (PR #11)
+
+Each fix has a test that was seen to fail first.
+
+- **No flash of the old text after a public edit is sent.** The engine now writes the accepted
+  values into the kept copy (`publicCache`) in the same transaction that removes them from the
+  queue, and raises the copy's `rev`. A refresh only stores its answer if `rev` did not change
+  while its request was under way, so an answer sent before the push cannot write the old text
+  back.
+- **Queued public changes are not lost silently at sign-up.** They are never part of the
+  recovery copy (they belong to other accounts), so signing up again now asks for
+  confirmation when any are queued, even when a copy is kept.
+- **A text that arrives during a save is shown afterwards.** The note box logic moved into
+  `components/notes/noteTextSync.ts` (plain code, unit tested with fake timers). A stored text
+  that arrives while the user is busy (focused, unsaved, or saving) is shown once they are not;
+  typing after it replaces it (latest edit wins). Finishing a save does not re-show the stored
+  text by itself, because before the database echoes the save it is still the old text (that
+  would be exactly the flash the first fix removes).
+- **One poller for public notes.** The sidebar only reads the copy while the public notes page
+  is open (that page refreshes it).
+- **Background loading runs once at a time** (`prefetchLists` shares a running promise).
+- **ETag on the public endpoints.** `GET /api/public/lists`, `/lists/:id` and `/notes` send an
+  ETag (hash of the body); the client sends it back as `If-None-Match` and a 304 only confirms
+  the copy. Unchanged polls are a few bytes and do not rewrite IndexedDB. Pagination / excerpts
+  were not added: the server still builds the whole answer, which is fine for an intranet
+  (dozens of users); it is the next step if public notes grow large.
+- **Old copies are removed.** After loading the list of public lists, copies of lists that are no
+  longer in it are deleted, unless changes for them are queued or the copy is less than a minute
+  old (an open page may be showing "not public any more").
+- **The offline hint is back:** "Public lists need a connection the first time." (and the same for
+  public notes) when nothing was ever loaded on the device and there is no connection.
+- The new-note box uses `NOTE_TEXT_MAX`.
+
+**Test counts after the review fixes:** shared 105, server 246, client 376, integration 48,
+browser (e2e) 62.
+
 **Test counts after the notes update:** shared 105, server 244, client 346, integration 46,
 browser (e2e) 57 (13 MVP + 32 v1 + 5 recovery + 7 notes scenarios).

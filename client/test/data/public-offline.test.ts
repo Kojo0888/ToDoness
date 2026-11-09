@@ -185,7 +185,11 @@ describe('public data cache', () => {
     expect(await s.data.refreshLists()).toBe(true);
     expect(await s.data.refreshList(LIST)).toBe(true);
     expect(await s.data.refreshNotes()).toBe(true);
-    expect(await s.db.publicCache.get('lists')).toEqual({ key: 'lists', value: lists, at: T0 });
+    expect(await s.db.publicCache.get('lists')).toMatchObject({
+      key: 'lists',
+      value: lists,
+      at: T0,
+    });
     expect((await s.db.publicCache.get(`list:${LIST}`))!.value).toEqual(page());
     expect((await s.db.publicCache.get('notes'))!.value).toEqual(notesBody.notes);
   });
@@ -249,5 +253,74 @@ describe('local database version 4', () => {
     await db.clearAll();
     expect(await db.publicOutbox.count()).toBe(0);
     expect(await db.publicCache.count()).toBe(0);
+  });
+});
+
+describe('public data cache – review fixes', () => {
+  const lists = [{ id: LIST, name: 'Shared', ownerEmail: 'ann@corp.test' }];
+
+  it('a refresh that started before the copy was changed does not write the old answer back', async () => {
+    const db = testDb();
+    await db.publicCache.put({ key: 'notes', value: [], at: 1, rev: 0 });
+    const f = fakeFetch(async () => {
+      // While the request is under way, a sent edit updates the copy.
+      await db.publicCache.update('notes', { value: [{ id: NOTE, text: 'new' }], rev: 1 });
+      return json(200, { notes: [{ id: NOTE, text: 'old', ownerEmail: 'a@b.co', updatedAt: 1 }] });
+    });
+    const data = createPublicData({ db, fetch: f, now: fakeNow() });
+    expect(await data.refreshNotes()).toBe(false);
+    expect((await db.publicCache.get('notes'))!.value).toEqual([{ id: NOTE, text: 'new' }]);
+  });
+
+  it('sends the ETag of the copy and keeps the copy on 304', async () => {
+    const db = testDb();
+    const now = fakeNow();
+    let headers: Headers | undefined;
+    const f = Object.assign(
+      async (url: string, init?: RequestInit) => {
+        headers = new Headers(init?.headers);
+        return headers.get('if-none-match') === '"v1"'
+          ? new Response(null, { status: 304 })
+          : new Response(JSON.stringify({ lists }), { status: 200, headers: { etag: '"v1"' } });
+      },
+      { calls: [] },
+    );
+    const data = createPublicData({ db, fetch: f, now });
+    expect(await data.refreshLists()).toBe(true);
+    expect((await db.publicCache.get('lists'))!.etag).toBe('"v1"');
+    now.advance(5000);
+    expect(await data.refreshLists()).toBe(true);
+    expect(headers!.get('if-none-match')).toBe('"v1"');
+    const row = (await db.publicCache.get('lists'))!;
+    expect(row.value).toEqual(lists);
+    expect(row.at).toBe(T0 + 5000); // confirmed current
+  });
+
+  it('runs one background load at a time', async () => {
+    const db = testDb();
+    await db.publicCache.put({ key: 'lists', value: lists, at: 1 });
+    const f = fakeFetch(() => json(200, page()));
+    const data = createPublicData({ db, fetch: f, now: fakeNow() });
+    await Promise.all([data.prefetchLists(60_000), data.prefetchLists(60_000)]);
+    expect(f.calls.map((c) => c.url)).toEqual([`/api/public/lists/${LIST}`]);
+  });
+
+  it('forgets copies of lists that are no longer public, unless changes are queued or it is fresh', async () => {
+    const db = testDb();
+    const now = fakeNow();
+    const old = '0192f0c1-0000-7000-8000-0000000000a7';
+    const queued = '0192f0c1-0000-7000-8000-0000000000a8';
+    const fresh = '0192f0c1-0000-7000-8000-0000000000a9';
+    await db.publicCache.bulkPut([
+      { key: `list:${old}`, value: 'gone', at: T0 - 120_000 },
+      { key: `list:${queued}`, value: 'gone', at: T0 - 120_000 },
+      { key: `list:${fresh}`, value: 'gone', at: T0 - 10_000 },
+      { key: `list:${LIST}`, value: page(), at: T0 - 120_000 },
+    ]);
+    await createPublicEditor({ db, now }).deleteTodo(queued, NOTE);
+    const f = fakeFetch(() => json(200, { lists }));
+    await createPublicData({ db, fetch: f, now }).refreshLists();
+    const keys = (await db.publicCache.toArray()).map((r) => r.key).sort();
+    expect(keys).toEqual(['lists', `list:${LIST}`, `list:${fresh}`, `list:${queued}`].sort());
   });
 });

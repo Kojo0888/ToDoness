@@ -105,6 +105,7 @@ export const t = {
     admin: 'Admin',
     menu: 'Menu',
     publicLists: 'Public lists',
+    publicNeedsConnection: 'Public lists need a connection the first time.',
   },
 
   list: {
@@ -162,6 +163,7 @@ export const t = {
     title: 'My notes',
     myNotes: 'My notes',
     publicNotes: 'Public notes',
+    publicNeedsConnection: 'Public notes need a connection the first time.',
     newLabel: 'New note',
     newPlaceholder: 'Write a note…',
     add: 'Add note',

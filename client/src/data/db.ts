@@ -24,8 +24,15 @@ export type PublicOp = OutboxOp & { target: 'list' | 'note'; targetId: string };
 export interface PublicCacheRow {
   key: string;
   value: unknown;
-  /** When the server gave it. */
+  /** When the server gave it (or confirmed it with 304). */
   at: number;
+  /**
+   * Raised whenever this device writes into the copy itself (an accepted edit). A refresh
+   * that started before only stores its answer if `rev` is unchanged: it would be older.
+   */
+  rev?: number;
+  /** The server's ETag of `value`, sent back as If-None-Match. */
+  etag?: string;
 }
 
 /** An operation the server refused; public ones keep their target, so the page can say so. */

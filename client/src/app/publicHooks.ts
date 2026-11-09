@@ -17,12 +17,15 @@ const REFRESH_MS = 5000;
 /** Every public list in the sidebar is loaded in the background about this often. */
 const PREFETCH_MS = 60_000;
 
-/** Polls `refresh` and runs it again after every sync. `failed` = no answer last time. */
-function useRefresh(refresh: () => Promise<boolean>, key: string) {
+/**
+ * Polls `refresh` and runs it again after every sync. `failed` = no answer last time.
+ * `enabled: false` only reads the copy: another part of the screen already refreshes it.
+ */
+function useRefresh(refresh: () => Promise<boolean>, key: string, enabled = true) {
   const { failed, reload } = usePolled(
-    async () => ((await refresh()) ? true : undefined),
+    async () => (!enabled || (await refresh()) ? true : undefined),
     REFRESH_MS,
-    key,
+    `${key}:${enabled}`,
   );
   const { lastSyncAt } = useSyncStatus();
   useEffect(() => {
@@ -48,16 +51,18 @@ export interface PublicView<T> {
 export const dismissRefused = (refused: DeadLetter[]) =>
   db.deadLetter.bulkDelete(refused.map((d) => d.opId));
 
-export function usePublicLists(): PublicList[] | undefined {
-  useRefresh(async () => {
+/** `lists`: `undefined` = still reading, `null` = never loaded on this device. */
+export function usePublicLists(): { lists: PublicList[] | null | undefined; failed: boolean } {
+  const failed = useRefresh(async () => {
     const ok = await publicData.refreshLists();
     if (ok) void publicData.prefetchLists(PREFETCH_MS);
     return ok;
   }, 'lists');
-  return useLiveQuery(
-    async () => (await db.publicCache.get(LISTS_KEY))?.value as PublicList[] | undefined,
+  const lists = useLiveQuery(
+    async () => ((await db.publicCache.get(LISTS_KEY))?.value as PublicList[] | undefined) ?? null,
     [],
   );
+  return { lists, failed };
 }
 
 export function usePublicList(listId: string): PublicView<PublicListResponse | 'gone'> {
@@ -80,8 +85,8 @@ export function usePublicList(listId: string): PublicView<PublicListResponse | '
   };
 }
 
-export function usePublicNotes(): PublicView<PublicNote[]> {
-  const failed = useRefresh(() => publicData.refreshNotes(), 'notes');
+export function usePublicNotes(opts: { refresh?: boolean } = {}): PublicView<PublicNote[]> {
+  const failed = useRefresh(() => publicData.refreshNotes(), 'notes', opts.refresh ?? true);
   const data = useLiveQuery(async () => {
     const row = await db.publicCache.get(NOTES_KEY);
     const ops = (await db.publicOutbox.toArray()).filter((o) => o.target === 'note');

@@ -196,3 +196,26 @@ describe('POST /api/public/notes/:id/push', () => {
     expect(await res.json()).toEqual({ accepted: [edit.opId], rejected: [] });
   });
 });
+
+describe('ETag on the public endpoints', () => {
+  it('answers 304 when nothing changed, and 200 again after a change', async () => {
+    const first = await c.bob.device.http.get('/api/public/notes');
+    const etag = first.headers.get('etag');
+    expect(etag).toMatch(/^".+"$/);
+    const same = await c.bob.device.http.get('/api/public/notes', { 'if-none-match': etag! });
+    expect(same.status).toBe(304);
+
+    await c.ann.device.push([op('note', 'update', c.noteId, { text: 'changed' }, hlcAt(90))]);
+    const changed = await c.bob.device.http.get('/api/public/notes', { 'if-none-match': etag! });
+    expect(changed.status).toBe(200);
+    expect(changed.headers.get('etag')).not.toBe(etag);
+  });
+
+  it('also on the list of public lists and on one list', async () => {
+    for (const url of ['/api/public/lists']) {
+      const res = await c.bob.device.http.get(url);
+      const again = await c.bob.device.http.get(url, { 'if-none-match': res.headers.get('etag')! });
+      expect(again.status).toBe(304);
+    }
+  });
+});

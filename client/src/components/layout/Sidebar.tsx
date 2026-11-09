@@ -61,7 +61,7 @@ function TasksNav({
   const [, navigate] = useLocation();
   const lists = useLiveQuery(() => getLists(db), [], []);
   const [name, setName] = useState('');
-  const publicLists = usePublicLists();
+  const { lists: publicLists, failed: publicFailed } = usePublicLists();
 
   async function addList(e: FormEvent) {
     e.preventDefault();
@@ -109,6 +109,10 @@ function TasksNav({
         </>
       )}
 
+      {publicLists === null && publicFailed && (
+        <p className="hint nav-note">{t.nav.publicNeedsConnection}</p>
+      )}
+
       <form onSubmit={addList} className="new-list">
         <input
           type="text"
@@ -127,7 +131,8 @@ function TasksNav({
 /** The Notes module: my notes and other users' public notes, with counts. */
 function NotesNav({ location, onNavigate }: { location: string; onNavigate: () => void }) {
   const mine = useLiveQuery(async () => (await getNotes(db)).length, [], 0);
-  const shared = usePublicNotes();
+  // The public notes page refreshes them itself; here only the copy is read then.
+  const shared = usePublicNotes({ refresh: location !== '/notes/public' });
 
   const link = (href: string, label: string, count: number | undefined) => {
     const isActive = location === href || location === `${href}/`;
@@ -152,6 +157,9 @@ function NotesNav({ location, onNavigate }: { location: string; onNavigate: () =
         {link('/notes', t.notes.myNotes, mine)}
         {link('/notes/public', t.notes.publicNotes, shared.value?.length)}
       </ul>
+      {shared.value === null && shared.failed && (
+        <p className="hint nav-note">{t.notes.publicNeedsConnection}</p>
+      )}
     </>
   );
 }

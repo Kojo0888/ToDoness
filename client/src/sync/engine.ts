@@ -9,6 +9,7 @@ import {
   type OutboxOp,
 } from '@todoness/shared';
 import type { PublicOp, TodonessDB } from '../data/db';
+import { overlayListPage, overlayNotes } from '../data/publicOverlay';
 import { applyChanges } from './apply-changes';
 import type { SyncDiagnostics } from './diagnostics';
 
@@ -250,6 +251,19 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
     });
   }
 
+  /** Applies accepted public changes to the kept copy of their list or of the public notes. */
+  async function writeIntoCopy(target: PublicOp, accepted: PublicOp[]) {
+    if (accepted.length === 0) return;
+    const key = target.target === 'list' ? `list:${target.targetId}` : 'notes';
+    const row = await db.publicCache.get(key);
+    if (!row || row.value === 'gone') return;
+    const value =
+      target.target === 'list'
+        ? overlayListPage(row.value as Parameters<typeof overlayListPage>[0], accepted)
+        : overlayNotes(row.value as Parameters<typeof overlayNotes>[0], accepted);
+    await db.publicCache.put({ key, value, at: row.at, rev: (row.rev ?? 0) + 1 }); // no ETag: it changed
+  }
+
   /**
    * Sends the queued changes to other users' public data (docs/notes/PRD.md FR-108): the
    * oldest change first, together with the other queued changes of the same list or note,
@@ -301,7 +315,14 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
         throw new SyncError('server', 'Unexpected answer to a public push');
       }
       const byId = new Map(ops.map((o) => [o.opId, o]));
-      await db.publicOutbox.bulkDelete(parsed.data.accepted.filter((id) => byId.has(id)));
+      const accepted = parsed.data.accepted.flatMap((id) => byId.get(id) ?? []);
+      // The accepted values go into the kept copy in the same step that takes them out of
+      // the queue, so the page never shows the old copy in between (review fix). The next
+      // refresh brings the server's merged result.
+      await db.transaction('rw', db.publicOutbox, db.publicCache, async () => {
+        await writeIntoCopy(first, accepted);
+        await db.publicOutbox.bulkDelete(accepted.map((o) => o.opId));
+      });
       await publicToDeadLetter(
         parsed.data.rejected.flatMap((r) =>
           byId.has(r.opId) ? [{ op: byId.get(r.opId)!, reason: r.reason }] : [],

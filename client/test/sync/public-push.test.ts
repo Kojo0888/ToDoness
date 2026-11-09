@@ -106,3 +106,52 @@ describe('sending queued public edits', () => {
     expect((await s.db.deadLetter.toArray()).map((d) => d.reason)).toEqual(['http_400']);
   });
 });
+
+describe('the kept copy follows accepted public edits (no flash of the old text)', () => {
+  it('writes accepted note and task changes into the copy in the same step', async () => {
+    const s = await setup(acceptAll);
+    await s.db.publicCache.bulkPut([
+      {
+        key: 'notes',
+        value: [{ id: NOTE, text: 'old', ownerEmail: 'a@b.co', updatedAt: 1 }],
+        at: 1,
+      },
+      {
+        key: `list:${LIST}`,
+        value: {
+          list: { id: LIST, name: 'L', ownerEmail: 'a@b.co' },
+          todos: [
+            {
+              id: TODO,
+              title: 'old',
+              notes: '',
+              done: false,
+              completedAt: null,
+              dueAt: null,
+              priority: 0,
+              orderKey: 'a0',
+              attachments: [],
+            },
+          ],
+        },
+        at: 1,
+      },
+    ]);
+    await s.notes.saveText(NOTE, 'new');
+    await s.lists.setDone(LIST, TODO, true);
+    // Whenever the queue is empty, the copy already has the new values.
+    let checked = 0;
+    s.db.publicOutbox.hook('deleting', () => {
+      checked++;
+    });
+    expect(await s.engine.sync()).toEqual({ ok: true });
+    expect(checked).toBe(2);
+    const notes = (await s.db.publicCache.get('notes'))!;
+    expect((notes.value as { text: string }[])[0]!.text).toBe('new');
+    const page = (await s.db.publicCache.get(`list:${LIST}`))!.value as {
+      todos: { done: boolean }[];
+    };
+    expect(page.todos[0]!.done).toBe(true);
+    expect(notes.rev).toBe(1);
+  });
+});

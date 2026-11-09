@@ -25,65 +25,125 @@ export interface PublicData {
   prefetchLists(maxAgeMs: number): Promise<void>;
 }
 
+/** A copy of a list that is no longer public is kept this long (an open page may show it). */
+const KEEP_GONE_MS = 60_000;
+
 export function createPublicData(deps: {
   db: TodonessDB;
   fetch: FetchFn;
   now?: () => number;
 }): PublicData {
   const { db, fetch, now = Date.now } = deps;
+  let prefetching: Promise<void> | undefined;
 
-  async function get(url: string): Promise<Response | undefined> {
+  /**
+   * Asks the server and stores the answer under `key`. Sends the copy's ETag; 304 confirms
+   * the copy. Nothing is stored if the copy changed while the request was under way (an edit
+   * of this device was accepted and written into it): that answer is older (review fix).
+   */
+  async function refresh(
+    key: string,
+    url: string,
+    parse: (body: unknown) => unknown,
+    whenGone?: unknown,
+  ): Promise<boolean> {
+    const before = await db.publicCache.get(key);
+    const rev = before?.rev ?? 0;
+    let res: Response;
     try {
-      return await fetch(url);
+      res = await fetch(
+        url,
+        before?.etag ? { headers: { 'if-none-match': before.etag } } : undefined,
+      );
     } catch {
-      return undefined; // offline
+      return false; // offline
     }
+
+    let value: unknown;
+    let etag: string | undefined;
+    if (res.status === 304) {
+      value = undefined;
+    } else if (res.status === 404 && whenGone !== undefined) {
+      value = whenGone;
+    } else if (!res.ok) {
+      return false;
+    } else {
+      value = parse(await res.json().catch(() => undefined));
+      if (value === undefined) return false;
+      etag = res.headers.get('etag') ?? undefined;
+    }
+
+    return db.transaction('rw', db.publicCache, async () => {
+      const current = await db.publicCache.get(key);
+      if ((current?.rev ?? 0) !== rev) return false;
+      if (res.status === 304) {
+        if (current) await db.publicCache.update(key, { at: now() });
+        return current !== undefined;
+      }
+      await db.publicCache.put({ key, value, at: now(), rev, ...(etag ? { etag } : {}) });
+      return true;
+    });
   }
 
-  const store = (key: string, value: unknown) => db.publicCache.put({ key, value, at: now() });
+  const refreshList = (id: string) =>
+    refresh(
+      listKey(id),
+      `/api/public/lists/${encodeURIComponent(id)}`,
+      (body) => {
+        const parsed = publicListResponseSchema.safeParse(body);
+        return parsed.success ? parsed.data : undefined;
+      },
+      'gone',
+    );
 
-  async function refreshList(id: string) {
-    const res = await get(`/api/public/lists/${encodeURIComponent(id)}`);
-    if (!res) return false;
-    if (res.status === 404) {
-      await store(listKey(id), 'gone');
-      return true;
-    }
-    if (!res.ok) return false;
-    const parsed = publicListResponseSchema.safeParse(await res.json().catch(() => undefined));
-    if (!parsed.success) return false;
-    await store(listKey(id), parsed.data);
-    return true;
+  /** Removes copies of lists that are no longer public (review fix: the cache kept growing). */
+  async function forgetOldLists(lists: PublicList[]) {
+    const listed = new Set(lists.map((l) => listKey(l.id)));
+    const queued = new Set(
+      (await db.publicOutbox.toArray())
+        .filter((o) => o.target === 'list')
+        .map((o) => listKey(o.targetId)),
+    );
+    const stale = (await db.publicCache.where('key').startsWith('list:').toArray()).filter(
+      (r) => !listed.has(r.key) && !queued.has(r.key) && now() - r.at >= KEEP_GONE_MS,
+    );
+    await db.publicCache.bulkDelete(stale.map((r) => r.key));
   }
 
   return {
     async refreshLists() {
-      const res = await get('/api/public/lists');
-      if (!res?.ok) return false;
-      const parsed = publicListsResponseSchema.safeParse(await res.json().catch(() => undefined));
-      if (!parsed.success) return false;
-      await store(LISTS_KEY, parsed.data.lists);
-      return true;
+      const ok = await refresh(LISTS_KEY, '/api/public/lists', (body) => {
+        const parsed = publicListsResponseSchema.safeParse(body);
+        return parsed.success ? parsed.data.lists : undefined;
+      });
+      if (ok) {
+        const lists = ((await db.publicCache.get(LISTS_KEY))?.value as PublicList[]) ?? [];
+        await forgetOldLists(lists);
+      }
+      return ok;
     },
 
     refreshList,
 
-    async refreshNotes() {
-      const res = await get('/api/public/notes');
-      if (!res?.ok) return false;
-      const parsed = publicNotesResponseSchema.safeParse(await res.json().catch(() => undefined));
-      if (!parsed.success) return false;
-      await store(NOTES_KEY, parsed.data.notes);
-      return true;
-    },
+    refreshNotes: () =>
+      refresh(NOTES_KEY, '/api/public/notes', (body) => {
+        const parsed = publicNotesResponseSchema.safeParse(body);
+        return parsed.success ? parsed.data.notes : undefined;
+      }),
 
-    async prefetchLists(maxAgeMs) {
-      const lists = ((await db.publicCache.get(LISTS_KEY))?.value as PublicList[]) ?? [];
-      for (const l of lists) {
-        const copy = await db.publicCache.get(listKey(l.id));
-        if (copy && now() - copy.at < maxAgeMs) continue;
-        if (!(await refreshList(l.id))) return; // no connection: try again later
-      }
+    /** One run at a time (review fix): a second call while one runs waits for it. */
+    prefetchLists(maxAgeMs) {
+      prefetching ??= (async () => {
+        const lists = ((await db.publicCache.get(LISTS_KEY))?.value as PublicList[]) ?? [];
+        for (const l of lists) {
+          const copy = await db.publicCache.get(listKey(l.id));
+          if (copy && now() - copy.at < maxAgeMs) continue;
+          if (!(await refreshList(l.id))) return; // no connection: try again later
+        }
+      })().finally(() => {
+        prefetching = undefined;
+      });
+      return prefetching;
     },
   };
 }

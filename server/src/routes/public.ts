@@ -4,6 +4,8 @@
  * feed; edits go through a restricted push into the owner's data.
  */
 import type Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
+import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import {
@@ -17,6 +19,20 @@ import {
 import { requireAuth } from '../auth/middleware';
 import { applyPush } from '../sync/apply-ops';
 import type { AppEnv } from '../http/types';
+
+/**
+ * Answers with an ETag (a hash of the body), and with 304 when the client already has it.
+ * The public data is polled every few seconds; this keeps unchanged answers tiny, and the
+ * client does not rewrite its copy (docs/notes/ImplementationPlan.md, review fixes).
+ */
+function jsonWithEtag(c: Context<AppEnv>, body: unknown) {
+  const text = JSON.stringify(body);
+  const etag = `"${createHash('sha1').update(text).digest('base64url')}"`;
+  c.header('ETag', etag);
+  c.header('Cache-Control', 'no-cache');
+  if (c.req.header('if-none-match') === etag) return c.body(null, 304);
+  return c.body(text, 200, { 'content-type': 'application/json; charset=UTF-8' });
+}
 
 export function publicRoutes({ db, now }: { db: Database.Database; now: () => number }) {
   const app = new Hono<AppEnv>();
@@ -35,7 +51,7 @@ export function publicRoutes({ db, now }: { db: Database.Database; now: () => nu
     const body: PublicListsResponse = {
       lists: rows.map((r) => ({ id: r.id, name: r.name, ownerEmail: r.owner_email })),
     };
-    return c.json(body);
+    return jsonWithEtag(c, body);
   });
 
   /** One public list with its tasks and their attachments (any logged-in user). */
@@ -111,7 +127,7 @@ export function publicRoutes({ db, now }: { db: Database.Database; now: () => nu
         attachments: byTodo.get(t.id) ?? [],
       })),
     };
-    return c.json(body);
+    return jsonWithEtag(c, body);
   });
 
   /**
@@ -168,7 +184,7 @@ export function publicRoutes({ db, now }: { db: Database.Database; now: () => nu
         updatedAt: r.updated_at,
       })),
     };
-    return c.json(body);
+    return jsonWithEtag(c, body);
   });
 
   /** Change the text of a public note (FR-96): only text updates of this one note. */

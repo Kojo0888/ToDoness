@@ -1,7 +1,7 @@
 import { rectSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState, type CSSProperties, type FormEvent } from 'react';
-import type { Note } from '@todoness/shared';
+import { NOTE_TEXT_MAX, type Note } from '@todoness/shared';
 import { getNotes } from '../../data/queries';
 import { matchesSearch } from '../../lib/search';
 import { db, repo } from '../../app/container';
@@ -49,7 +49,7 @@ export function NotesPage() {
           placeholder={t.notes.newPlaceholder}
           value={draft}
           rows={3}
-          maxLength={20_000}
+          maxLength={NOTE_TEXT_MAX}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void add();
