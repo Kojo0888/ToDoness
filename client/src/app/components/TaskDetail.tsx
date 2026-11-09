@@ -9,6 +9,7 @@ import { notificationSupport, requestNotificationPermission } from '../reminders
 import { db, reminders, repo } from '../services';
 import { t } from '../strings';
 import { AttachmentsSection } from './Attachments';
+import { TimeField } from './TimeField';
 import { useUndoToast } from './Toast';
 
 /** Edit one task. Every change is saved at once (T3). */
@@ -54,9 +55,9 @@ function TaskForm({ todo, listId }: { todo: Todo; listId: string }) {
     void reminders.check();
   }
 
-  async function changeTime(e: ChangeEvent<HTMLInputElement>) {
+  async function changeTime(time: string) {
     if (todo.dueAt === null) return;
-    const dueAt = fromDateTimeInput(toDateInput(todo.dueAt), e.target.value);
+    const dueAt = fromDateTimeInput(toDateInput(todo.dueAt), time);
     if (dueAt !== null) await repo.updateTodo(todo.id, { dueAt });
     void reminders.check();
   }
@@ -124,15 +125,11 @@ function TaskForm({ todo, listId }: { todo: Todo; listId: string }) {
           {t.todo.dueDate}
           <input type="date" value={toDateInput(todo.dueAt)} onChange={(e) => void changeDate(e)} />
         </label>
-        <label>
-          {t.todo.dueTime}
-          <input
-            type="time"
-            value={toTimeInput(todo.dueAt)}
-            disabled={todo.dueAt === null}
-            onChange={(e) => void changeTime(e)}
-          />
-        </label>
+        <TimeField
+          value={toTimeInput(todo.dueAt)}
+          disabled={todo.dueAt === null}
+          onChange={(v) => void changeTime(v)}
+        />
       </div>
 
       <label>

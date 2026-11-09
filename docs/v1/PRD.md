@@ -146,6 +146,13 @@ and makes tasks richer:
 | FR-70 | The browser's `offline` event shows **Offline** at once. | Should |
 | FR-71 | **Admin only:** above the "All changes saved" indicator, flags show the browser's online state, the sync state, the request in flight (with how long it has waited) or the last one (time and result), the next planned try, and the last measured *online event → saved* and *outage* times. A **Log** shows the last 100 sync events with times (what triggered a sync, each request and its result, retries). | Must |
 
+### 4.9 Time control and phone file pickers (FR-72 – FR-73)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| FR-72 | The due **time** is chosen with an **hour** and a **minute** list (minutes in steps of 5; an existing off-grid minute is kept), quick choices (Morning 09:00, Noon 12:00, Afternoon 15:00, Evening 18:00) and a Clear button. It is disabled until a date is set. 00:00 is not offered because it means "no time". | Must |
+| FR-73 | On a touch screen, attachments are added with two pickers: **photos or videos** (`image/*,video/*`) and **documents** (`application/*,text/*`). Neither accepts audio or "any file", so the phone offers the media/file pickers and does not ask for camera or microphone access. Computers keep one unrestricted picker. | Must |
+
 ## 5. Non-functional requirements (changes and additions)
 
 | Area | Requirement |

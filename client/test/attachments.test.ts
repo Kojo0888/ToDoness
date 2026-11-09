@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { checkFileSize, formatSize, uploadAttachment, type XhrLike } from '../src/app/attachments';
+import {
+  attachmentPickers,
+  checkFileSize,
+  formatSize,
+  uploadAttachment,
+  type XhrLike,
+} from '../src/app/attachments';
 
 describe('formatSize', () => {
   it('uses B, KB, MB and GB with sensible decimals', () => {
@@ -162,5 +168,23 @@ describe('uploadAttachment', () => {
     abort.abort();
     expect(await p).toEqual({ ok: false, error: 'cancelled' });
     expect(spy).toHaveBeenCalled();
+  });
+});
+
+describe('file pickers (phones must not offer recording)', () => {
+  it('on a computer: one picker for any file', () => {
+    expect(attachmentPickers(false)).toEqual([{ id: 'files', accept: undefined }]);
+  });
+
+  it('on a phone: photos/videos and documents, and no audio or "any file"', () => {
+    const pickers = attachmentPickers(true);
+    expect(pickers.map((p) => p.id)).toEqual(['media', 'documents']);
+    expect(pickers[0]!.accept).toBe('image/*,video/*');
+    for (const p of pickers) {
+      expect(p.accept, p.id).toBeDefined();
+      // Android shows a sound recorder for audio, and every recorder for "any file".
+      expect(p.accept).not.toMatch(/audio|\*\/\*/);
+    }
+    expect(pickers[1]!.accept).toMatch(/application\/\*/);
   });
 });

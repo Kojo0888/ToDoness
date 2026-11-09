@@ -112,6 +112,11 @@ export const t = {
     notes: 'Notes',
     dueDate: 'Due date',
     dueTime: 'Due time (optional)',
+    timeHour: 'Hour',
+    timeMinute: 'Minute',
+    timeClear: 'Clear time',
+    timeClearShort: 'Clear',
+    timePresets: 'Common times',
     remind: 'Remind me',
     reminders: {
       none: 'No reminder',
@@ -150,6 +155,11 @@ export const t = {
   attachments: {
     title: 'Attachments',
     add: 'Add files',
+    pick: {
+      files: 'Add files',
+      media: 'Add photos or videos',
+      documents: 'Add documents',
+    },
     none: 'No attachments.',
     remove: (name: string) => `Remove ${name}`,
     removeLabel: 'Remove',

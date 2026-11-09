@@ -164,7 +164,8 @@ Dockerfile's build stage) and restarts the app; `./update.sh --pull` runs
 so the native modules always match it. To roll back, keep a copy of `release/`.
 
 If the server is a separate machine, build locally and upload instead:
-`./deploy.sh user@server:/path/to/todoness/release` builds the app, then
+`./deploy.sh user@server:/path/to/todoness` builds the app (the script adds the
+`release` folder itself), then
 copies `release/` over with rsync (keeping the server's `node_modules`). It
 does not touch Docker; restart the `app` container on the server, or let it
 restart itself, to load the new files.

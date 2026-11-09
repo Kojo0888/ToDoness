@@ -3,15 +3,36 @@
 # The server runs docker-compose.folder.yml and restarts the app by itself;
 # this script does not touch Docker. Needs Node 22, pnpm, rsync and ssh here.
 #
-# Usage: ./deploy.sh user@server:/path/to/todoness/release
-#    or: DEPLOY_TARGET=user@server:/path/to/todoness/release ./deploy.sh
+# Usage: ./deploy.sh user@server:/path/to/todoness
+#    or: DEPLOY_TARGET=user@server:/path/to/todoness ./deploy.sh
+# Give the project folder on the server; the script adds the "release" folder itself
+# (a path that already ends in /release also works, it is not added twice).
+# ./deploy.sh --dry-run <target> only prints where the files would go.
 set -eu
 cd "$(dirname "$0")"
 
+dry_run=0
+if [ "${1:-}" = "--dry-run" ]; then
+  dry_run=1
+  shift
+fi
+
 target="${1:-${DEPLOY_TARGET:-}}"
 if [ -z "$target" ]; then
-  echo "Usage: $0 user@server:/path/to/todoness/release" >&2
+  echo "Usage: $0 [--dry-run] user@server:/path/to/todoness" >&2
   exit 1
+fi
+
+# The release folder is part of the layout, so it is not something to remember.
+target="${target%/}"
+case "$target" in
+  */release | *:release) ;;
+  *) target="$target/release" ;;
+esac
+
+if [ "$dry_run" = 1 ]; then
+  echo "$target"
+  exit 0
 fi
 
 # --ignore-scripts: nothing native is needed to build. The server installs the

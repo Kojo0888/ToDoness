@@ -356,7 +356,24 @@ and `pnpm format:check`.
   that comes back silently (saved within 5 s, log explains it), and Chromium's own offline →
   online switching.
 
-**Test counts after update 3:** shared 95, server 221, client 237, integration 31,
+### Update 4: time control, phone pickers, deploy script
+
+(PRD 4.9; decisions in [Decisions.md](./Decisions.md).)
+
+- `client/src/app/timeField.ts` (tested) and `components/TimeField.tsx` replace `<input type="time">`.
+  The control keeps a local draft value so two quick changes (hour, then minute) do not use stale
+  props; a browser test caught that.
+- `attachmentPickers(touchScreen)` (tested) decides the pickers; browser tests use a phone
+  emulation (`isMobile`, `hasTouch`). Real Android behaviour could not be tested here.
+- `deploy.sh` adds `/release` to the target itself; `--dry-run` prints it (tested in
+  `server/test/deploy-script.test.ts`, which also showed the old script would have started a
+  build for any unknown argument).
+- The browser tests share two users, because the server limits sign-ups to 20 per hour per address.
+
+**Test counts after update 4:** shared 95, server 228, client 246, integration 31, browser (e2e)
+41 (13 MVP + 28 v1 scenarios).
+
+**Superseded counts (update 3):** shared 95, server 221, client 237, integration 31,
 browser (e2e) 38 (13 MVP + 25 v1 scenarios).
 
 **Not done / ideas for later**
