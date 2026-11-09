@@ -21,7 +21,7 @@ import {
 } from '../auth/sessions';
 import { createUserWithInbox } from '../auth/users';
 import type { Config } from '../config';
-import type { AppEnv } from '../types';
+import type { AppEnv } from '../http/types';
 
 interface Deps {
   db: Database.Database;

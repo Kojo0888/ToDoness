@@ -3,7 +3,7 @@ import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
 import { newId, pushSubscriptionSchema, pushUnsubscribeSchema } from '@todoness/shared';
 import { requireAuth } from '../auth/middleware';
-import type { AppEnv } from '../types';
+import type { AppEnv } from '../http/types';
 
 export function pushRoutes({
   db,

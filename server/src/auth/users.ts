@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3';
 import { newId, type Hlc } from '@todoness/shared';
-import type { AuthUser } from '../types';
+import type { AuthUser } from '../http/types';
 
 /**
  * Creates a user together with their Inbox list.

@@ -43,6 +43,34 @@ pnpm build
 
 The first account you create becomes the admin.
 
+## Project structure
+
+A pnpm workspace with five packages:
+
+```text
+shared/        types, Zod schemas, HLC clock and merge rules used by client and server
+server/src/
+  index.ts     process entry: config, database, reminder sweeper, HTTP server
+  app.ts       builds the Hono app (composition only)
+  http/        cross-cutting HTTP pieces: context types, errors, presence, static files
+  routes/      one file per API area (auth, admin, sync, public, attachments, push, meta)
+  auth/ sync/ push/ attachments/ db/   the logic behind the routes, and the database
+client/src/
+  main.tsx     entry point
+  app/         App root, the long-lived service container, React hooks, UI strings
+  components/  React components by area: common, layout, lists, public, account
+  services/    browser-side logic without UI: session, push, reminders, public lists, …
+  data/        IndexedDB (Dexie) database, repository and queries
+  sync/        sync engine, runner, connectivity and diagnostics
+  lib/         small pure helpers (dates, time field, drag-and-drop)
+  sw/          the service worker and its tested logic
+integration/   client sync engine against a real in-process server
+e2e/           browser tests against the built app
+```
+
+Tests mirror the source folders (for example `client/test/sync/` tests `client/src/sync/`).
+Older plans in `docs/` name file paths from before this layout.
+
 ## Launching the client
 
 Run `pnpm install` once first. There are two ways to open the client. Pick one.

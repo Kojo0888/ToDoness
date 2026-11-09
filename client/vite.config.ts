@@ -9,9 +9,9 @@ export default defineConfig({
       // Ask the user before switching to a new version (see UpdateBanner).
       registerType: 'prompt',
       injectRegister: false,
-      // Our own service worker (src/sw.ts): the offline app shell plus web push.
+      // Our own service worker (src/sw/sw.ts): the offline app shell plus web push.
       strategies: 'injectManifest',
-      srcDir: 'src',
+      srcDir: 'src/sw',
       filename: 'sw.ts',
       manifest: {
         name: 'ToDoness',

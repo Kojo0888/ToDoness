@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { publicListResponseSchema, publicListsResponseSchema } from '@todoness/shared';
-import { createPublicEditor } from '../../client/src/app/publicEdit';
+import { createPublicEditor } from '../../client/src/services/publicEdit';
 import { Browser, startServer, twoBrowsers, T0 } from './harness';
 
 async function expectConverged(a: Browser, b: Browser) {

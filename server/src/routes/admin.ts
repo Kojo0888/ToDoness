@@ -6,7 +6,7 @@ import type { Presence } from '../auth/presence';
 import { deleteUserSessions } from '../auth/sessions';
 import { removeUserFiles } from '../attachments/storage';
 import type { Config } from '../config';
-import type { AppEnv } from '../types';
+import type { AppEnv } from '../http/types';
 
 export function adminRoutes({
   db,
