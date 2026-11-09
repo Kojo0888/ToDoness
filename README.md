@@ -22,10 +22,10 @@ connection returns.
 
 ## Documentation
 
-| Folder                   | Contents                                                                                                                                                      |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`docs/v1/`](docs/v1/)   | Version 1: [PRD](docs/v1/PRD.md), [implementation plan with status](docs/v1/ImplementationPlan.md), [tech stack changes](docs/v1/TechStack.md)                |
-| [`docs/mvp/`](docs/mvp/) | The MVP: [PRD](docs/mvp/PRD.md), [tech stack](docs/mvp/TechStack.md), [database model](docs/mvp/DBModel.md), [build plan](docs/mvp/MVPImplementationSteps.md) |
+| Folder                   | Contents                                                                                                                                                                                  |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`docs/v1/`](docs/v1/)   | Version 1: [PRD](docs/v1/PRD.md), [implementation plan with status](docs/v1/ImplementationPlan.md), [tech stack changes](docs/v1/TechStack.md), [decisions and why](docs/v1/Decisions.md) |
+| [`docs/mvp/`](docs/mvp/) | The MVP: [PRD](docs/mvp/PRD.md), [tech stack](docs/mvp/TechStack.md), [database model](docs/mvp/DBModel.md), [build plan](docs/mvp/MVPImplementationSteps.md)                             |
 
 ## Development
 
