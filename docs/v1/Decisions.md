@@ -88,6 +88,9 @@
 ## Delivery
 
 17. **Deploy script:** `./deploy.sh user@server:/path/to/todoness` – the script adds the `release`
-    folder itself (and does not double it if it was given). `--dry-run` shows the target.
+    folder itself (and does not double it if it was given). `--dry-run` shows the target. This
+    sits in front of the safety checks that were added to `deploy.sh` on `main` meanwhile (the upload
+    is an exact copy with `--delete`, so a target above the release folder would wipe the server's
+    files): because the folder is always appended, the target can no longer be wrong that way.
 18. **Branch workflow:** all work went to the designated branch; `main` was only changed when
     explicitly asked, through PR #6.
