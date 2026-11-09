@@ -52,7 +52,8 @@ export class TestClient {
     headers: Record<string, string> = {},
   ) => this.request('POST', path, body, headers);
 
-  get = (path: string) => this.request('GET', path);
+  get = (path: string, headers: Record<string, string> = {}) =>
+    this.request('GET', path, undefined, headers);
   post = (path: string, body?: unknown) => this.request('POST', path, body ?? {});
   delete = (path: string) => this.request('DELETE', path);
 }

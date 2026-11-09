@@ -2,19 +2,29 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
 import { Redirect, Route, Switch } from 'wouter';
 import { getInbox } from '../../data/queries';
+import { browserStorage, homeOf, readLastModule } from '../../lib/modules';
 import { db } from '../../app/container';
 import type { StoredUser } from '../../services/session';
 import { t } from '../../app/strings';
 import { Admin } from '../account/Admin';
 import { DragAndDrop } from '../common/DragAndDrop';
 import { ListPage } from '../lists/ListPage';
+import { NotesPage } from '../notes/NotesPage';
+import { PublicNotesPage } from '../notes/PublicNotesPage';
 import { PublicListPage } from '../public/PublicListPage';
 import { Reminders } from '../account/Reminders';
 import { RecoveryDialog } from '../account/RecoveryDialog';
 import { Settings } from '../account/Settings';
+import { ModuleSwitch } from './ModuleSwitch';
 import { Sidebar } from './Sidebar';
 import { ToastProvider } from '../common/Toast';
 
+/** The start address: opens the module used last on this device (FR-86). */
+function Start() {
+  return <Redirect to={homeOf(readLastModule(browserStorage()))} replace />;
+}
+
+/** The start of the Tasks module: the Inbox. */
 function Home() {
   const inbox = useLiveQuery(async () => (await getInbox(db)) ?? null, []);
   if (!inbox) return <p className="empty">{inbox === null ? t.list.notFound : t.loading}</p>;
@@ -55,6 +65,7 @@ export function Shell({ user }: { user: StoredUser }) {
               </svg>
             </button>
             <span className="topbar-title">{t.appName}</span>
+            <ModuleSwitch />
           </header>
           {menuOpen && (
             <button
@@ -82,6 +93,15 @@ export function Shell({ user }: { user: StoredUser }) {
               <Route path="/l/:listId">
                 {(p) => <ListPage key={p.listId} listId={p.listId} />}
               </Route>
+              <Route path="/notes/public">
+                <PublicNotesPage />
+              </Route>
+              <Route path="/notes">
+                <NotesPage />
+              </Route>
+              <Route path="/tasks">
+                <Home />
+              </Route>
               <Route path="/settings">
                 <Settings user={user} />
               </Route>
@@ -89,7 +109,7 @@ export function Shell({ user }: { user: StoredUser }) {
                 {user.role === 'admin' ? <Admin user={user} /> : <Redirect to="/" replace />}
               </Route>
               <Route>
-                <Home />
+                <Start />
               </Route>
             </Switch>
           </main>

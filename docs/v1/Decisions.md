@@ -17,7 +17,9 @@
 3. **Public lists are read on demand, not synced into everybody's device.** The sync model is a
    per-user change feed; copying public lists into every user's local database would make it much
    heavier (back-fill when a list becomes public, removal when it becomes private, ownership of
-   foreign rows). The price: other people's lists need a connection.
+   foreign rows). The price: other people's lists need a connection. *(Later lifted without
+   touching the sync model: a local copy plus a local queue, see
+   [notes PRD decision N8](../notes/PRD.md#84-decisions).)*
 4. **Editing a public list = a restricted push to the owner's data.** `POST /api/public/lists/:id/push`
    takes ordinary operations and runs them through the same `applyPush` / merge function with the
    list owner as row owner and the visitor as "actor". The change lands in the **owner's** change

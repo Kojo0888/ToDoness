@@ -1,6 +1,6 @@
 /** Read-only queries the screens use (wrapped in live queries). */
 import Dexie from 'dexie';
-import type { List, Todo } from '@todoness/shared';
+import type { List, Note, Todo } from '@todoness/shared';
 import type { TodonessDB } from './db';
 
 export async function getLists(db: TodonessDB): Promise<List[]> {
@@ -37,6 +37,18 @@ export async function getTodoById(db: TodonessDB, id: string): Promise<Todo | un
   return t && t.deletedAt === null ? t : undefined;
 }
 
-export function countPending(db: TodonessDB): Promise<number> {
-  return db.outbox.count();
+/** Changes waiting to be sent: own ones and those to other users' public data. */
+export async function countPending(db: TodonessDB): Promise<number> {
+  return (await db.outbox.count()) + (await db.publicOutbox.count());
+}
+
+/** Live notes, newest first (a new note gets a key before all others). */
+export async function getNotes(db: TodonessDB): Promise<Note[]> {
+  const all = await db.notes.orderBy('orderKey').toArray();
+  return all.filter((n) => n.deletedAt === null);
+}
+
+export async function getNoteById(db: TodonessDB, id: string): Promise<Note | undefined> {
+  const n = await db.notes.get(id);
+  return n && n.deletedAt === null ? n : undefined;
 }

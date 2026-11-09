@@ -1,5 +1,7 @@
 import { serve } from '@hono/node-server';
+import type { Server } from 'node:http';
 import { createApp } from './app';
+import { closeServer } from './http/shutdown';
 import { deleteExpiredSessions } from './auth/sessions';
 import { loadConfig } from './config';
 import { openDatabase } from './db/connection';
@@ -26,9 +28,14 @@ const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
   console.log(`ToDoness server listening on http://localhost:${info.port}`);
 });
 
+let stopping = false;
 function shutdown() {
+  if (stopping) return;
+  stopping = true;
   stopSweeper();
-  server.close(() => {
+  // Requests under way get a moment to finish; connections left over are then closed, so a
+  // browser's unused pre-connected socket cannot keep the process alive.
+  void closeServer(server as Server).then(() => {
     db.close();
     process.exit(0);
   });

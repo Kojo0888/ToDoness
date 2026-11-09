@@ -1,6 +1,6 @@
 /** Converting between database rows (snake_case, 0/1, JSON text) and shared types. */
 import type Database from 'better-sqlite3';
-import type { List, Todo } from '@todoness/shared';
+import type { List, Note, Todo } from '@todoness/shared';
 
 interface TodoDb {
   id: string;
@@ -120,4 +120,50 @@ export function listOwner(db: Database.Database, id: string): string | undefined
   const r = db.prepare('SELECT user_id FROM lists WHERE id = ?').get(id) as
     { user_id: string } | undefined;
   return r?.user_id;
+}
+
+interface NoteDb {
+  id: string;
+  user_id: string;
+  text: string;
+  is_public: number;
+  order_key: string;
+  field_hlc: string;
+  created_at: number;
+  updated_at: number;
+  deleted_at: number | null;
+}
+
+export function getNote(db: Database.Database, id: string): Owned<Note> | undefined {
+  const r = db.prepare('SELECT * FROM notes WHERE id = ?').get(id) as NoteDb | undefined;
+  if (!r) return undefined;
+  return {
+    userId: r.user_id,
+    row: {
+      id: r.id,
+      text: r.text,
+      isPublic: r.is_public === 1,
+      orderKey: r.order_key,
+      fieldHlc: JSON.parse(r.field_hlc),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      deletedAt: r.deleted_at,
+    },
+  };
+}
+
+export function saveNote(db: Database.Database, userId: string, n: Note): void {
+  db.prepare(
+    `INSERT INTO notes (id, user_id, text, is_public, order_key, field_hlc, created_at, updated_at, deleted_at)
+     VALUES (@id, @userId, @text, @isPublic, @orderKey, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
+     ON CONFLICT(id) DO UPDATE SET
+       text = excluded.text, is_public = excluded.is_public, order_key = excluded.order_key,
+       field_hlc = excluded.field_hlc,
+       updated_at = excluded.updated_at, deleted_at = excluded.deleted_at`,
+  ).run({
+    ...n,
+    userId,
+    isPublic: n.isPublic ? 1 : 0,
+    fieldHlc: JSON.stringify(n.fieldHlc),
+  });
 }

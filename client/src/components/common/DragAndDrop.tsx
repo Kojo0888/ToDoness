@@ -23,6 +23,7 @@ import { useUndoToast } from './Toast';
 
 /** What every draggable task tells the context about itself. */
 export interface TodoDragData {
+  kind?: 'todo';
   title: string;
   listId: string;
   /** Open tasks of its list in the order currently shown. */
@@ -30,6 +31,17 @@ export interface TodoDragData {
   /** Set for tasks of somebody else's public list: they are changed on the server. */
   remote?: { listId: string; open: Keyed[] };
 }
+
+/** A note of my notes (docs/notes/PRD.md FR-100): it can only be reordered. */
+export interface NoteDragData {
+  kind: 'note';
+  /** The first line of the note. */
+  title: string;
+  /** My notes in the order currently shown. */
+  openIds: string[];
+}
+
+type DragData = TodoDragData | NoteDragData;
 
 const isListTarget = (id: unknown) => String(id).startsWith(LIST_PREFIX);
 
@@ -47,11 +59,14 @@ const collisionDetection: CollisionDetection = (args) => {
   });
 };
 
-/** Drag & drop for tasks: reorder inside a list, or drop on a list in the sidebar. */
+/**
+ * Drag & drop for tasks (reorder inside a list, or drop on a list in the sidebar) and for my
+ * notes (reorder only).
+ */
 export function DragAndDrop({ children }: { children: ReactNode }) {
   const showToast = useUndoToast();
   const lists = useLiveQuery(() => getLists(db), [], []);
-  const [active, setActive] = useState<TodoDragData | null>(null);
+  const [active, setActive] = useState<DragData | null>(null);
 
   const sensors = useSensors(
     // Moving a few pixels starts a drag, so a plain tap on the handle is not a drag.
@@ -60,7 +75,7 @@ export function DragAndDrop({ children }: { children: ReactNode }) {
   );
 
   const dataOf = (e: { active: { data: { current?: unknown } } }) =>
-    e.active.data.current as TodoDragData | undefined;
+    e.active.data.current as DragData | undefined;
   const listName = (id: string) => lists.find((l) => l.id === id)?.name ?? '';
 
   function onDragStart(e: DragStartEvent) {
@@ -76,8 +91,12 @@ export function DragAndDrop({ children }: { children: ReactNode }) {
       activeId: String(e.active.id),
       overId: e.over ? String(e.over.id) : null,
       openIds: data.openIds,
-      currentListId: data.listId,
+      currentListId: data.kind === 'note' ? '' : data.listId,
     });
+    if (data.kind === 'note') {
+      if (action.kind === 'reorder') await repo.reorderNote(action.todoId, action.beforeId);
+      return;
+    }
     if (data.remote) {
       // Somebody else's list: reordering only; it cannot be moved into one of my lists.
       if (action.kind === 'reorder') {
@@ -129,7 +148,13 @@ export function DragAndDrop({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-      <DragOverlay>{active && <div className="todo drag-overlay">{active.title}</div>}</DragOverlay>
+      <DragOverlay>
+        {active && (
+          <div className={`${active.kind === 'note' ? 'note' : 'todo'} drag-overlay`}>
+            {active.title}
+          </div>
+        )}
+      </DragOverlay>
     </DndContext>
   );
 }

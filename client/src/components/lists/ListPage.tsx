@@ -27,7 +27,7 @@ export function ListPage({ listId, todoId }: { listId: string; todoId?: string }
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   if (list === undefined) return null;
-  if (list === null) return <Redirect to="/" replace />;
+  if (list === null) return <Redirect to="/tasks" replace />;
 
   const openIds = open.map((todo) => todo.id);
   const position = lists.findIndex((l) => l.id === listId);
@@ -157,7 +157,7 @@ export function ListPage({ listId, todoId }: { listId: string; todoId?: string }
         onConfirm={async () => {
           setConfirmDelete(false);
           await repo.deleteList(listId);
-          navigate('/');
+          navigate('/tasks');
         }}
       >
         <p>{t.list.deleteListText(list.name, open.length + done.length)}</p>

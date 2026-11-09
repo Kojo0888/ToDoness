@@ -3,12 +3,13 @@ import { useState, type FormEvent } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Link, useLocation } from 'wouter';
 import { listDropId } from '../../lib/dnd';
-import { getLists } from '../../data/queries';
-import { useOnline, usePolled } from '../../app/hooks';
-import { fetchPublicLists } from '../../services/publicApi';
+import { getLists, getNotes } from '../../data/queries';
+import { useModule } from '../../app/hooks';
+import { usePublicLists, usePublicNotes } from '../../app/publicHooks';
 import { db, repo } from '../../app/container';
 import type { StoredUser } from '../../services/session';
 import { t } from '../../app/strings';
+import { ModuleSwitch } from './ModuleSwitch';
 import { SyncBadge } from './SyncBadge';
 
 interface Props {
@@ -18,76 +19,20 @@ interface Props {
 }
 
 export function Sidebar({ user, open, onNavigate }: Props) {
-  const [location, navigate] = useLocation();
-  const lists = useLiveQuery(() => getLists(db), [], []);
-  const [name, setName] = useState('');
-  const online = useOnline();
-  const publicLists = usePolled(fetchPublicLists, 5000);
-
-  async function addList(e: FormEvent) {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    setName('');
-    const list = await repo.createList(trimmed);
-    navigate(`/l/${list.id}`);
-    onNavigate();
-  }
-
+  const [location] = useLocation();
+  const { current } = useModule();
   const active = (href: string) => location === href || location.startsWith(`${href}/`);
 
   return (
-    <nav className={`sidebar${open ? ' open' : ''}`} aria-label={t.nav.lists}>
+    <nav className={`sidebar${open ? ' open' : ''}`} aria-label={t.nav.main}>
       <h1 className="brand">{t.appName}</h1>
+      <ModuleSwitch onNavigate={onNavigate} />
       <div className="nav-scroll">
-        <ul className="nav-lists">
-          {lists.map((l) => (
-            <ListLink
-              key={l.id}
-              id={l.id}
-              name={l.name}
-              active={active(`/l/${l.id}`)}
-              onNavigate={onNavigate}
-            />
-          ))}
-        </ul>
-
-        {(publicLists.value?.length ?? 0) > 0 && (
-          <>
-            <h2 className="nav-heading">{t.nav.publicLists}</h2>
-            <ul className="nav-lists" aria-label={t.nav.publicLists}>
-              {publicLists.value?.map((l) => (
-                <li key={l.id}>
-                  <Link
-                    href={`/public/${l.id}`}
-                    className={active(`/public/${l.id}`) ? 'active' : ''}
-                    aria-current={active(`/public/${l.id}`) ? 'page' : undefined}
-                    onClick={onNavigate}
-                    title={l.ownerEmail}
-                  >
-                    {l.name}
-                    <span className="nav-owner">{l.ownerEmail}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </>
+        {current === 'notes' ? (
+          <NotesNav location={location} onNavigate={onNavigate} />
+        ) : (
+          <TasksNav active={active} onNavigate={onNavigate} />
         )}
-        {!online && publicLists.value === undefined && (
-          <p className="hint nav-note">{t.nav.publicNeedsConnection}</p>
-        )}
-
-        <form onSubmit={addList} className="new-list">
-          <input
-            type="text"
-            aria-label={t.nav.newList}
-            placeholder={t.nav.newList}
-            value={name}
-            maxLength={200}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <button type="submit">{t.nav.addList}</button>
-        </form>
       </div>
 
       <div className="nav-foot">
@@ -102,6 +47,120 @@ export function Sidebar({ user, open, onNavigate }: Props) {
         )}
       </div>
     </nav>
+  );
+}
+
+/** The Tasks module: the user's lists, other users' public lists, a new list. */
+function TasksNav({
+  active,
+  onNavigate,
+}: {
+  active: (href: string) => boolean;
+  onNavigate: () => void;
+}) {
+  const [, navigate] = useLocation();
+  const lists = useLiveQuery(() => getLists(db), [], []);
+  const [name, setName] = useState('');
+  const { lists: publicLists, failed: publicFailed } = usePublicLists();
+
+  async function addList(e: FormEvent) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setName('');
+    const list = await repo.createList(trimmed);
+    navigate(`/l/${list.id}`);
+    onNavigate();
+  }
+
+  return (
+    <>
+      <ul className="nav-lists" aria-label={t.nav.lists}>
+        {lists.map((l) => (
+          <ListLink
+            key={l.id}
+            id={l.id}
+            name={l.name}
+            active={active(`/l/${l.id}`)}
+            onNavigate={onNavigate}
+          />
+        ))}
+      </ul>
+
+      {(publicLists?.length ?? 0) > 0 && (
+        <>
+          <h2 className="nav-heading">{t.nav.publicLists}</h2>
+          <ul className="nav-lists" aria-label={t.nav.publicLists}>
+            {publicLists?.map((l) => (
+              <li key={l.id}>
+                <Link
+                  href={`/public/${l.id}`}
+                  className={active(`/public/${l.id}`) ? 'active' : ''}
+                  aria-current={active(`/public/${l.id}`) ? 'page' : undefined}
+                  onClick={onNavigate}
+                  title={l.ownerEmail}
+                >
+                  {l.name}
+                  <span className="nav-owner">{l.ownerEmail}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      {publicLists === null && publicFailed && (
+        <p className="hint nav-note">{t.nav.publicNeedsConnection}</p>
+      )}
+
+      <form onSubmit={addList} className="new-list">
+        <input
+          type="text"
+          aria-label={t.nav.newList}
+          placeholder={t.nav.newList}
+          value={name}
+          maxLength={200}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <button type="submit">{t.nav.addList}</button>
+      </form>
+    </>
+  );
+}
+
+/** The Notes module: my notes and other users' public notes, with counts. */
+function NotesNav({ location, onNavigate }: { location: string; onNavigate: () => void }) {
+  const mine = useLiveQuery(async () => (await getNotes(db)).length, [], 0);
+  // The public notes page refreshes them itself; here only the copy is read then.
+  const shared = usePublicNotes({ refresh: location !== '/notes/public' });
+
+  const link = (href: string, label: string, count: number | undefined) => {
+    const isActive = location === href || location === `${href}/`;
+    return (
+      <li>
+        <Link
+          href={href}
+          className={isActive ? 'active' : ''}
+          aria-current={isActive ? 'page' : undefined}
+          onClick={onNavigate}
+        >
+          {label}
+          {count !== undefined && <span className="nav-count">{count}</span>}
+        </Link>
+      </li>
+    );
+  };
+
+  return (
+    <>
+      <ul className="nav-lists" aria-label={t.modules.notes}>
+        {link('/notes', t.notes.myNotes, mine)}
+        {link('/notes/public', t.notes.publicNotes, shared.value?.length)}
+      </ul>
+      {shared.value === null && shared.failed && (
+        <p className="hint nav-note">{t.notes.publicNeedsConnection}</p>
+      )}
+    </>
   );
 }
 

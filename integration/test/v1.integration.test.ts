@@ -144,7 +144,7 @@ describe('v1: everyone can edit a public list', () => {
     await ann.register('ann@corp.test');
     const bob = new Browser(server, 'bob');
     await bob.register('bob@corp.test');
-    const editor = createPublicEditor({ db: bob.db, fetch: bob.fetch, now: () => bob.time });
+    const editor = createPublicEditor({ db: bob.db, now: () => bob.time });
 
     const list = await ann.repo.createList('Shared');
     const first = await ann.repo.createTodo({ listId: list.id, title: 'Plan' });
@@ -162,6 +162,7 @@ describe('v1: everyone can edit a public list', () => {
     });
     expect(await editor.createTodo(list.id, 'From Bob', 'a0')).toEqual({ ok: true });
     expect(await editor.setDone(list.id, first.id, true)).toEqual({ ok: true });
+    expect(await bob.sync()).toEqual({ ok: true }); // the queued edits are sent
 
     ann.online = true;
     expect(await ann.sync()).toEqual({ ok: true });
@@ -199,7 +200,7 @@ describe('v1: everyone can edit a public list', () => {
     await phone.login('ann@corp.test');
     const bob = new Browser(server, 'bob');
     await bob.register('bob@corp.test');
-    const editor = createPublicEditor({ db: bob.db, fetch: bob.fetch, now: () => bob.time });
+    const editor = createPublicEditor({ db: bob.db, now: () => bob.time });
 
     const list = await ann.repo.createList('Shared');
     for (const title of ['A', 'B', 'C']) await ann.repo.createTodo({ listId: list.id, title });
@@ -217,14 +218,17 @@ describe('v1: everyone can edit a public list', () => {
     bob.time += 1000;
     const open = page.todos.map((t) => ({ id: t.id, orderKey: t.orderKey }));
     await editor.reorder(list.id, open, page.todos[2]!.id, page.todos[0]!.id); // A to the top
+    await bob.sync();
     page = await fetchPage();
     expect(page.todos.map((t) => t.title)).toEqual(['A', 'C', 'B']);
 
     const b = page.todos.find((t) => t.title === 'B')!;
     await editor.deleteTodo(list.id, b.id);
+    await bob.sync();
     expect((await fetchPage()).todos.map((t) => t.title)).toEqual(['A', 'C']);
     bob.time += 1000;
     await editor.restoreTodo(list.id, b.id);
+    await bob.sync();
 
     await ann.sync();
     await phone.sync();
@@ -233,13 +237,13 @@ describe('v1: everyone can edit a public list', () => {
     expect(await ann.snapshot()).toEqual(await phone.snapshot());
   });
 
-  it('after the owner makes the list private, edits are refused', async () => {
+  it('after the owner makes the list private, edits are refused (kept aside, not applied)', async () => {
     const server = startServer();
     const ann = new Browser(server, 'ann');
     await ann.register('ann@corp.test');
     const bob = new Browser(server, 'bob');
     await bob.register('bob@corp.test');
-    const editor = createPublicEditor({ db: bob.db, fetch: bob.fetch, now: () => bob.time });
+    const editor = createPublicEditor({ db: bob.db, now: () => bob.time });
 
     const list = await ann.repo.createList('Shared');
     const t = await ann.repo.createTodo({ listId: list.id, title: 'Plan' });
@@ -247,15 +251,15 @@ describe('v1: everyone can edit a public list', () => {
     await ann.sync();
     bob.time += 500;
     expect(await editor.updateTodo(list.id, t.id, { title: 'ok' })).toEqual({ ok: true });
+    await bob.sync();
 
     bob.time += 1000;
     ann.time += 2000;
     await ann.repo.setListPublic(list.id, false);
     await ann.sync();
-    expect(await editor.updateTodo(list.id, t.id, { title: 'too late' })).toEqual({
-      ok: false,
-      error: 'gone',
-    });
+    expect(await editor.updateTodo(list.id, t.id, { title: 'too late' })).toEqual({ ok: true });
+    expect(await bob.sync()).toEqual({ ok: true });
+    expect((await bob.db.deadLetter.toArray()).map((d) => d.reason)).toEqual(['gone']);
     await ann.sync();
     expect((await ann.db.todos.get(t.id))?.title).toBe('ok');
   });

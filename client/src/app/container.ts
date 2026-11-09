@@ -7,6 +7,8 @@ import { createSyncEngine } from '../sync/engine';
 import { browserEnv, createSyncRunner } from '../sync/runner';
 import { releasePushForLogout } from '../services/push';
 import { createPublicEditor } from '../services/publicEdit';
+import { createPublicNotes } from '../services/publicNotes';
+import { createPublicData } from '../services/publicData';
 import { createReminderFeed } from '../services/reminderFeed';
 import {
   createReminderScheduler,
@@ -20,7 +22,11 @@ const request = (url: string, init?: RequestInit) => fetch(url, init);
 
 export const db = new TodonessDB();
 export const repo = createRepo(db);
-export const publicEditor = createPublicEditor({ db, fetch: request });
+/** Changes to other users' public lists and notes: queued, sent by the sync (FR-107). */
+export const publicEditor = createPublicEditor({ db });
+export const publicNotes = createPublicNotes({ db });
+/** Copies of other users' public lists and notes, readable offline (FR-106). */
+export const publicData = createPublicData({ db, fetch: request });
 /**
  * Whether the server can be reached, as the app found out. The UI uses this, not the
  * browser's `navigator.onLine`, which can be wrong (see sync/connectivity.ts).
@@ -73,5 +79,8 @@ export const reminders = createReminderScheduler({
 
 // Every queued change schedules a sync about a second later.
 db.outbox.hook('creating', () => {
+  runner.notifyChange();
+});
+db.publicOutbox.hook('creating', () => {
   runner.notifyChange();
 });

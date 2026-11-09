@@ -61,3 +61,15 @@ export const pullBody = (changes: unknown[], hasMore = false, nextSeq?: number) 
   nextSeq: nextSeq ?? (changes.at(-1) as { serverSeq: number } | undefined)?.serverSeq ?? 0,
   hasMore,
 });
+
+export function noteChange(over: Record<string, unknown> = {}) {
+  return {
+    serverSeq: ++seq,
+    entity: 'note',
+    entityId: newId(),
+    type: 'create',
+    patch: { text: 'From server', orderKey: 'a0' },
+    hlc: hlcAt(1_730_822_400_000),
+    ...over,
+  };
+}

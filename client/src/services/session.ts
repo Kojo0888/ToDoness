@@ -189,9 +189,12 @@ export function createSession(deps: SessionDeps): Session {
       if (path === '/api/auth/register' || owner) keep = await takeSnapshot(db, stored.email);
       const pending = await countPending(db);
       const aside = await hasKeptAside();
+      // Queued changes to other users' public data are never in the copy (they belong to
+      // other accounts), so they are lost even when a copy is kept (review fix).
+      const publicPending = await db.publicOutbox.count();
       // A new copy replaces an earlier one that is still unanswered, so that counts as a loss
       // too. Without a new copy the unsent changes are lost as well.
-      const loses = keep ? aside : pending > 0 || aside;
+      const loses = keep ? aside || publicPending > 0 : pending > 0 || aside;
       if (
         loses &&
         !confirm(
@@ -199,9 +202,14 @@ export function createSession(deps: SessionDeps): Session {
             !keep && pending > 0
               ? `This device still has ${plural(pending)} of ${stored.email} that were not sent to the server.`
               : '',
+            keep && publicPending > 0
+              ? `${publicPending} change${publicPending === 1 ? '' : 's'} to other users’ public lists or notes ${publicPending === 1 ? 'was' : 'were'} not sent yet and will be lost.`
+              : '',
             aside ? KEPT_ASIDE : '',
             keep
-              ? `Signing up as ${me.email} will replace it with the offline data of ${stored.email}. Continue?`
+              ? aside
+                ? `Signing up as ${me.email} will replace it with the offline data of ${stored.email}. Continue?`
+                : 'Continue?'
               : `Logging in as ${me.email} will delete them. Continue?`,
           ]
             .filter(Boolean)

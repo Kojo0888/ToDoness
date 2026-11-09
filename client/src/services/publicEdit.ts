@@ -1,17 +1,16 @@
 /**
- * Editing somebody else's public list (docs/v1/PRD.md FR-33). Online only: every change
- * is one operation, built with this device's clock, sent to the server at once.
- * The server applies it like a normal push, but to the owner's data.
+ * Editing somebody else's public list (docs/v1/PRD.md FR-33, docs/notes/PRD.md FR-107).
+ * Every change is one operation, built with this device's clock and **queued** on the device
+ * (`publicOutbox`); the sync engine sends it to the list's restricted push as soon as the
+ * server can be reached, where it is applied like a normal push, but to the owner's data.
  */
-import { newId, pushResponseSchema, syncOpSchema, type TodoPatch } from '@todoness/shared';
+import { newId, syncOpSchema, type TodoPatch } from '@todoness/shared';
 import { nextHlc } from '../data/clock';
 import type { TodonessDB } from '../data/db';
 import { keyForPosition, keyOnTop, type Keyed } from '../data/order';
-import type { FetchFn } from '../sync/engine';
 
-export type EditResult =
-  | { ok: true }
-  | { ok: false; error: 'offline' | 'gone' | 'auth' | 'rejected' | 'server' | 'invalid' };
+/** Queued (`ok`), or not a valid change. What the server says comes later (dead letter). */
+export type EditResult = { ok: true } | { ok: false; error: 'invalid' };
 
 export interface PublicEditor {
   createTodo(listId: string, title: string, firstOrderKey: string | null): Promise<EditResult>;
@@ -26,56 +25,47 @@ export interface PublicEditor {
     todoId: string,
     beforeId: string | null,
   ): Promise<EditResult>;
-  /** Called after every accepted change (the page reloads the list). */
-  subscribe(listener: () => void): () => void;
 }
 
-export function createPublicEditor(deps: {
-  db: TodonessDB;
-  fetch: FetchFn;
-  now?: () => number;
-}): PublicEditor {
-  const { db, fetch, now = Date.now } = deps;
-  const listeners = new Set<() => void>();
+/** Validates an operation and adds it to the public queue of its target. */
+export async function queuePublicOp(
+  db: TodonessDB,
+  now: () => number,
+  target: { target: 'list' | 'note'; targetId: string },
+  op: { entity: 'todo' | 'note'; type: string; entityId: string; patch: Record<string, unknown> },
+): Promise<EditResult> {
+  return db.transaction('rw', [db.publicOutbox, db.meta], async () => {
+    const parsed = syncOpSchema.safeParse({
+      opId: newId(now()),
+      ...op,
+      hlc: await nextHlc(db, now),
+    });
+    if (!parsed.success) return { ok: false, error: 'invalid' } as const;
+    await db.publicOutbox.add({ ...parsed.data, ...target, attempts: 0, createdAt: now() });
+    return { ok: true } as const;
+  });
+}
 
-  async function send(
+export function createPublicEditor(deps: { db: TodonessDB; now?: () => number }): PublicEditor {
+  const { db, now = Date.now } = deps;
+
+  const send = (
     listId: string,
     type: 'create' | 'update' | 'delete' | 'restore',
     entityId: string,
     patch: Record<string, unknown>,
-  ): Promise<EditResult> {
-    const parsed = syncOpSchema.safeParse({
-      opId: newId(now()),
-      entity: 'todo',
-      entityId,
-      type,
-      patch,
-      hlc: await nextHlc(db, now),
-    });
-    if (!parsed.success) return { ok: false, error: 'invalid' };
-    const op = parsed.data;
-
-    let res: Response;
-    try {
-      res = await fetch(`/api/public/lists/${encodeURIComponent(listId)}/push`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ clientId: await db.getMeta<string>('clientId'), ops: [op] }),
-      });
-    } catch {
-      return { ok: false, error: 'offline' };
-    }
-    if (res.status === 404) return { ok: false, error: 'gone' };
-    if (res.status === 401) return { ok: false, error: 'auth' };
-    if (!res.ok) return { ok: false, error: 'server' };
-
-    const body = pushResponseSchema.safeParse(await res.json().catch(() => undefined));
-    if (!body.success) return { ok: false, error: 'server' };
-    if (!body.data.accepted.includes(op.opId)) return { ok: false, error: 'rejected' };
-
-    for (const l of listeners) l();
-    return { ok: true };
-  }
+  ) =>
+    queuePublicOp(
+      db,
+      now,
+      { target: 'list', targetId: listId },
+      {
+        entity: 'todo',
+        type,
+        entityId,
+        patch,
+      },
+    );
 
   return {
     createTodo: (listId, title, firstOrderKey) =>
@@ -94,10 +84,6 @@ export function createPublicEditor(deps: {
       if (choice.kind === 'same') return { ok: true };
       if (choice.kind === 'missing') return { ok: false, error: 'invalid' };
       return send(listId, 'update', id, { orderKey: choice.key });
-    },
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
     },
   };
 }

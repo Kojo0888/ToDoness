@@ -305,6 +305,24 @@ describe("recovery: sign-up on a device that holds another account's data", () =
     expect(ctx.session.getState().status).toBe('ready');
   });
 
+  it("warns when queued changes to other users' public data would be lost (not in the copy)", async () => {
+    const declined = setup(routes(), { confirm: false });
+    await annsDevice(declined, { sent: true });
+    const { createPublicNotes } = await import('../../src/services/publicNotes');
+    await createPublicNotes({ db: declined.db, now: fakeNow() }).saveText(
+      '0192f0c1-0000-7000-8000-0000000000d1',
+      'queued for someone else',
+    );
+    expect(await declined.session.register(BOB.email, 'bobs password')).toEqual({
+      ok: false,
+      error: 'cancelled',
+    });
+    expect(declined.deps.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('1 change to other users’ public lists or notes'),
+    );
+    expect(await declined.db.publicOutbox.count()).toBe(1); // nothing was cleared
+  });
+
   it('also when changes were never sent', async () => {
     const ctx = setup(routes());
     await annsDevice(ctx);

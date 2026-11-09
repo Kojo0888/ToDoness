@@ -102,6 +102,7 @@ textarea {
 input[type='text'],
 input[type='email'],
 input[type='password'],
+input[type='search'],
 input[type='date'],
 select,
 textarea {
@@ -657,8 +658,14 @@ h2.nav-heading {
   background: var(--surface);
 }
 
-.todo.is-dragging {
+.todo.is-dragging,
+.note.is-dragging {
   opacity: 0.35;
+}
+
+.drag-handle:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
 }
 
 .drag-overlay {
@@ -884,6 +891,177 @@ h2.nav-heading {
   margin: 0 0 0.5rem;
 }
 
+/* ---------- module switch (Tasks | Notes) ---------- */
+
+/* A segmented control. On a computer it sits in the sidebar; on a phone in the top bar. */
+.module-switch {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.module-switch a {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 2.25rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 7px;
+  color: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.module-switch a:hover {
+  background: var(--surface);
+}
+
+.module-switch a.active {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.topbar .module-switch {
+  margin-left: auto;
+}
+
+.nav-count {
+  float: right;
+  min-width: 1.6rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--border);
+  color: var(--fg);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.nav-lists a.active .nav-count {
+  background: var(--accent-fg);
+  color: var(--accent);
+}
+
+/* ---------- notes ---------- */
+
+.notes-page {
+  max-width: 64rem;
+}
+
+.note-add {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 40rem;
+  margin: 0.5rem 0 1.25rem;
+}
+
+.note-add-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.notes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.note {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.note.is-public {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.note-text {
+  min-height: 7rem;
+  max-height: 60vh;
+  resize: vertical;
+  field-sizing: content;
+  white-space: pre-wrap;
+}
+
+.note-owner {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.note-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
+}
+
+.note-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.note-head .hint,
+.note-foot .hint {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.note-foot .hint {
+  flex: 1 1 100%;
+}
+
+.note-search {
+  max-width: 40rem;
+  margin: 0 0 1rem;
+}
+
+.note-search input {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.note-search .hint {
+  margin: 0.35rem 0 0;
+}
+
+.notice.public-queue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.note-foot .switch {
+  margin: 0;
+}
+
+.note-foot button.danger {
+  margin-left: auto;
+}
+
 /* ---------- phones ---------- */
 
 @media (max-width: 760px) {
@@ -920,6 +1098,20 @@ h2.nav-heading {
   .topbar-title {
     font-size: 1.1rem;
     font-weight: 700;
+  }
+
+  /* The sidebar is hidden on a phone, so the switch lives in the top bar (FR-83). */
+  .sidebar .module-switch {
+    display: none;
+  }
+
+  .topbar .module-switch a {
+    min-height: 2.75rem;
+    padding: 0.3rem 0.75rem;
+  }
+
+  .notes {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .menu-button {
@@ -1000,6 +1192,7 @@ h2.nav-heading {
   input[type='text'],
   input[type='email'],
   input[type='password'],
+  input[type='search'],
   input[type='date'],
   select,
   textarea {
@@ -1020,5 +1213,12 @@ h2.nav-heading {
   .toast-region {
     bottom: calc(1rem + env(safe-area-inset-bottom));
     padding: 0 1rem;
+  }
+}
+
+/* Very narrow phones: the switch needs the room more than the app name. */
+@media (max-width: 420px) {
+  .topbar-title {
+    display: none;
   }
 }

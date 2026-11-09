@@ -48,7 +48,7 @@ export function syncRoutes({ db, now }: { db: Database.Database; now: () => numb
       )
       .all(c.get('user').id, since, limit + 1) as {
       server_seq: number;
-      entity: 'todo' | 'list';
+      entity: 'todo' | 'list' | 'note';
       entity_id: string;
       op_type: 'create' | 'update' | 'delete' | 'restore';
       patch: string;

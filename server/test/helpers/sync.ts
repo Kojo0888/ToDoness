@@ -18,7 +18,7 @@ export const hlcAt = (n: number, clientId = 'aaaa', counter = 0) =>
 
 export interface Op {
   opId: string;
-  entity: 'todo' | 'list';
+  entity: 'todo' | 'list' | 'note';
   entityId: string;
   type: 'create' | 'update' | 'delete' | 'restore';
   patch: Record<string, unknown>;

@@ -1,6 +1,24 @@
 /** All visible text in one place (English only), ready for translation later. */
 const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
+/** "a, b and c" / "a and b". */
+const and = (parts: string[]) =>
+  parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+
+interface KeptCounts {
+  todos: number;
+  lists: number;
+  notes: number;
+}
+
+/** What was kept offline; notes are only named when there are some. */
+const kept = (c: KeptCounts) =>
+  and([
+    count(c.todos, 'task'),
+    `${count(c.lists, 'list')} (besides the Inbox)`,
+    ...(c.notes > 0 ? [count(c.notes, 'note')] : []),
+  ]);
+
 export const t = {
   appName: 'ToDoness',
   loading: 'Loading…',
@@ -46,10 +64,14 @@ export const t = {
 
   recovery: {
     title: 'Offline data found',
-    emptyAccount: (email: string, todos: number, lists: number) =>
-      `Your new account is empty on the server, but ${count(todos, 'task')} and ${count(lists, 'list')} (besides the Inbox) of ${email} are still stored offline on this device.`,
-    filledAccount: (email: string, todos: number, lists: number, accountTodos: number) =>
-      `Your new account already holds ${count(accountTodos, 'task')}, and ${count(todos, 'task')} and ${count(lists, 'list')} (besides the Inbox) of ${email} are still stored offline on this device.`,
+    emptyAccount: (email: string, offline: KeptCounts) =>
+      `Your new account is empty on the server, but ${kept(offline)} of ${email} are still stored offline on this device.`,
+    filledAccount: (
+      email: string,
+      offline: KeptCounts,
+      account: { todos: number; notes: number },
+    ) =>
+      `Your new account already holds ${and([count(account.todos, 'task'), ...(account.notes > 0 ? [count(account.notes, 'note')] : [])])}, and ${kept(offline)} of ${email} are still stored offline on this device.`,
     question: 'Would you like to push all offline data to the server?',
     attachments: 'Attachments are only stored on the server and cannot be restored.',
     no: 'No, discard it',
@@ -57,7 +79,7 @@ export const t = {
     noWarning: 'The offline data will be deleted from this device.',
     chooseTitle: 'Overwrite or append?',
     chooseText:
-      'Append adds the offline data to what the account already holds. Overwrite deletes all tasks and all lists the account holds now (only the empty Inbox list itself stays) and replaces them with the offline data.',
+      'Append adds the offline data to what the account already holds. Overwrite deletes all tasks, lists and notes the account holds now (only the empty Inbox list itself stays) and replaces them with the offline data.',
     append: 'Append',
     overwrite: 'Overwrite',
     back: 'Back',
@@ -68,7 +90,14 @@ export const t = {
     },
   },
 
+  modules: {
+    label: 'Modules',
+    tasks: 'Tasks',
+    notes: 'Notes',
+  },
+
   nav: {
+    main: 'Main',
     lists: 'Lists',
     newList: 'New list name',
     addList: 'Add list',
@@ -76,7 +105,7 @@ export const t = {
     admin: 'Admin',
     menu: 'Menu',
     publicLists: 'Public lists',
-    publicNeedsConnection: 'Public lists need a connection.',
+    publicNeedsConnection: 'Public lists need a connection the first time.',
   },
 
   list: {
@@ -112,20 +141,62 @@ export const t = {
     addTaskPlaceholder: 'Add a task to this shared list and press Enter',
     empty: 'This list has no tasks.',
     gone: 'This list is not public any more, or it was deleted.',
-    needsConnection: 'Public lists need a connection to the server.',
-    editsNeedConnection: 'You are offline. Shared lists can only be changed while you are online.',
+    needsConnection:
+      'This list is not on this device yet. Open it once while connected to the server.',
+    offlineCopy: (when: string) =>
+      `Offline copy from ${when}. Your changes are kept on this device and sent when the connection is back.`,
+    pending: (n: number) => `${n} change${n === 1 ? '' : 's'} waiting to be sent.`,
+    refused: (n: number) =>
+      `${n} of your changes ${n === 1 ? 'was' : 'were'} not saved: it is not public any more, or the change was not allowed.`,
+    dismiss: 'Dismiss',
     errors: {
-      offline: 'Cannot reach the server. Your change was not saved.',
-      gone: 'This list is not public any more. Your change was not saved.',
-      auth: 'Your login is no longer valid. Log in again.',
-      rejected: 'The server did not accept this change.',
-      server: 'The server had a problem. Try again in a moment.',
       invalid: 'That change is not valid.',
     },
-    ownerNote: 'Changes you make here are saved at once and also appear for the owner.',
+    ownerNote:
+      'Changes you make here are sent to the server (later, if you are offline) and also appear for the owner.',
     back: 'Back to my tasks',
     due: (when: string) => `Due ${when}`,
     attachments: 'Attachments',
+  },
+
+  notes: {
+    title: 'My notes',
+    myNotes: 'My notes',
+    publicNotes: 'Public notes',
+    publicNeedsConnection: 'Public notes need a connection the first time.',
+    newLabel: 'New note',
+    newPlaceholder: 'Write a note…',
+    add: 'Add note',
+    addHint: 'Ctrl + Enter (⌘ + Enter on a Mac) adds the note.',
+    empty: 'No notes yet. Write your first one above.',
+    noteLabel: (n: number) => `Note ${n}`,
+    changed: (when: string) => `Changed ${when}`,
+    public: 'Public',
+    publicHint:
+      'Public note: every user of the app can read and edit its text. Only you can delete it or make it private.',
+    delete: 'Delete',
+    deleteLabel: (n: number) => `Delete note ${n}`,
+    deleted: 'Note deleted.',
+    drag: (n: number) => `Drag to reorder note ${n}`,
+    search: 'Search notes',
+    searchPlaceholder: 'Search notes',
+    clearSearch: 'Clear',
+    matches: (n: number, total: number) =>
+      `${n} of ${total} note${total === 1 ? '' : 's'} match${n === 1 ? 'es' : ''}.`,
+    noMatches: 'No notes match.',
+    dragOffWhileSearching: 'Clear the search to reorder notes.',
+    saveFailed: 'Could not save this note.',
+    tooLong: 'A note can have at most 20 000 characters.',
+    publicPage: {
+      title: 'Public notes',
+      intro:
+        'Notes other users made public. Everyone can edit them, also offline: changes are sent when the server can be reached.',
+      by: (email: string) => `By ${email}`,
+      noteLabel: (email: string) => `Public note by ${email}`,
+      empty: 'Nobody has made a note public yet.',
+      needsConnection:
+        'Public notes are not on this device yet. Open them once while connected to the server.',
+    },
   },
 
   todo: {

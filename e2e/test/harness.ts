@@ -57,7 +57,17 @@ export async function startApp(
       COOKIE_SECURE: 'false', // plain http://localhost in tests
       ...extraEnv,
     },
-    stdio: 'ignore',
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  // Keep what the server says on stderr, and report it if it dies on its own.
+  let stderr = '';
+  child.stderr?.on('data', (d: Buffer) => {
+    stderr = (stderr + d.toString()).slice(-20_000);
+  });
+  let stopping = false;
+  const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+  void exited.then(() => {
+    if (!stopping) console.error(`The app on port ${port} exited by itself:\n${stderr}`);
   });
 
   const url = `http://localhost:${port}`;
@@ -74,8 +84,10 @@ export async function startApp(
   return {
     url,
     async stop() {
-      child.kill('SIGTERM');
-      await new Promise((r) => child.once('exit', r));
+      // `exit` may have fired already (the process died): waiting for it again would hang.
+      stopping = true;
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGTERM');
+      await exited;
       rmSync(dir, { recursive: true, force: true });
     },
   };

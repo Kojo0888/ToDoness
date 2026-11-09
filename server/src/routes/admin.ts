@@ -67,7 +67,7 @@ export function adminRoutes({
     return reset() ? c.body(null, 204) : c.json({ error: 'not_found' }, 404);
   });
 
-  /** Deletes the user; sessions, lists, todos and the change log go with them. */
+  /** Deletes the user; sessions, lists, todos, notes and the change log go with them. */
   app.delete('/users/:id', async (c) => {
     const id = idSchema.safeParse(c.req.param('id'));
     if (!id.success) return c.json({ error: 'not_found' }, 404);

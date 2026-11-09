@@ -1,50 +1,52 @@
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
+import { useState, type CSSProperties, type FormEvent } from 'react';
 import { Link, Redirect, useLocation } from 'wouter';
 import type { PublicTodo } from '@todoness/shared';
 import { formatDue } from '../../lib/dates';
-import { useOnline, usePolled } from '../../app/hooks';
-import { fetchPublicList } from '../../services/publicApi';
+import { useOnline } from '../../app/hooks';
+import { usePublicList } from '../../app/publicHooks';
 import type { EditResult } from '../../services/publicEdit';
 import { publicEditor } from '../../app/container';
 import { t } from '../../app/strings';
 import { AttachmentLinks } from '../lists/Attachments';
 import type { TodoDragData } from '../common/DragAndDrop';
+import { PublicQueueNotice } from './PublicQueueNotice';
 import { PublicTaskDetail } from './PublicTaskDetail';
 import { useUndoToast } from '../common/Toast';
 
-const REFRESH_MS = 5000;
 const MARKS = ['', '!', '!!', '!!!'] as const;
 
-/** A public list of another user: everyone can change its tasks (FR-33). */
+/**
+ * A public list of another user: everyone can change its tasks (FR-33), also offline: the
+ * page shows the copy kept on this device with the queued changes on top (notes FR-106 – 110).
+ */
 export function PublicListPage({ listId, todoId }: { listId: string; todoId?: string }) {
   const online = useOnline();
   const showUndo = useUndoToast();
   const [, navigate] = useLocation();
-  const { value, failed, reload } = usePolled(() => fetchPublicList(listId), REFRESH_MS, listId);
+  const { value, at, failed, pending, refused } = usePublicList(listId);
   const [showDone, setShowDone] = useState(false);
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  // Every accepted change reloads the list at once (also drops made from the sidebar).
-  useEffect(() => publicEditor.subscribe(reload), [reload]);
-
-  /** Runs a change; shows what went wrong, if anything. */
+  /** Queues a change; shows what went wrong, if anything (the server answers later). */
   async function act(change: Promise<EditResult>) {
     const result = await change;
     setError(result.ok ? null : t.publicPage.errors[result.error]);
-    if (!result.ok) reload();
     return result.ok;
   }
 
-  if (value === undefined) {
-    return <p className="empty">{failed ? t.publicPage.needsConnection : t.loading}</p>;
+  const offline = !online || failed;
+  if (value === undefined || (value === null && !failed)) {
+    return <p className="empty">{t.loading}</p>;
   }
+  if (value === null) return <p className="empty">{t.publicPage.needsConnection}</p>;
   if (value === 'gone') {
     return (
       <section className="page">
         <p className="empty">{t.publicPage.gone}</p>
-        <Link href="/">{t.publicPage.back}</Link>
+        <PublicQueueNotice offline={false} at={null} pending={pending} refused={refused} />
+        <Link href="/tasks">{t.publicPage.back}</Link>
       </section>
     );
   }
@@ -74,7 +76,7 @@ export function PublicListPage({ listId, todoId }: { listId: string; todoId?: st
     const props = {
       todo,
       listId,
-      disabled: !online,
+      disabled: false,
       onDone: (d: boolean) => void act(publicEditor.setDone(listId, todo.id, d)),
     };
     return sortable ? (
@@ -92,7 +94,7 @@ export function PublicListPage({ listId, todoId }: { listId: string; todoId?: st
           <span className="badge">{t.publicPage.editable}</span>
         </header>
         <p className="hint">{t.publicPage.by(value.list.ownerEmail)}</p>
-        {(!online || failed) && <p className="notice">{t.publicPage.editsNeedConnection}</p>}
+        <PublicQueueNotice offline={offline} at={at} pending={pending} refused={refused} />
         {error && (
           <p className="error" role="alert">
             {error}
@@ -106,7 +108,6 @@ export function PublicListPage({ listId, todoId }: { listId: string; todoId?: st
             placeholder={t.publicPage.addTaskPlaceholder}
             value={title}
             maxLength={500}
-            disabled={!online}
             onChange={(e) => setTitle(e.target.value)}
           />
         </form>
@@ -137,7 +138,7 @@ export function PublicListPage({ listId, todoId }: { listId: string; todoId?: st
           key={selected.id}
           listId={listId}
           todo={selected}
-          disabled={!online}
+          disabled={false}
           act={act}
           onDelete={() => void remove(selected)}
         />

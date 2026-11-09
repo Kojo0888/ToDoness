@@ -14,7 +14,7 @@
  *  - The input row is never modified; a new object is returned.
  */
 import { compareHlc, hlcWall, type Hlc } from './hlc';
-import type { Entity, List, OpType, Todo } from './schemas';
+import type { Entity, List, Note, OpType, Todo } from './schemas';
 
 export interface ApplyInput {
   entity: Entity;
@@ -28,7 +28,7 @@ export type ApplyResult<T> =
   | { ok: true; row: T; accepted: Record<string, unknown>; changed: boolean }
   | { ok: false; reason: 'not_found' | 'missing_fields' };
 
-type Row = Todo | List;
+type Row = Todo | List | Note;
 
 const TODO_DEFAULTS = {
   notes: '',
@@ -46,9 +46,22 @@ const LIST_DEFAULTS = {
   deletedAt: null,
 } as const satisfies Partial<List>;
 
+const NOTE_DEFAULTS = {
+  text: '',
+  isPublic: false,
+  deletedAt: null,
+} as const satisfies Partial<Note>;
+
+const DEFAULTS: Record<Entity, object> = {
+  todo: TODO_DEFAULTS,
+  list: LIST_DEFAULTS,
+  note: NOTE_DEFAULTS,
+};
+
 const REQUIRED_ON_CREATE: Record<Entity, readonly string[]> = {
   todo: ['listId', 'title', 'orderKey'],
   list: ['name', 'orderKey'],
+  note: ['orderKey'],
 };
 
 /** Fields that bookkeeping owns; a patch can never set them directly. */
@@ -69,9 +82,7 @@ function fieldsOf(input: ApplyInput): Record<string, unknown> {
 function newRow(input: ApplyInput): Row {
   const wall = hlcWall(input.hlc);
   const base = { id: input.entityId, fieldHlc: {}, createdAt: wall, updatedAt: wall };
-  return (
-    input.entity === 'todo' ? { ...TODO_DEFAULTS, ...base } : { ...LIST_DEFAULTS, ...base }
-  ) as Row;
+  return { ...DEFAULTS[input.entity], ...base } as Row;
 }
 
 export function applyOp<T extends Row>(row: T | undefined, input: ApplyInput): ApplyResult<T> {

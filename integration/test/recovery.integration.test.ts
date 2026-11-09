@@ -43,8 +43,10 @@ describe('recovery after the server lost its database', () => {
       fromEmail: 'ann@corp.test',
       todos: 3,
       lists: 1,
+      notes: 0,
       accountTodos: 0,
       accountLists: 0,
+      accountNotes: 0,
     });
   });
 
@@ -53,7 +55,7 @@ describe('recovery after the server lost its database', () => {
     const fresh = startServer();
     const recovery = await signUpAgain(a, fresh, 'ann@corp.test');
 
-    expect(await recovery.accept('append')).toEqual({ ok: true, lists: 1, todos: 3 });
+    expect(await recovery.accept('append')).toEqual({ ok: true, lists: 1, todos: 3, notes: 0 });
     expect(await a.sync()).toEqual({ ok: true });
     expect(await a.db.outbox.count()).toBe(0);
 
