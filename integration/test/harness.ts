@@ -50,7 +50,7 @@ export class Browser {
   requests: string[] = [];
 
   constructor(
-    readonly server: Server,
+    public server: Server,
     readonly label = 'browser',
     opts: { batchSize?: number } = {},
   ) {
@@ -80,6 +80,12 @@ export class Browser {
     }
     return res;
   };
+
+  /** The server lost its database and a fresh one took its place: old cookies mean nothing. */
+  switchServer(server: Server) {
+    this.server = server;
+    this.cookies.clear();
+  }
 
   private async auth(path: string, email: string, password = PW) {
     const res = await this.fetch(path, {

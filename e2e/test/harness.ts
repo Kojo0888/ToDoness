@@ -13,7 +13,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const PASSWORD = 'correct horse';
 
-function freePort(): Promise<number> {
+export function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const srv = createServer();
     srv.listen(0, () => {
@@ -29,7 +29,15 @@ export interface App {
   stop(): Promise<void>;
 }
 
-export async function startApp(extraEnv: Record<string, string> = {}): Promise<App> {
+/**
+ * `opts.port` starts the app on a known port. Stopping it and starting another one on the same
+ * port gives the browser the same origin (so its local data stays) and a brand new database:
+ * a server that lost its data.
+ */
+export async function startApp(
+  extraEnv: Record<string, string> = {},
+  opts: { port?: number } = {},
+): Promise<App> {
   if (
     !existsSync(join(root, 'server/dist/index.js')) ||
     !existsSync(join(root, 'client/dist/index.html'))
@@ -37,7 +45,7 @@ export async function startApp(extraEnv: Record<string, string> = {}): Promise<A
     throw new Error('Build the app first: pnpm build');
   }
   const dir = mkdtempSync(join(tmpdir(), 'todoness-e2e-'));
-  const port = await freePort();
+  const port = opts.port ?? (await freePort());
   const child: ChildProcess = spawn('node', ['server/dist/index.js'], {
     cwd: root,
     env: {

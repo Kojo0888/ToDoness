@@ -24,6 +24,7 @@ export type DeadLetter = OutboxOp & { failedAt: number; reason: string };
  *  - userId, user    who is logged in on this device (`user` = id, e-mail, role)
  *  - initialSyncDone true once the first full pull finished
  *  - pendingLogout   the user logged out offline; the server still has to be told
+ *  - recoverySnapshot data of another account kept aside until the user decides (data/recovery.ts)
  *
  * `notified` remembers which reminders already fired on this device (version 2).
  *
@@ -74,8 +75,12 @@ export class TodonessDB extends Dexie {
     await this.meta.put({ key, value });
   }
 
-  /** Removes everything stored for the logged-in user (logout, or a different user logs in). */
-  async clearAll(): Promise<void> {
+  /**
+   * Removes everything stored for the logged-in user (logout, or a different user logs in).
+   * `keep` rows are written back in the same transaction, so they are never lost in between
+   * (used for the data kept aside by the recovery, see data/recovery.ts).
+   */
+  async clearAll(keep: MetaRow[] = []): Promise<void> {
     await this.transaction(
       'rw',
       [this.lists, this.todos, this.outbox, this.deadLetter, this.meta, this.notified],
@@ -87,7 +92,7 @@ export class TodonessDB extends Dexie {
           this.deadLetter.clear(),
           this.meta.clear(),
           this.notified.clear(),
-        ]),
+        ]).then(() => this.meta.bulkPut(keep)),
     );
   }
 }

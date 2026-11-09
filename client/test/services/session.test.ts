@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createRepo } from '../../src/data/repo';
 import { createSyncEngine } from '../../src/sync/engine';
 import { createSession, type SessionState } from '../../src/services/session';
+import { RECOVERY_KEY } from '../../src/data/recovery';
 import { fakeNow, seedInbox, testDb } from '../helpers/db';
 import { fakeFetch, json, pullBody, type Call } from '../helpers/fetch';
 
@@ -259,6 +260,112 @@ describe('login and register', () => {
     await session.login(BOB.email, 'bobs password');
     expect(deps.confirm).not.toHaveBeenCalled();
     expect(await db.lists.count()).toBe(0);
+  });
+});
+
+describe("recovery: sign-up on a device that holds another account's data", () => {
+  const routes = (user = BOB): Router => ({
+    'GET /api/me': () => json(401, {}),
+    'POST /api/auth/login': () => json(200, user),
+    'POST /api/auth/register': () => json(201, user),
+    'POST /api/auth/logout': () => new Response(null, { status: 204 }),
+    ...okSync,
+  });
+
+  /** A device that belonged to Ann: an Inbox, a list and two tasks, some not sent yet. */
+  async function annsDevice(ctx: ReturnType<typeof setup>, opts: { sent?: boolean } = {}) {
+    const { db } = ctx;
+    await db.setMeta('user', ANN);
+    await db.setMeta('initialSyncDone', true);
+    const inbox = await seedInbox(db);
+    const repo = createRepo(db, { now: fakeNow() });
+    const list = await repo.createList('Work');
+    await repo.createTodo({ listId: inbox.id, title: 'in inbox' });
+    await repo.createTodo({ listId: list.id, title: 'in work' });
+    if (opts.sent) await db.outbox.clear();
+    await ctx.session.requireLogin();
+  }
+
+  it('keeps the data aside instead of deleting it, and does not ask the old question', async () => {
+    const ctx = setup(routes());
+    await annsDevice(ctx, { sent: true });
+    expect(await ctx.session.register(BOB.email, 'bobs password')).toEqual({ ok: true });
+
+    expect(ctx.deps.confirm).not.toHaveBeenCalled();
+    expect(await ctx.db.getMeta('user')).toEqual(BOB);
+    expect(await ctx.db.todos.count()).toBe(0); // the live data is cleared...
+    const kept = (await ctx.db.getMeta<{
+      fromEmail: string;
+      lists: unknown[];
+      todos: unknown[];
+    }>(RECOVERY_KEY))!; // ...but a copy is kept
+    expect(kept.fromEmail).toBe(ANN.email);
+    expect(kept.lists).toHaveLength(1);
+    expect(kept.todos).toHaveLength(2);
+    expect(ctx.session.getState().status).toBe('ready');
+  });
+
+  it('also when changes were never sent', async () => {
+    const ctx = setup(routes());
+    await annsDevice(ctx);
+    await ctx.session.register(BOB.email, 'bobs password');
+    expect(ctx.deps.confirm).not.toHaveBeenCalled();
+    expect(await ctx.db.outbox.count()).toBe(0);
+    expect(await ctx.db.getMeta(RECOVERY_KEY)).toBeDefined();
+  });
+
+  it('keeps nothing when the device only had an empty Inbox', async () => {
+    const ctx = setup(routes());
+    await ctx.db.setMeta('user', ANN);
+    await ctx.db.setMeta('initialSyncDone', true);
+    await seedInbox(ctx.db);
+    await ctx.session.requireLogin();
+    await ctx.session.register(BOB.email, 'bobs password');
+    expect(await ctx.db.getMeta(RECOVERY_KEY)).toBeUndefined();
+  });
+
+  it('login (not sign-up) as a different user behaves as before: asks, clears, keeps nothing', async () => {
+    const ctx = setup(routes(), { confirm: true });
+    await annsDevice(ctx);
+    expect(await ctx.session.login(BOB.email, 'bobs password')).toEqual({ ok: true });
+    expect(ctx.deps.confirm).toHaveBeenCalled();
+    expect(await ctx.db.todos.count()).toBe(0);
+    expect(await ctx.db.getMeta(RECOVERY_KEY)).toBeUndefined();
+  });
+
+  it('boot with a server session of a different user keeps nothing', async () => {
+    const ctx = setup({ 'GET /api/me': () => json(200, BOB), ...okSync });
+    await annsDevice(ctx, { sent: true });
+    await ctx.session.boot();
+    expect(await ctx.db.getMeta(RECOVERY_KEY)).toBeUndefined();
+  });
+
+  it('logging out with an unanswered recovery question warns that the data would be lost', async () => {
+    const ctx = setup(routes(), { confirm: false });
+    await annsDevice(ctx, { sent: true });
+    await ctx.session.register(BOB.email, 'bobs password');
+    expect(await ctx.session.logout()).toBe(false);
+    expect(ctx.deps.confirm).toHaveBeenCalled();
+    expect(await ctx.db.getMeta(RECOVERY_KEY)).toBeDefined(); // still there
+  });
+
+  it('logging in as yet another user with an unanswered question warns too', async () => {
+    const CAL = {
+      id: '0192f0c1-0000-7000-8000-00000000000c',
+      email: 'cal@corp.test',
+      role: 'user' as const,
+    };
+    const ctx = setup(routes(CAL), { confirm: false });
+    await ctx.db.setMeta('user', BOB);
+    await ctx.db.setMeta('initialSyncDone', true);
+    await seedInbox(ctx.db);
+    await ctx.db.setMeta(RECOVERY_KEY, { fromEmail: ANN.email, takenAt: 0, lists: [], todos: [] });
+    await ctx.session.requireLogin();
+    expect(await ctx.session.login(CAL.email, 'cals password')).toEqual({
+      ok: false,
+      error: 'cancelled',
+    });
+    expect(await ctx.db.getMeta(RECOVERY_KEY)).toBeDefined();
   });
 });
 

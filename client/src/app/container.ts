@@ -13,6 +13,7 @@ import {
   reminderText,
   showSystemNotification,
 } from '../services/reminders';
+import { createRecovery } from '../services/recovery';
 import { createSession } from '../services/session';
 
 const request = (url: string, init?: RequestInit) => fetch(url, init);
@@ -50,6 +51,9 @@ export const session = createSession({
   confirm: (message) => window.confirm(message),
   beforeLogout: () => releasePushForLogout(),
 });
+
+/** Offers to put the data of an old account back after the server lost its database. */
+export const recovery = createRecovery({ db, repo });
 
 /** Reminders shown inside the app, and the scheduler that creates them (FR-45, FR-46). */
 export const reminderFeed = createReminderFeed();
