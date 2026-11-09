@@ -74,14 +74,14 @@ export interface Repo {
   restoreNote(id: string): Promise<Note>;
   /**
    * Puts the data of another account (kept aside at sign-up) into this one, as normal queued
-   * changes. `append` keeps what is here; `overwrite` deletes the live tasks and lists first
-   * (never the Inbox). Rows keep their ids, so doing it twice merges. Tasks of the old Inbox
-   * go to this account's Inbox.
+   * changes. `append` keeps what is here; `overwrite` deletes the live tasks, lists (never
+   * the Inbox) and notes first. Rows keep their ids, so doing it twice merges. Tasks of the
+   * old Inbox go to this account's Inbox.
    */
   restoreSnapshot(
     snapshot: RecoverySnapshot,
     mode: RestoreMode,
-  ): Promise<{ lists: number; todos: number }>;
+  ): Promise<{ lists: number; todos: number; notes: number }>;
 }
 
 export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): Repo {
@@ -336,19 +336,18 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
           for (const l of await db.lists.toArray()) {
             if (l.deletedAt === null && !l.isInbox) await commit<List>('list', 'delete', l.id, {});
           }
+          for (const n of await db.notes.toArray()) {
+            if (n.deletedAt === null) await commit<Note>('note', 'delete', n.id, {});
+          }
         }
 
         /** Creates the row, or merges into the one that is already here; undeletes it. */
-        async function put<T extends Todo | List>(
-          entity: 'todo' | 'list',
+        async function put<T extends AnyRow>(
+          entity: Entity,
           id: string,
           patch: Record<string, unknown>,
         ) {
-          const table = (entity === 'todo' ? db.todos : db.lists) as unknown as Dexie.Table<
-            T,
-            string
-          >;
-          const existing = await table.get(id);
+          const existing = await tableOf<T>(entity).get(id);
           await commit<T>(entity, 'create', id, patch);
           if (existing && existing.deletedAt !== null) await commit<T>(entity, 'restore', id, {});
         }
@@ -374,7 +373,19 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
             remindBefore: t.remindBefore,
           });
         }
-        return { lists: snapshot.lists.length, todos: snapshot.todos.length };
+        const notes = snapshot.notes ?? []; // missing in a copy kept before notes existed
+        for (const n of notes) {
+          await put<Note>('note', n.id, {
+            text: n.text,
+            orderKey: n.orderKey,
+            isPublic: n.isPublic,
+          });
+        }
+        return {
+          lists: snapshot.lists.length,
+          todos: snapshot.todos.length,
+          notes: notes.length,
+        };
       }),
 
     deleteList: (id) =>

@@ -1,6 +1,24 @@
 /** All visible text in one place (English only), ready for translation later. */
 const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
+/** "a, b and c" / "a and b". */
+const and = (parts: string[]) =>
+  parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+
+interface KeptCounts {
+  todos: number;
+  lists: number;
+  notes: number;
+}
+
+/** What was kept offline; notes are only named when there are some. */
+const kept = (c: KeptCounts) =>
+  and([
+    count(c.todos, 'task'),
+    `${count(c.lists, 'list')} (besides the Inbox)`,
+    ...(c.notes > 0 ? [count(c.notes, 'note')] : []),
+  ]);
+
 export const t = {
   appName: 'ToDoness',
   loading: 'Loading…',
@@ -46,10 +64,14 @@ export const t = {
 
   recovery: {
     title: 'Offline data found',
-    emptyAccount: (email: string, todos: number, lists: number) =>
-      `Your new account is empty on the server, but ${count(todos, 'task')} and ${count(lists, 'list')} (besides the Inbox) of ${email} are still stored offline on this device.`,
-    filledAccount: (email: string, todos: number, lists: number, accountTodos: number) =>
-      `Your new account already holds ${count(accountTodos, 'task')}, and ${count(todos, 'task')} and ${count(lists, 'list')} (besides the Inbox) of ${email} are still stored offline on this device.`,
+    emptyAccount: (email: string, offline: KeptCounts) =>
+      `Your new account is empty on the server, but ${kept(offline)} of ${email} are still stored offline on this device.`,
+    filledAccount: (
+      email: string,
+      offline: KeptCounts,
+      account: { todos: number; notes: number },
+    ) =>
+      `Your new account already holds ${and([count(account.todos, 'task'), ...(account.notes > 0 ? [count(account.notes, 'note')] : [])])}, and ${kept(offline)} of ${email} are still stored offline on this device.`,
     question: 'Would you like to push all offline data to the server?',
     attachments: 'Attachments are only stored on the server and cannot be restored.',
     no: 'No, discard it',
@@ -57,7 +79,7 @@ export const t = {
     noWarning: 'The offline data will be deleted from this device.',
     chooseTitle: 'Overwrite or append?',
     chooseText:
-      'Append adds the offline data to what the account already holds. Overwrite deletes all tasks and all lists the account holds now (only the empty Inbox list itself stays) and replaces them with the offline data.',
+      'Append adds the offline data to what the account already holds. Overwrite deletes all tasks, lists and notes the account holds now (only the empty Inbox list itself stays) and replaces them with the offline data.',
     append: 'Append',
     overwrite: 'Overwrite',
     back: 'Back',

@@ -3,7 +3,7 @@
  * (docs/v1/PRD.md section 4.11). Pure functions on the local database; the
  * restore itself is `Repo.restoreSnapshot`, because only the repo changes data.
  */
-import type { List, Todo } from '@todoness/shared';
+import type { List, Note, Todo } from '@todoness/shared';
 import type { TodonessDB } from './db';
 
 /** `meta` key the snapshot is stored under. */
@@ -19,11 +19,16 @@ export interface RecoverySnapshot {
   lists: List[];
   /** Live tasks. Those whose list is not in `lists` belonged to the old Inbox. */
   todos: Todo[];
+  /**
+   * Live notes (docs/notes/PRD.md FR-98). Missing in a copy kept before the notes update,
+   * so readers use `notes ?? []`.
+   */
+  notes: Note[];
 }
 
 /**
- * What is on this device and worth restoring: live lists (not the Inbox) and live tasks of
- * live lists. `undefined` when there is nothing, so the user is not asked about nothing.
+ * What is on this device and worth restoring: live lists (not the Inbox), live tasks of
+ * live lists and live notes. `undefined` when there is nothing, so the user is not asked about nothing.
  * Deleted rows are not restored.
  */
 export async function takeSnapshot(
@@ -37,6 +42,7 @@ export async function takeSnapshot(
   const todos = (await db.todos.toArray()).filter(
     (t) => t.deletedAt === null && liveListIds.has(t.listId),
   );
-  if (lists.length === 0 && todos.length === 0) return undefined;
-  return { fromEmail, takenAt: now(), lists, todos };
+  const notes = (await db.notes.toArray()).filter((n) => n.deletedAt === null);
+  if (lists.length === 0 && todos.length === 0 && notes.length === 0) return undefined;
+  return { fromEmail, takenAt: now(), lists, todos, notes };
 }

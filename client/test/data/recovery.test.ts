@@ -91,7 +91,7 @@ describe('restoreSnapshot', () => {
 
   it('append: brings back lists and tasks with their fields and order', async () => {
     const { old, fresh, counts } = await restore('append');
-    expect(counts).toEqual({ lists: 1, todos: 3 });
+    expect(counts).toEqual({ lists: 1, todos: 3, notes: 0 });
 
     const lists = await getLists(fresh.db);
     expect(lists.map((l) => l.name)).toEqual(['Inbox', 'Work']);

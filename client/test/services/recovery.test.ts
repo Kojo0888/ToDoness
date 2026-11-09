@@ -38,8 +38,10 @@ describe('recovery service', () => {
       fromEmail: 'ann@corp.test',
       todos: 2,
       lists: 1,
+      notes: 0,
       accountTodos: 0,
       accountLists: 0,
+      accountNotes: 0,
     });
   });
 
@@ -107,7 +109,7 @@ describe('recovery service', () => {
     const recovery = createRecovery({ db, repo });
     await recovery.load();
 
-    expect(await recovery.accept('append')).toEqual({ ok: true, lists: 1, todos: 2 });
+    expect(await recovery.accept('append')).toEqual({ ok: true, lists: 1, todos: 2, notes: 0 });
     expect(recovery.getOffer()).toBeUndefined();
     expect(await db.getMeta(RECOVERY_KEY)).toBeUndefined();
     const titles = (await db.todos.toArray()).filter((t) => !t.deletedAt).map((t) => t.title);
