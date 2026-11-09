@@ -94,3 +94,19 @@
     files): because the folder is always appended, the target can no longer be wrong that way.
 18. **Branch workflow:** all work went to the designated branch; `main` was only changed when
     explicitly asked, through PR #6.
+
+## Connectivity (added later)
+
+19. **The app decides whether it is online; the browser's `navigator.onLine` is only a hint.** It
+    can be wrong in both directions (VPN or virtual adapters, a LAN without internet), and the
+    `online` event may never fire. It had been used in two places that mattered: the runner refused
+    to send anything while the flag said offline, and every "needs a connection" part of the UI
+    (including both attachment buttons) was disabled by it. Now the runner always tries, a request
+    that works or a check every 3 seconds (`GET /api/health`, 2 s limit) means online, and no answer
+    means offline. A server error still counts as reachable. The cost is one tiny request every
+    3 seconds, which is negligible on an intranet. The admin diagnostics show "Browser says" next to
+    "App found" so a wrong flag is visible.
+20. **File picker buttons are labels, and the input is re-created after every pick or cancel.** The
+    reported "both buttons stopped working after cancelling" was most likely the false-offline flag
+    above (the buttons were disabled by it); the picker change is a precaution, and the native
+    behaviour of phones could not be tested here.

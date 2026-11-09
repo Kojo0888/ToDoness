@@ -370,8 +370,23 @@ and `pnpm format:check`.
   build for any unknown argument).
 - The browser tests share two users, because the server limits sign-ups to 20 per hour per address.
 
-**Test counts after update 4:** shared 95, server 228, client 246, integration 31, browser (e2e)
-41 (13 MVP + 28 v1 scenarios).
+### Update 5: connection state, picker buttons, sticky Close log
+
+(PRD 4.10; Decisions 19–20.)
+
+- `sync/connectivity.ts` (a tiny store), `engine.ping()`, and a 3-second check in the runner; the
+  `isOnline()` gate in the runner is gone (the existing test that expected "no request while the
+  browser says offline" now expects the opposite). `useOnline()` reads the store.
+- A test with the browser flag stuck on "offline" while requests work (unit, recovery and browser
+  level) is the regression guard; a browser test also checks that a real loss of connection is
+  shown within about 5 s and that saving resumes within 5 s of it returning.
+- Picker buttons: `FilePickButton` (label as button, input re-created after pick/cancel); browser
+  tests open the chooser repeatedly without answering. This passed with the old button too, which
+  supports the explanation that the phone problem was the disabled state, not the picker.
+- Log popup: the header with **Close log** is sticky; a browser test scrolls the log and clicks it.
+
+**Test counts after update 5:** shared 95, server 228, client 263, integration 31, browser (e2e)
+45 (13 MVP + 32 v1 scenarios).
 
 **Superseded counts (update 3):** shared 95, server 221, client 237, integration 31,
 browser (e2e) 38 (13 MVP + 25 v1 scenarios).

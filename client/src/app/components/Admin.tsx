@@ -1,6 +1,7 @@
 import { adminUsersResponseSchema, type AdminUsersResponse } from '@todoness/shared';
 import { useCallback, useEffect, useState } from 'react';
 import type { StoredUser } from '../session';
+import { connectivity } from '../services';
 import { t } from '../strings';
 import { ConfirmDialog } from './ConfirmDialog';
 
@@ -29,7 +30,7 @@ export function Admin({ user }: { user: StoredUser }) {
       setUsers(result.users);
       setError(null);
     } else {
-      setError(navigator.onLine ? t.admin.loadFailed : t.admin.needsConnection);
+      setError(connectivity.getSnapshot().online ? t.admin.loadFailed : t.admin.needsConnection);
     }
   }, []);
 

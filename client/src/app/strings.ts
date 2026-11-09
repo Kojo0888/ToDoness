@@ -185,7 +185,12 @@ export const t = {
 
   syncDiag: {
     title: 'Sync diagnostics (admin)',
-    browser: 'Browser',
+    browser: 'Browser says',
+    app: 'App found',
+    check: 'Last check',
+    answered: 'answered',
+    noAnswer: 'no answer',
+    ago: 'ago',
     online: 'online',
     offline: 'offline',
     sync: 'Sync',

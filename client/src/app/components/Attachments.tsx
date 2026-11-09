@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Attachment } from '@todoness/shared';
 import {
   attachmentPickers,
@@ -44,7 +44,6 @@ export function AttachmentsSection({ todoId }: { todoId: string }) {
   const [max, setMax] = useState<number | undefined>(undefined);
   const [running, setRunning] = useState<Running | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const inputs = useRef<Record<string, HTMLInputElement | null>>({});
   // A phone or tablet: ask the system for photos/videos and documents separately.
   const [touchScreen] = useState(
     () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches,
@@ -65,9 +64,7 @@ export function AttachmentsSection({ todoId }: { todoId: string }) {
     void fetchMaxAttachmentBytes().then(setMax);
   }, [online, reload]);
 
-  async function onPick(e: ChangeEvent<HTMLInputElement>) {
-    const files = [...(e.target.files ?? [])];
-    e.target.value = ''; // so the same file can be picked again
+  async function onPick(files: File[]) {
     setError(null);
     if (files.length === 0) return;
 
@@ -154,28 +151,66 @@ export function AttachmentsSection({ todoId }: { todoId: string }) {
       )}
 
       {pickers.map((p) => (
-        <span key={p.id}>
-          <input
-            ref={(el) => {
-              inputs.current[p.id] = el;
-            }}
-            type="file"
-            multiple
-            hidden
-            accept={p.accept}
-            data-testid={p.id === 'files' ? 'attachment-input' : `attachment-input-${p.id}`}
-            onChange={(e) => void onPick(e)}
-          />
-          <button
-            type="button"
-            disabled={!online || running !== null}
-            onClick={() => inputs.current[p.id]?.click()}
-          >
-            {t.attachments.pick[p.id]}
-          </button>{' '}
-        </span>
+        <FilePickButton
+          key={p.id}
+          label={t.attachments.pick[p.id]}
+          accept={p.accept}
+          testId={p.id === 'files' ? 'attachment-input' : `attachment-input-${p.id}`}
+          disabled={!online || running !== null}
+          onFiles={(files) => void onPick(files)}
+        />
       ))}
       {max !== undefined && <p className="hint">{t.attachments.maxSize(formatSize(max))}</p>}
     </section>
+  );
+}
+
+/**
+ * A button that opens the system's file picker. The label itself is the button, so the
+ * browser opens the picker natively (a script calling `input.click()` is the kind of thing
+ * phones sometimes ignore after a picker was cancelled). The input is created anew after
+ * every pick and every cancel, so a picker that got stuck cannot stay stuck.
+ */
+function FilePickButton({
+  label,
+  accept,
+  testId,
+  disabled,
+  onFiles,
+}: {
+  label: string;
+  accept: string | undefined;
+  testId: string;
+  disabled: boolean;
+  onFiles: (files: File[]) => void;
+}) {
+  const [generation, setGeneration] = useState(0);
+  const input = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const el = input.current;
+    const fresh = () => setGeneration((g) => g + 1); // the picker was cancelled
+    el?.addEventListener('cancel', fresh);
+    return () => el?.removeEventListener('cancel', fresh);
+  }, [generation]);
+
+  return (
+    <label className={`file-button${disabled ? ' is-disabled' : ''}`}>
+      {label}
+      <input
+        key={generation}
+        ref={input}
+        type="file"
+        multiple
+        className="sr-only"
+        accept={accept}
+        disabled={disabled}
+        data-testid={testId}
+        onChange={(e) => {
+          onFiles([...(e.target.files ?? [])]); // read before the input is replaced
+          setGeneration((g) => g + 1);
+        }}
+      />
+    </label>
   );
 }

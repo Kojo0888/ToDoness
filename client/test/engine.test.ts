@@ -433,4 +433,49 @@ describe('timeouts and abort (offline → online speed)', () => {
     });
     expect(diag.getSnapshot().flags.lastRequest!.ms).toBeGreaterThanOrEqual(3500);
   });
+
+  describe('ping (is the server reachable?)', () => {
+    async function pingSetup(answer: () => Response | 'network-error' | Promise<never>) {
+      const db = testDb();
+      await seedInbox(db);
+      const f = fakeFetch(answer as never);
+      const engine = createSyncEngine({ db, fetch: f });
+      vi.useFakeTimers({
+        toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+      });
+      return { engine, f };
+    }
+
+    it('is true when the server answers, whatever it answers (it is reachable)', async () => {
+      for (const status of [200, 401, 500, 503]) {
+        const { engine, f } = await pingSetup(() => json(status, {}));
+        expect(await engine.ping(), String(status)).toBe(true);
+        expect(f.calls.at(-1)).toMatchObject({ url: '/api/health', method: 'GET' });
+        vi.useRealTimers();
+      }
+    });
+
+    it('is false when the request fails', async () => {
+      const { engine } = await pingSetup(() => 'network-error');
+      expect(await engine.ping()).toBe(false);
+    });
+
+    it('is false when nothing answers within 2 seconds', async () => {
+      const { engine } = await pingSetup(() => never());
+      const result = engine.ping();
+      await pass(1900);
+      let done = false;
+      void result.then(() => (done = true));
+      await pass(50);
+      expect(done).toBe(false);
+      await pass(100);
+      expect(await result).toBe(false);
+    });
+
+    it('does not change the sync status', async () => {
+      const { engine } = await pingSetup(() => 'network-error');
+      await engine.ping();
+      expect(engine.status.state).toBe('idle');
+    });
+  });
 });
