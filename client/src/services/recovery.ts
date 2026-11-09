@@ -80,7 +80,11 @@ export function createRecovery(deps: { db: TodonessDB; repo: Repo }): Recovery {
 
     async accept(mode) {
       const snapshot = await read();
-      if (!snapshot) return { ok: false, error: 'no_offer' };
+      if (!snapshot) {
+        // Answered elsewhere (another tab): the offer is stale, drop it so the popup closes.
+        set(undefined);
+        return { ok: false, error: 'no_offer' };
+      }
       let counts: { lists: number; todos: number };
       try {
         counts = await repo.restoreSnapshot(snapshot, mode);

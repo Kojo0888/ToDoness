@@ -482,7 +482,7 @@ and `pnpm format:check`.
 - Not covered: the real-life browser reload during the second step (it is the same state as the
   first step; the step is not stored), and attachments (they only live on the server).
 
-**Test counts after update 6:** shared 95, server 230, client 296, integration 38, browser (e2e)
+**Test counts after update 6:** shared 95, server 230, client 298, integration 38, browser (e2e)
 50 (13 MVP + 32 v1 + 5 recovery scenarios).
 
 **Test counts after update 5:** shared 95, server 228, client 263, integration 31, browser (e2e)

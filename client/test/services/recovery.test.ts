@@ -147,6 +147,16 @@ describe('recovery service', () => {
     expect(await db.getMeta(RECOVERY_KEY)).toBeDefined();
   });
 
+  it('accept after the data was answered elsewhere (another tab) clears the stale offer', async () => {
+    const { db, repo } = await deviceWithKeptData();
+    const recovery = createRecovery({ db, repo });
+    await recovery.load();
+    expect(recovery.getOffer()).toBeDefined();
+    await db.meta.delete(RECOVERY_KEY); // the other tab answered
+    expect(await recovery.accept('append')).toEqual({ ok: false, error: 'no_offer' });
+    expect(recovery.getOffer()).toBeUndefined(); // so the popup can close
+  });
+
   it('accept without an offer does nothing', async () => {
     const { db, repo } = await deviceWithKeptData({ snapshot: false });
     const recovery = createRecovery({ db, repo });

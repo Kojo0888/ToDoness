@@ -349,6 +349,49 @@ describe("recovery: sign-up on a device that holds another account's data", () =
     expect(await ctx.db.getMeta(RECOVERY_KEY)).toBeDefined(); // still there
   });
 
+  it('signing up again with an unanswered question must not silently replace the kept data', async () => {
+    const CAL = {
+      id: '0192f0c1-0000-7000-8000-00000000000c',
+      email: 'cal@corp.test',
+      role: 'user' as const,
+    };
+    const prepare = async (confirm: boolean) => {
+      const ctx = setup(routes(CAL), { confirm });
+      await ctx.db.setMeta('user', BOB);
+      await ctx.db.setMeta('initialSyncDone', true);
+      const inbox = await seedInbox(ctx.db);
+      await createRepo(ctx.db, { now: fakeNow() }).createTodo({
+        listId: inbox.id,
+        title: 'bobs new task',
+      });
+      await ctx.db.setMeta(RECOVERY_KEY, {
+        fromEmail: ANN.email,
+        takenAt: 0,
+        lists: [],
+        todos: [],
+      });
+      await ctx.session.requireLogin();
+      return ctx;
+    };
+
+    const declined = await prepare(false);
+    expect(await declined.session.register(CAL.email, 'cals password')).toEqual({
+      ok: false,
+      error: 'cancelled',
+    });
+    expect(declined.deps.confirm).toHaveBeenCalled();
+    expect((await declined.db.getMeta<{ fromEmail: string }>(RECOVERY_KEY))!.fromEmail).toBe(
+      ANN.email,
+    );
+    expect(await declined.db.todos.count()).toBe(1); // nothing was cleared
+
+    const accepted = await prepare(true);
+    expect(await accepted.session.register(CAL.email, 'cals password')).toEqual({ ok: true });
+    expect((await accepted.db.getMeta<{ fromEmail: string }>(RECOVERY_KEY))!.fromEmail).toBe(
+      BOB.email,
+    ); // replaced, after the user agreed
+  });
+
   it('logging in as yet another user with an unanswered question warns too', async () => {
     const CAL = {
       id: '0192f0c1-0000-7000-8000-00000000000c',

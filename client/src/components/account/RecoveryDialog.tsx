@@ -40,7 +40,7 @@ export function RecoveryDialog() {
     setError(null);
     try {
       const result = await action();
-      if (result && !result.ok) setError('no_inbox');
+      if (result && !result.ok && result.error === 'no_inbox') setError('no_inbox');
       else setStep('ask'); // answered: the next question (if any) starts from the beginning
     } catch {
       setError('failed');

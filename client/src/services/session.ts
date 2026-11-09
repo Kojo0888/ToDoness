@@ -184,26 +184,29 @@ export function createSession(deps: SessionDeps): Session {
       // Signing up after the server lost its data: the old data is kept aside and the user is
       // asked about it once the new account is ready. That replaces the warning below.
       if (path === '/api/auth/register') keep = await takeSnapshot(db, stored.email);
-      if (!keep) {
-        const pending = await countPending(db);
-        const aside = await hasKeptAside();
-        if (
-          (pending > 0 || aside) &&
-          !confirm(
-            [
-              pending > 0
-                ? `This device still has ${plural(pending)} of ${stored.email} that were not sent to the server.`
-                : '',
-              aside ? KEPT_ASIDE : '',
-              `Logging in as ${me.email} will delete them. Continue?`,
-            ]
-              .filter(Boolean)
-              .join(' '),
-          )
-        ) {
-          await post('/api/auth/logout').catch(() => undefined);
-          return { ok: false, error: 'cancelled' };
-        }
+      const pending = await countPending(db);
+      const aside = await hasKeptAside();
+      // A new copy replaces an earlier one that is still unanswered, so that counts as a loss
+      // too. Without a new copy the unsent changes are lost as well.
+      const loses = keep ? aside : pending > 0 || aside;
+      if (
+        loses &&
+        !confirm(
+          [
+            !keep && pending > 0
+              ? `This device still has ${plural(pending)} of ${stored.email} that were not sent to the server.`
+              : '',
+            aside ? KEPT_ASIDE : '',
+            keep
+              ? `Signing up as ${me.email} will replace it with the offline data of ${stored.email}. Continue?`
+              : `Logging in as ${me.email} will delete them. Continue?`,
+          ]
+            .filter(Boolean)
+            .join(' '),
+        )
+      ) {
+        await post('/api/auth/logout').catch(() => undefined);
+        return { ok: false, error: 'cancelled' };
       }
     }
 

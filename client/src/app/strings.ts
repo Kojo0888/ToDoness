@@ -57,7 +57,7 @@ export const t = {
     noWarning: 'The offline data will be deleted from this device.',
     chooseTitle: 'Overwrite or append?',
     chooseText:
-      'Append adds the offline data to what the account already holds. Overwrite deletes what the account holds now (tasks and lists, not the Inbox) and replaces it with the offline data.',
+      'Append adds the offline data to what the account already holds. Overwrite deletes all tasks and all lists the account holds now (only the empty Inbox list itself stays) and replaces them with the offline data.',
     append: 'Append',
     overwrite: 'Overwrite',
     back: 'Back',
