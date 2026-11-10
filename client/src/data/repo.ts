@@ -12,6 +12,7 @@ import Dexie from 'dexie';
 import {
   applyOp,
   newId,
+  normalizeRemindBefore,
   syncOpSchema,
   type Entity,
   type List,
@@ -380,7 +381,7 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
             completedAt: t.completedAt,
             dueAt: t.dueAt,
             priority: t.priority,
-            remindBefore: t.remindBefore,
+            remindBefore: normalizeRemindBefore(t.remindBefore), // older copies: one value
           });
         }
         const notes = snapshot.notes ?? []; // missing in a copy kept before notes existed

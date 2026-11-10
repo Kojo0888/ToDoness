@@ -111,8 +111,6 @@ export const t = {
 
   manage: {
     title: 'Manage lists',
-    intro:
-      'Drag a list by its handle to reorder it. Use ⋯ to rename or delete it. The Inbox cannot be changed.',
     empty: 'You have no lists besides the Inbox yet.',
     back: 'Back to tasks',
     drag: (name: string) => `Drag to reorder list: ${name}`,
@@ -226,7 +224,6 @@ export const t = {
     timePresets: 'Suggested times',
     remind: 'Remind me',
     reminders: {
-      none: 'No reminder',
       week: '1 week before',
       day: '1 day before',
       hour: '1 hour before',

@@ -1,12 +1,20 @@
 /**
  * Reminders (docs/v1/PRD.md section 4.4).
  *
- * A reminder fires when `dueAt - (1 week | 1 day | 1 hour)` has passed, as long as the
+ * A task can have several reminders (docs/ui-refresh). One fires when
+ * `dueAt - (1 week | 1 day | 1 hour)` has passed, as long as the
  * task is still open and not yet due. It fires once per device for each due date and
  * choice; the device remembers that in the local `notified` table.
  * Everything runs while the app is open (start, tab focus, every 30 s).
  */
-import { REMIND_MS, reminderKey, timeUntil, type Todo } from '@todoness/shared';
+import {
+  REMIND_MS,
+  latestDueChoice,
+  reminderKey,
+  timeUntil,
+  type RemindBefore,
+  type Todo,
+} from '@todoness/shared';
 import type { TodonessDB } from '../data/db';
 import { formatDue } from '../lib/dates';
 
@@ -18,6 +26,7 @@ const FORGET_AFTER_MS = 60 * 24 * 3_600_000;
 export interface Reminder {
   key: string;
   todo: Todo;
+  choice: RemindBefore;
   /** When it became due (epoch ms). */
   remindAt: number;
 }
@@ -31,11 +40,12 @@ export function dueReminders(
   const out: Reminder[] = [];
   for (const todo of todos) {
     if (todo.deletedAt !== null || todo.done) continue;
-    if (todo.dueAt === null || todo.remindBefore === null) continue;
-    const remindAt = todo.dueAt - REMIND_MS[todo.remindBefore];
-    if (now < remindAt || now >= todo.dueAt) continue;
-    const key = reminderKey(todo);
-    if (!notified.has(key)) out.push({ key, todo, remindAt });
+    // Only the latest reminder whose time has passed: never a burst for one task (FR-114).
+    const choice = latestDueChoice(todo, now);
+    if (choice === null) continue;
+    const key = reminderKey(todo, choice);
+    if (!notified.has(key))
+      out.push({ key, todo, choice, remindAt: todo.dueAt! - REMIND_MS[choice] });
   }
   return out.sort((a, b) => a.todo.dueAt! - b.todo.dueAt!);
 }

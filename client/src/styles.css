@@ -142,6 +142,63 @@ button.link {
   text-decoration: underline;
 }
 
+/* Modern building blocks (UI_GUIDELINES.md section 2). */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--fg);
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.btn:hover {
+  border-color: var(--accent);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.btn-block {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.btn-icon {
+  font-size: 1.05em;
+  line-height: 1;
+}
+
+.btn-back {
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem 0.4rem 0.7rem;
+}
+
+.chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip-group .chip {
+  min-height: 2.25rem;
+}
+
 button:disabled {
   opacity: 0.6;
   cursor: default;
@@ -1177,6 +1234,12 @@ h2.nav-heading {
 /* ---------- phones ---------- */
 
 @media (max-width: 760px) {
+  /* 44 px touch targets (UI_GUIDELINES.md). */
+  .btn,
+  .chip-group .chip {
+    min-height: 44px;
+  }
+
   /* On a phone the log covers the screen; it has its own Close button. */
   .sync-log {
     left: 0.5rem;
@@ -1337,14 +1400,17 @@ h2.nav-heading {
 }
 
 .manage-lists-link {
-  display: block;
-  padding: 0.4rem 0.6rem;
-  font-size: 0.9rem;
-  opacity: 0.85;
+  margin: 0.75rem 0 0.5rem;
 }
 
 .manage-lists-link.active {
-  font-weight: 600;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.manage-lists .list-head {
+  align-items: center;
+  justify-content: flex-start;
 }
 
 .manage-list-rows {

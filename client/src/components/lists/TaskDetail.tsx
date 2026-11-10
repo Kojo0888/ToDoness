@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { Redirect, useLocation } from 'wouter';
-import type { RemindBefore, Todo } from '@todoness/shared';
+import { REMIND_ORDER, type RemindBefore, type Todo } from '@todoness/shared';
 import { getLists, getTodoById } from '../../data/queries';
 import { fromDateTimeInput, toDateInput, toTimeInput } from '../../lib/dates';
 import { enablePush } from '../../services/push';
@@ -45,34 +45,55 @@ function TaskForm({ todo, listId }: { todo: Todo; listId: string }) {
 
   const [support, setSupport] = useState(() => notificationSupport());
 
+  // The due moment as last chosen here. A date and then a time picked in quick succession
+  // must combine, even before the first change has come back from the database.
+  const due = useRef(todo.dueAt);
+  useEffect(() => {
+    due.current = todo.dueAt; // a saved change, also from another device
+  }, [todo.dueAt]);
+
   /** Changing the date keeps the time of day; clearing it also ends the reminder (FR-44). */
   async function changeDate(e: ChangeEvent<HTMLInputElement>) {
-    const dueAt = fromDateTimeInput(e.target.value, toTimeInput(todo.dueAt));
-    await repo.updateTodo(
-      todo.id,
-      dueAt === null ? { dueAt: null, remindBefore: null } : { dueAt },
-    );
+    const dueAt = fromDateTimeInput(e.target.value, toTimeInput(due.current));
+    due.current = dueAt;
+    if (dueAt === null) setPendingRemind([]);
+    await repo.updateTodo(todo.id, dueAt === null ? { dueAt: null, remindBefore: [] } : { dueAt });
     void reminders.check();
   }
 
   async function changeTime(time: string) {
-    if (todo.dueAt === null) return;
-    const dueAt = fromDateTimeInput(toDateInput(todo.dueAt), time);
+    if (due.current === null) return;
+    const dueAt = fromDateTimeInput(toDateInput(due.current), time);
+    due.current = dueAt;
     if (dueAt !== null) await repo.updateTodo(todo.id, { dueAt });
     void reminders.check();
   }
 
-  async function changeReminder(e: ChangeEvent<HTMLSelectElement>) {
-    const value = (e.target.value || null) as RemindBefore | null;
+  // A reminder change that is not saved yet. Shown instead of the saved value until that
+  // catches up, so two quick taps both count and nothing flickers back in between.
+  const [pendingRemind, setPendingRemind] = useState<RemindBefore[] | null>(null);
+  if (pendingRemind && pendingRemind.join() === todo.remindBefore.join()) setPendingRemind(null);
+  const remind = pendingRemind ?? todo.remindBefore;
+
+  /** Turns one reminder on or off; any combination is allowed (FR-112). */
+  async function toggleReminder(choice: RemindBefore) {
+    const on = !remind.includes(choice);
+    const next = on
+      ? REMIND_ORDER.filter((r) => r === choice || remind.includes(r))
+      : remind.filter((r) => r !== choice);
+    setPendingRemind(next);
     // Asking for permission has to happen right away, inside the click.
     // (and, once allowed, subscribe this device to web push so it also works when closed)
-    const asked = value
+    const asked = on
       ? requestNotificationPermission().then(async (s) => {
           if (s === 'granted') void enablePush();
           return s;
         })
       : undefined;
-    await repo.updateTodo(todo.id, { remindBefore: value });
+    await repo.updateTodo(todo.id, { remindBefore: next }).catch((err: unknown) => {
+      setPendingRemind(null);
+      throw err;
+    });
     if (asked) setSupport(await asked);
     void reminders.check();
   }
@@ -132,24 +153,37 @@ function TaskForm({ todo, listId }: { todo: Todo; listId: string }) {
         />
       </div>
 
-      <label>
-        {t.todo.remind}
-        <select
-          value={todo.remindBefore ?? ''}
-          disabled={todo.dueAt === null}
+      <div className="field">
+        <span id="remind-label" className="field-label">
+          {t.todo.remind}
+        </span>
+        <div
+          className="chip-group"
+          role="group"
+          aria-labelledby="remind-label"
           aria-describedby="remind-hint"
-          onChange={(e) => void changeReminder(e)}
         >
-          <option value="">{t.todo.reminders.none}</option>
-          <option value="week">{t.todo.reminders.week}</option>
-          <option value="day">{t.todo.reminders.day}</option>
-          <option value="hour">{t.todo.reminders.hour}</option>
-        </select>
-      </label>
+          {REMIND_ORDER.map((choice) => {
+            const on = remind.includes(choice);
+            return (
+              <button
+                key={choice}
+                type="button"
+                className={`chip${on ? ' is-selected' : ''}`}
+                aria-pressed={on}
+                disabled={todo.dueAt === null}
+                onClick={() => void toggleReminder(choice)}
+              >
+                {t.todo.reminders[choice]}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       <p id="remind-hint" className="hint">
         {todo.dueAt === null
           ? t.todo.remindNeedsDue
-          : todo.remindBefore === null
+          : remind.length === 0
             ? ''
             : t.todo.remindHints[support]}
       </p>

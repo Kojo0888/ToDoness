@@ -154,11 +154,14 @@ describe('reminder field (FR-42)', () => {
   it('a new task has no reminder; updateTodo sets and clears it', async () => {
     const s = await setup(['A']);
     const a = s.byTitle('A');
-    expect(a.remindBefore).toBeNull();
-    const withDue = await s.repo.updateTodo(a.id, { dueAt: T0 + 86_400_000, remindBefore: 'day' });
-    expect(withDue).toMatchObject({ remindBefore: 'day' });
-    expect(await s.repo.updateTodo(a.id, { remindBefore: null })).toMatchObject({
-      remindBefore: null,
+    expect(a.remindBefore).toEqual([]);
+    const withDue = await s.repo.updateTodo(a.id, {
+      dueAt: T0 + 86_400_000,
+      remindBefore: ['hour', 'day'],
+    });
+    expect(withDue).toMatchObject({ remindBefore: ['day', 'hour'] }); // several, in a fixed order
+    expect(await s.repo.updateTodo(a.id, { remindBefore: [] })).toMatchObject({
+      remindBefore: [],
     });
     await expectValidOutbox(s.db);
   });
@@ -166,7 +169,7 @@ describe('reminder field (FR-42)', () => {
   it('rejects an unknown reminder value', async () => {
     const s = await setup(['A']);
     await expect(
-      s.repo.updateTodo(s.byTitle('A').id, { remindBefore: 'month' as never }),
+      s.repo.updateTodo(s.byTitle('A').id, { remindBefore: ['month'] as never }),
     ).rejects.toMatchObject({ code: 'invalid' });
   });
 });
@@ -211,7 +214,7 @@ describe('local database version 2', () => {
 
     const db = new TodonessDB(name);
     expect(await db.lists.get('l1')).toMatchObject({ name: 'Inbox', isPublic: false });
-    expect(await db.todos.get('t1')).toMatchObject({ title: 'Old', remindBefore: null });
+    expect(await db.todos.get('t1')).toMatchObject({ title: 'Old', remindBefore: [] });
     expect(await db.notified.count()).toBe(0);
     db.close();
   });

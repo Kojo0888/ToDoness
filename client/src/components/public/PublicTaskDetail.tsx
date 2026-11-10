@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { useLocation } from 'wouter';
 import type { PublicTodo } from '@todoness/shared';
 import { fromDateTimeInput, toDateInput, toTimeInput } from '../../lib/dates';
@@ -40,14 +40,23 @@ export function PublicTaskDetail({
       await act(publicEditor.updateTodo(listId, todo.id, { title: trimmed }));
   }
 
+  // The due moment as last chosen here. A date and then a time picked in quick succession
+  // must combine, even before the first change has come back from the database.
+  const due = useRef(todo.dueAt);
+  useEffect(() => {
+    due.current = todo.dueAt; // a saved change, also from another device
+  }, [todo.dueAt]);
+
   function changeDate(e: ChangeEvent<HTMLInputElement>) {
-    const dueAt = fromDateTimeInput(e.target.value, toTimeInput(todo.dueAt));
+    const dueAt = fromDateTimeInput(e.target.value, toTimeInput(due.current));
+    due.current = dueAt;
     void act(publicEditor.updateTodo(listId, todo.id, { dueAt }));
   }
 
   function changeTime(time: string) {
-    if (todo.dueAt === null) return;
-    const dueAt = fromDateTimeInput(toDateInput(todo.dueAt), time);
+    if (due.current === null) return;
+    const dueAt = fromDateTimeInput(toDateInput(due.current), time);
+    due.current = dueAt;
     if (dueAt !== null) void act(publicEditor.updateTodo(listId, todo.id, { dueAt }));
   }
 

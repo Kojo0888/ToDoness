@@ -28,6 +28,22 @@ const fieldHlcSchema = z.record(z.string(), hlcSchema);
 const orderKeySchema = z.string().min(1).max(ORDER_KEY_MAX);
 export const remindBeforeSchema = z.enum(['week', 'day', 'hour']);
 export type RemindBefore = z.infer<typeof remindBeforeSchema>;
+/** The order reminders are kept and shown in: earliest first. */
+export const REMIND_ORDER: readonly RemindBefore[] = remindBeforeSchema.options;
+
+/**
+ * A task's reminders as a unique list in REMIND_ORDER. Older app versions (and older stored
+ * rows) have `null` or a single value: they are read as `[]` / `[value]` (docs/ui-refresh).
+ */
+export function normalizeRemindBefore(v: unknown): RemindBefore[] {
+  const given = v == null ? [] : Array.isArray(v) ? v : [v];
+  return REMIND_ORDER.filter((r) => given.includes(r));
+}
+
+const remindListSchema = z.preprocess(
+  (v) => (v === null ? [] : typeof v === 'string' ? [v] : v),
+  z.array(remindBeforeSchema).max(10).transform(normalizeRemindBefore),
+);
 export const prioritySchema = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
 
 const todoFields = {
@@ -38,7 +54,7 @@ const todoFields = {
   completedAt: nullableEpochMs,
   dueAt: nullableEpochMs,
   priority: prioritySchema,
-  remindBefore: remindBeforeSchema.nullable(),
+  remindBefore: remindListSchema,
   orderKey: orderKeySchema,
 };
 

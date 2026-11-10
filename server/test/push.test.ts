@@ -255,6 +255,31 @@ describe('reminder sweep (FR-61 – FR-63)', () => {
     ]);
   });
 
+  it('several reminders on one task: each is sent when its time comes', async () => {
+    const s = await setup();
+    const id = await s.mk(s.ann.device, { dueAt: due, remindBefore: ['week', 'day', 'hour'] });
+    await s.subscribe();
+    await s.sweep(due - 7 * DAY);
+    await s.sweep(due - 3 * DAY); // nothing new
+    await s.sweep(due - DAY);
+    await s.sweep(due - HOUR);
+    await s.sweep(due - 1);
+    expect(s.sent.map((x) => x.payload.tag)).toEqual([
+      `${id}:${due}:week`,
+      `${id}:${due}:day`,
+      `${id}:${due}:hour`,
+    ]);
+  });
+
+  it('several reminders already passed: only the latest is sent, not a burst', async () => {
+    const s = await setup();
+    const id = await s.mk(s.ann.device, { dueAt: due, remindBefore: ['week', 'day', 'hour'] });
+    await s.subscribe();
+    await s.sweep(due - 5 * HOUR); // week and day have both passed
+    await s.sweep(due - 4 * HOUR); // the week one is not sent late either
+    expect(s.sent.map((x) => x.payload.tag)).toEqual([`${id}:${due}:day`]);
+  });
+
   it('skips completed, deleted, undated and reminder-less tasks', async () => {
     const s = await setup();
     await s.mk(s.ann.device, { dueAt: due, remindBefore: 'day', done: true, completedAt: 1 });

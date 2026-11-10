@@ -397,6 +397,15 @@ describe('v1: who is online (FR-56 – FR-58)', () => {
   }, 60_000);
 });
 
+const REMINDER_LABEL = { week: '1 week before', day: '1 day before', hour: '1 hour before' };
+/** The "Remind me" chips: several can be on at once (docs/ui-refresh, FR-112). */
+const reminderChip = (page: Page, choice: keyof typeof REMINDER_LABEL) =>
+  page
+    .getByRole('group', { name: 'Remind me' })
+    .getByRole('button', { name: REMINDER_LABEL[choice], exact: true });
+const toggleReminder = (page: Page, choice: keyof typeof REMINDER_LABEL) =>
+  reminderChip(page, choice).click();
+
 describe('v1: reminders (FR-42 – FR-47)', () => {
   /**
    * Headless Chromium always reports `denied`, even when the permission is granted, so
@@ -417,18 +426,9 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
   const shown = (page: Page) =>
     page.evaluate(() => (window as unknown as { __shown: string[] }).__shown);
 
-  /** The time control has an hour and a minute list; the minute list has steps of 5. */
+  /** The time control is the device's own clock input. */
   async function pickTime(page: Page, time: string) {
-    const [h, m] = time.split(':') as [string, string];
-    await page.getByRole('combobox', { name: 'Hour' }).selectOption(h);
-    const minute = page.getByRole('combobox', { name: 'Minute' });
-    // not every minute is a choice: use the exact one if offered, else the closest earlier step
-    const offered = await minute
-      .locator('option')
-      .evaluateAll((o) => o.map((x) => (x as HTMLOptionElement).value));
-    await minute.selectOption(
-      offered.includes(m) ? m : String(Math.floor(Number(m) / 5) * 5).padStart(2, '0'),
-    );
+    await page.getByLabel('Time (optional)').fill(time);
   }
 
   /** Local `YYYY-MM-DD` and `HH:MM` for a moment `minutes` from now. */
@@ -455,9 +455,9 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
     await addTask(page, 'Dentist');
     await openTask(page, 'Dentist');
 
-    expect(await page.getByLabel('Remind me').isDisabled()).toBe(true); // needs a due date first
+    expect(await reminderChip(page, 'hour').isDisabled()).toBe(true); // needs a due date first
     await setDue(page, 40); // due in 40 minutes: a 1-hour reminder is already due
-    await page.getByLabel('Remind me').selectOption('hour');
+    await toggleReminder(page, 'hour');
 
     const message = page.getByRole('region', { name: 'Reminders' });
     await message.getByText('Reminder: Dentist').waitFor();
@@ -487,14 +487,14 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
     await addTask(page, 'Far away');
     await openTask(page, 'Far away');
     await setDue(page, 3 * 24 * 60); // in 3 days
-    await page.getByLabel('Remind me').selectOption('hour');
+    await toggleReminder(page, 'hour');
     await page.waitForTimeout(1500);
     expect(await page.getByRole('region', { name: 'Reminders' }).count()).toBe(0);
 
     await addTask(page, 'Done already');
     await openTask(page, 'Done already');
     await setDue(page, 30);
-    await page.getByLabel('Remind me').selectOption('hour');
+    await toggleReminder(page, 'hour');
     await page
       .getByRole('region', { name: 'Reminders' })
       .getByText('Reminder: Done already')
@@ -508,14 +508,38 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
     await addTask(page, 'Later');
     await openTask(page, 'Later');
     await setDue(page, 5 * 24 * 60);
-    await page.getByLabel('Remind me').selectOption('day');
+    await toggleReminder(page, 'day');
     await page.getByLabel('Due date').fill('');
-    await page.waitForFunction(
-      () =>
-        (document.querySelector('select[aria-describedby="remind-hint"]') as HTMLSelectElement)
-          .disabled,
-    );
-    expect(await page.getByLabel('Remind me').inputValue()).toBe('');
+    await expect.poll(() => reminderChip(page, 'day').isDisabled()).toBe(true);
+    expect(await reminderChip(page, 'day').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('several reminders can be chosen at once and are kept (FR-112)', async () => {
+    const page = await newPage(await newDevice(browser, app));
+    await recordNotifications(page);
+    await signUp(page, uniqueEmail('multi'));
+    await addTask(page, 'Several');
+    await openTask(page, 'Several');
+    await setDue(page, 10 * 24 * 60);
+    // two quick taps: both count
+    await toggleReminder(page, 'week');
+    await toggleReminder(page, 'hour');
+    await expect.poll(() => reminderChip(page, 'week').getAttribute('aria-pressed')).toBe('true');
+    expect(await reminderChip(page, 'day').getAttribute('aria-pressed')).toBe('false');
+    expect(await reminderChip(page, 'hour').getAttribute('aria-pressed')).toBe('true');
+    expect(await page.locator('select[aria-describedby="remind-hint"]').count()).toBe(0);
+
+    await waitSaved(page); // both changes stored and sent before the reload
+    await page.reload();
+    await task(page, 'Several').waitFor();
+    await openTask(page, 'Several');
+    await expect.poll(() => reminderChip(page, 'week').getAttribute('aria-pressed')).toBe('true');
+    expect(await reminderChip(page, 'hour').getAttribute('aria-pressed')).toBe('true');
+
+    // turning one off keeps the other
+    await toggleReminder(page, 'week');
+    await expect.poll(() => reminderChip(page, 'week').getAttribute('aria-pressed')).toBe('false');
+    expect(await reminderChip(page, 'hour').getAttribute('aria-pressed')).toBe('true');
   });
 
   it('reminders still appear inside the app without notification permission', async () => {
@@ -524,7 +548,7 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
     await addTask(page, 'No permission');
     await openTask(page, 'No permission');
     await setDue(page, 20);
-    await page.getByLabel('Remind me').selectOption('hour');
+    await toggleReminder(page, 'hour');
     await page
       .getByRole('region', { name: 'Reminders' })
       .getByText('Reminder: No permission')

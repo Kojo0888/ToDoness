@@ -122,7 +122,7 @@ describe('v1: reminder field merges between devices', () => {
 
     a.online = b.online = false;
     await a.repo.updateTodo(todo.id, { dueAt: T0 + 10 * 86_400_000 });
-    await b.repo.updateTodo(todo.id, { remindBefore: 'day' });
+    await b.repo.updateTodo(todo.id, { remindBefore: ['day', 'hour'] });
     a.online = b.online = true;
     await a.sync();
     await b.sync();
@@ -130,7 +130,7 @@ describe('v1: reminder field merges between devices', () => {
     for (const br of [a, b]) {
       expect(await br.db.todos.get(todo.id)).toMatchObject({
         dueAt: T0 + 10 * 86_400_000,
-        remindBefore: 'day',
+        remindBefore: ['day', 'hour'],
       });
     }
     await expectConverged(a, b);

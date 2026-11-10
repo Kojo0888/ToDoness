@@ -524,14 +524,16 @@ describe('v1 fields (isPublic, remindBefore)', () => {
     await c.ann.push([
       todoCreate(id, c.inbox, 'Call', hlcAt(1), { dueAt: T0 + 86_400_000, remindBefore: 'day' }),
     ]);
-    expect(row(c, 'todos', id)).toMatchObject({ remind_before: 'day' });
+    expect(row(c, 'todos', id)).toMatchObject({ reminders: 'day' }); // a v1 single value
 
-    await c.ann.push([op('todo', 'update', id, { remindBefore: 'hour' }, hlcAt(3))]);
-    await c.ann.push([op('todo', 'update', id, { remindBefore: 'week' }, hlcAt(2))]); // older
-    expect(row(c, 'todos', id)).toMatchObject({ remind_before: 'hour' });
+    await c.ann.push([op('todo', 'update', id, { remindBefore: ['hour', 'day'] }, hlcAt(3))]);
+    await c.ann.push([op('todo', 'update', id, { remindBefore: ['week'] }, hlcAt(2))]); // older
+    expect(row(c, 'todos', id)).toMatchObject({ reminders: 'day,hour' });
 
-    await c.ann.push([op('todo', 'update', id, { remindBefore: null }, hlcAt(4))]);
-    expect(row(c, 'todos', id)).toMatchObject({ remind_before: null });
+    await c.ann.push([op('todo', 'update', id, { remindBefore: [] }, hlcAt(4))]);
+    expect(row(c, 'todos', id)).toMatchObject({ reminders: '' });
+    await c.ann.push([op('todo', 'update', id, { remindBefore: null }, hlcAt(5))]); // v1 "none"
+    expect(row(c, 'todos', id)).toMatchObject({ reminders: '' });
   });
 
   it('rejects invalid values', async () => {

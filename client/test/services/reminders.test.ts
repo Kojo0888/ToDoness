@@ -26,7 +26,7 @@ function todo(over: Partial<Todo> = {}): Todo {
     completedAt: null,
     dueAt: T0 + 10 * DAY,
     priority: 0,
-    remindBefore: 'day',
+    remindBefore: ['day'],
     orderKey: 'a0',
     fieldHlc: {},
     createdAt: T0,
@@ -46,6 +46,20 @@ describe('REMIND_MS', () => {
 });
 
 describe('dueReminders (FR-44 – FR-46)', () => {
+  it('several reminders on one task fire one after another, never as a burst (FR-113, FR-114)', () => {
+    const due = T0 + 10 * DAY;
+    const t = todo({ dueAt: due, remindBefore: ['week', 'day', 'hour'] });
+    const k = (now: number, seen = new Set<string>()) =>
+      dueReminders([t], now, seen).map((r) => r.key);
+    expect(k(due - 7 * DAY)).toEqual([reminderKey(t, 'week')]);
+    expect(k(due - DAY)).toEqual([reminderKey(t, 'day')]);
+    // week and day have both passed: only the day one
+    expect(k(due - 5 * HOUR)).toEqual([reminderKey(t, 'day')]);
+    // and once that one fired, the older week one does not come back
+    expect(k(due - 4 * HOUR, new Set([reminderKey(t, 'day')]))).toEqual([]);
+    expect(k(due - HOUR + 1, new Set([reminderKey(t, 'day')]))).toEqual([reminderKey(t, 'hour')]);
+  });
+
   const due = T0 + 10 * DAY;
 
   it('is not due before the reminder time', () => {
@@ -54,7 +68,7 @@ describe('dueReminders (FR-44 – FR-46)', () => {
       ['day', DAY],
       ['hour', HOUR],
     ] as const) {
-      const t = todo({ dueAt: due, remindBefore: choice });
+      const t = todo({ dueAt: due, remindBefore: [choice] });
       expect(dueReminders([t], due - ms - 1, none), choice).toEqual([]);
     }
   });
@@ -65,53 +79,53 @@ describe('dueReminders (FR-44 – FR-46)', () => {
       ['day', DAY],
       ['hour', HOUR],
     ] as const) {
-      const t = todo({ dueAt: due, remindBefore: choice });
+      const t = todo({ dueAt: due, remindBefore: [choice] });
       expect(keys(dueReminders([t], due - ms, none)), choice).toEqual([t.id]);
       expect(keys(dueReminders([t], due - ms + 1000, none)), choice).toEqual([t.id]);
     }
   });
 
   it('is not due any more once the due moment has come', () => {
-    const t = todo({ dueAt: due, remindBefore: 'hour' });
+    const t = todo({ dueAt: due, remindBefore: ['hour'] });
     expect(keys(dueReminders([t], due - 1, none))).toEqual([t.id]);
     expect(dueReminders([t], due, none)).toEqual([]);
     expect(dueReminders([t], due + DAY, none)).toEqual([]);
   });
 
   it('catches up after a long gap if the task is not yet due', () => {
-    const t = todo({ dueAt: due, remindBefore: 'week' });
+    const t = todo({ dueAt: due, remindBefore: ['week'] });
     expect(keys(dueReminders([t], due - 2 * DAY, none))).toEqual([t.id]);
   });
 
   it('skips completed, deleted, undated and reminder-less tasks', () => {
     const now = due - 30 * 60_000;
     const all = [
-      todo({ remindBefore: 'hour', dueAt: due, done: true }),
-      todo({ remindBefore: 'hour', dueAt: due, deletedAt: T0 }),
-      todo({ remindBefore: 'hour', dueAt: null }),
-      todo({ remindBefore: null, dueAt: due }),
+      todo({ remindBefore: ['hour'], dueAt: due, done: true }),
+      todo({ remindBefore: ['hour'], dueAt: due, deletedAt: T0 }),
+      todo({ remindBefore: ['hour'], dueAt: null }),
+      todo({ remindBefore: [], dueAt: due }),
     ];
     expect(dueReminders(all, now, none)).toEqual([]);
   });
 
   it('skips reminders that already fired on this device', () => {
-    const t = todo({ dueAt: due, remindBefore: 'day' });
+    const t = todo({ dueAt: due, remindBefore: ['day'] });
     const now = due - 2 * HOUR;
-    expect(dueReminders([t], now, new Set([reminderKey(t)]))).toEqual([]);
+    expect(dueReminders([t], now, new Set([reminderKey(t, 'day')]))).toEqual([]);
   });
 
   it('changing the due date or the choice makes it fire again', () => {
-    const t = todo({ dueAt: due, remindBefore: 'day' });
-    const seen = new Set([reminderKey(t)]);
+    const t = todo({ dueAt: due, remindBefore: ['day'] });
+    const seen = new Set([reminderKey(t, 'day')]);
     const now = due - 30 * 60_000; // inside the last hour: every choice is due
     expect(dueReminders([{ ...t, dueAt: due + HOUR }], now, seen)).toHaveLength(1);
-    expect(dueReminders([{ ...t, remindBefore: 'hour' }], now, seen)).toHaveLength(1);
+    expect(dueReminders([{ ...t, remindBefore: ['hour'] }], now, seen)).toHaveLength(1);
     expect(dueReminders([t], now, seen)).toHaveLength(0);
   });
 
   it('returns the soonest due task first', () => {
-    const a = todo({ title: 'later', dueAt: due + 5 * HOUR, remindBefore: 'week' });
-    const b = todo({ title: 'sooner', dueAt: due, remindBefore: 'week' });
+    const a = todo({ title: 'later', dueAt: due + 5 * HOUR, remindBefore: ['week'] });
+    const b = todo({ title: 'sooner', dueAt: due, remindBefore: ['week'] });
     expect(dueReminders([a, b], due - DAY, none).map((r) => r.todo.title)).toEqual([
       'sooner',
       'later',
@@ -133,7 +147,10 @@ describe('timeUntil and reminderText', () => {
 
   it('builds the notification text from the task', () => {
     const t = todo({ dueAt: T0 + HOUR, title: 'Pay rent' });
-    const r = reminderText({ key: reminderKey(t), todo: t, remindAt: T0 }, T0);
+    const r = reminderText(
+      { key: reminderKey(t, 'day'), todo: t, choice: 'day', remindAt: T0 },
+      T0,
+    );
     expect(r.title).toBe('Pay rent');
     expect(r.body).toMatch(/^Due in 1 hour/);
   });
@@ -175,7 +192,7 @@ describe('createReminderScheduler', () => {
 
   it('notifies once for a due reminder and remembers it', async () => {
     const { db, notify, scheduler, now } = await setup([
-      { title: 'Soon', dueAt: T0 + 2 * HOUR, remindBefore: 'day' },
+      { title: 'Soon', dueAt: T0 + 2 * HOUR, remindBefore: ['day'] },
     ]);
     expect(await scheduler.check()).toBe(1);
     expect(notify).toHaveBeenCalledTimes(1);
@@ -189,7 +206,7 @@ describe('createReminderScheduler', () => {
 
   it('waits until the time has come', async () => {
     const { notify, scheduler, now } = await setup([
-      { dueAt: T0 + 3 * HOUR, remindBefore: 'hour' },
+      { dueAt: T0 + 3 * HOUR, remindBefore: ['hour'] },
     ]);
     expect(await scheduler.check()).toBe(0);
     now.set(T0 + 2 * HOUR - 1);
@@ -201,7 +218,7 @@ describe('createReminderScheduler', () => {
 
   it('fires again after the due date is changed', async () => {
     const { db, notify, scheduler, now } = await setup([
-      { id: '0192f0c1-0000-7000-8000-00000000000a', dueAt: T0 + 2 * HOUR, remindBefore: 'day' },
+      { id: '0192f0c1-0000-7000-8000-00000000000a', dueAt: T0 + 2 * HOUR, remindBefore: ['day'] },
     ]);
     await scheduler.check();
     await db.todos.update('0192f0c1-0000-7000-8000-00000000000a', { dueAt: T0 + 5 * HOUR });
@@ -212,7 +229,7 @@ describe('createReminderScheduler', () => {
 
   it('ignores completed tasks', async () => {
     const { notify, scheduler } = await setup([
-      { dueAt: T0 + 2 * HOUR, remindBefore: 'day', done: true },
+      { dueAt: T0 + 2 * HOUR, remindBefore: ['day'], done: true },
     ]);
     expect(await scheduler.check()).toBe(0);
     expect(notify).not.toHaveBeenCalled();
@@ -228,7 +245,7 @@ describe('createReminderScheduler', () => {
   });
 
   it('does not run two checks at once', async () => {
-    const { notify, scheduler } = await setup([{ dueAt: T0 + 2 * HOUR, remindBefore: 'day' }]);
+    const { notify, scheduler } = await setup([{ dueAt: T0 + 2 * HOUR, remindBefore: ['day'] }]);
     await Promise.all([scheduler.check(), scheduler.check(), scheduler.check()]);
     expect(notify).toHaveBeenCalledTimes(1);
   });
