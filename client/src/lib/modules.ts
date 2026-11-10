@@ -14,7 +14,11 @@ export interface AppModule {
 }
 
 export const MODULES: readonly AppModule[] = [
-  { id: 'tasks', home: '/tasks', owns: (p) => /^\/(tasks|l|public)(\/|$)/.test(p) },
+  {
+    id: 'tasks',
+    home: '/tasks',
+    owns: (p) => /^\/(tasks|l|public)(\/|$)|^\/lists\/manage\/?$/.test(p),
+  },
   { id: 'notes', home: '/notes', owns: (p) => /^\/notes(\/|$)/.test(p) },
 ];
 

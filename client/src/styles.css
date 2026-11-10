@@ -1263,3 +1263,30 @@ h2.nav-heading {
     display: none;
   }
 }
+
+.manage-lists-link {
+  display: block;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+
+.manage-lists-link.active {
+  font-weight: 600;
+}
+
+.manage-list-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.manage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.6rem 0.2rem;
+  border-bottom: 1px solid var(--border);
+}

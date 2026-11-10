@@ -101,11 +101,19 @@ export const t = {
     lists: 'Lists',
     newList: 'New list name',
     addList: 'Add list',
+    manageLists: 'Manage lists',
     settings: 'Settings',
     admin: 'Admin',
     menu: 'Menu',
     publicLists: 'Public lists',
     publicNeedsConnection: 'Public lists need a connection the first time.',
+  },
+
+  manage: {
+    title: 'Manage lists',
+    intro: 'Rename, reorder or delete your lists. The Inbox cannot be changed.',
+    empty: 'You have no lists besides the Inbox yet.',
+    back: 'Back to tasks',
   },
 
   list: {

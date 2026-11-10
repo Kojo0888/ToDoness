@@ -16,6 +16,7 @@ import { Reminders } from '../account/Reminders';
 import { RecoveryDialog } from '../account/RecoveryDialog';
 import { Settings } from '../account/Settings';
 import { ModuleSwitch } from './ModuleSwitch';
+import { ManageLists } from '../lists/ManageLists';
 import { Sidebar } from './Sidebar';
 import { ToastProvider } from '../common/Toast';
 
@@ -92,6 +93,9 @@ export function Shell({ user }: { user: StoredUser }) {
               </Route>
               <Route path="/l/:listId">
                 {(p) => <ListPage key={p.listId} listId={p.listId} />}
+              </Route>
+              <Route path="/lists/manage">
+                <ManageLists />
               </Route>
               <Route path="/notes/public">
                 <PublicNotesPage />

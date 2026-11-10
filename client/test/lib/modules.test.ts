@@ -33,6 +33,7 @@ describe('moduleOfPath', () => {
     ['/l/abc/t/def', 'tasks'],
     ['/public/abc', 'tasks'],
     ['/public/abc/t/def', 'tasks'],
+    ['/lists/manage', 'tasks'],
     ['/notes', 'notes'],
     ['/notes/', 'notes'],
     ['/notes/public', 'notes'],
@@ -41,12 +42,18 @@ describe('moduleOfPath', () => {
   });
 
   // `/` is the start address: it opens the last module, so it belongs to none.
-  it.each(['/', '/settings', '/admin', '/notesx', '/lists', '/publicx', '/tasksx'])(
-    '%s belongs to no module',
-    (path) => {
-      expect(moduleOfPath(path)).toBeUndefined();
-    },
-  );
+  it.each([
+    '/',
+    '/settings',
+    '/admin',
+    '/notesx',
+    '/lists',
+    '/publicx',
+    '/tasksx',
+    '/lists/managex',
+  ])('%s belongs to no module', (path) => {
+    expect(moduleOfPath(path)).toBeUndefined();
+  });
 });
 
 describe('the module list', () => {
