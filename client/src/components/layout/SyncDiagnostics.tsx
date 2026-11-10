@@ -3,9 +3,10 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useOnline, useSyncStatus } from '../../app/hooks';
 import { db, syncDiag } from '../../app/container';
 import { t } from '../../app/strings';
-import { getQueuedChanges } from '../../data/queries';
+import { countPending, getQueuedChanges } from '../../data/queries';
 import { browserStorage } from '../../lib/modules';
 import { diagRows } from './diagRows';
+import { syncSummary } from './syncSummary';
 
 const clock = (at: number) => {
   const d = new Date(at);
@@ -37,17 +38,41 @@ const saveOpen = (open: boolean) => {
  */
 export function SyncDiagnostics() {
   const [open, setOpen] = useState(readOpen);
+  const status = useSyncStatus();
+  const online = useOnline();
+  const pending = useLiveQuery(() => countPending(db), [], 0);
+  const summary = syncSummary({ online, state: status.state, pending });
   const toggle = () => {
     saveOpen(!open);
     setOpen(!open);
   };
   return (
     <div className="sync-diag-wrap">
-      <button type="button" className="link sync-diag-toggle" aria-expanded={open} onClick={toggle}>
-        <span className="sync-diag-caret" aria-hidden="true">
-          {open ? '▾' : '▸'}
-        </span>
-        {t.syncDiag.toggle}
+      <button type="button" className="diag-toggle" aria-expanded={open} onClick={toggle}>
+        <svg
+          className="diag-chevron"
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path
+            d="M9 6l6 6-6 6"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+          />
+        </svg>
+        <span className="diag-title">{t.syncDiag.toggle}</span>
+        {/* Just a dot (the sync badge below says it in words); the tooltip has the text. */}
+        <span
+          className={`diag-dot diag-dot-${summary.tone}`}
+          title={summary.text}
+          aria-hidden="true"
+        />
       </button>
       {open && <DiagnosticsPanel />}
     </div>
@@ -60,6 +85,8 @@ function DiagnosticsPanel() {
   const online = useOnline();
   const [logOpen, setLogOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
+  // Counted, not loaded: thousands of queued changes stay cheap.
+  const queuedCount = useLiveQuery(() => countPending(db), []);
 
   // A clock for the live numbers (time a request has been waiting, countdown to the next try).
   const [now, setNow] = useState(() => Date.now());
@@ -80,22 +107,28 @@ function DiagnosticsPanel() {
           </div>
         ))}
       </dl>
-      <div className="sync-diag-actions">
+      <div className="seg" role="group" aria-label={t.syncDiag.title}>
         <button
           type="button"
-          className="link"
+          className="seg-btn"
           aria-expanded={logOpen}
           onClick={() => setLogOpen(!logOpen)}
         >
           {logOpen ? t.syncDiag.hideLog : t.syncDiag.showLog}
+          <span className="seg-count" aria-hidden="true">
+            {events.length}
+          </span>
         </button>
         <button
           type="button"
-          className="link"
+          className="seg-btn"
           aria-expanded={queueOpen}
           onClick={() => setQueueOpen(!queueOpen)}
         >
           {t.syncDiag.showQueue}
+          <span className="seg-count" aria-hidden="true">
+            {queuedCount ?? 0}
+          </span>
         </button>
       </div>
       {logOpen && (

@@ -62,8 +62,12 @@ export interface Repo {
   reorderTodo(id: string, beforeId: string | null): Promise<Todo>;
   /** Makes a list readable (or not) by every logged-in user. */
   setListPublic(id: string, isPublic: boolean): Promise<List>;
-  /** Moves a list one place up or down among the visible lists (never above the Inbox). */
-  moveList(id: string, direction: 'up' | 'down'): Promise<List>;
+  /**
+   * Puts a list directly before another one (`null` = at the end), for drag and drop. One
+   * `orderKey` update; nothing happens if the position would not change. The Inbox stays
+   * first: it cannot be moved, and nothing can be put before it.
+   */
+  reorderList(id: string, beforeId: string | null): Promise<List>;
   /** A new note with this text, on top. Blank text is refused. */
   createNote(text: string): Promise<Note>;
   /** Replaces the text of a note (it may become empty). */
@@ -311,34 +315,23 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         return commit<List>('list', 'update', id, { name });
       }),
 
-    moveList: (id, direction) =>
+    reorderList: (id, beforeId) =>
       inTx(async () => {
         const list = await liveList(id);
         if (list.isInbox) throw new RepoError('inbox_protected', 'The Inbox cannot be moved');
-
-        const all = (await db.lists.orderBy('orderKey').toArray()).filter(
+        if (beforeId !== null) {
+          const target = await liveList(beforeId);
+          if (target.isInbox) {
+            throw new RepoError('inbox_protected', 'Nothing can be put above the Inbox');
+          }
+        }
+        const live = (await db.lists.orderBy('orderKey').toArray()).filter(
           (l) => l.deletedAt === null,
         );
-        const i = all.findIndex((l) => l.id === id);
-        const neighbor = all[direction === 'up' ? i - 1 : i + 1];
-        if (!neighbor || neighbor.isInbox) return list; // already at the end
-
-        // A new key between the neighbour and the list after it (or before it).
-        let lo: string | null;
-        let hi: string | null;
-        if (direction === 'up') {
-          lo = all[i - 2]?.orderKey ?? null;
-          hi = neighbor.orderKey;
-        } else {
-          lo = neighbor.orderKey;
-          hi = all[i + 2]?.orderKey ?? null;
-        }
-        // Two devices can create lists with the same key; then just step past the neighbour.
-        if (lo !== null && hi !== null && lo >= hi) {
-          if (direction === 'down') hi = null;
-          else lo = null;
-        }
-        return commit<List>('list', 'update', id, { orderKey: generateKeyBetween(lo, hi) });
+        const choice = keyForPosition(live, id, beforeId);
+        if (choice.kind === 'same') return list;
+        if (choice.kind === 'missing') throw new RepoError('not_found', 'List or target not found');
+        return commit<List>('list', 'update', id, { orderKey: choice.key });
       }),
 
     restoreSnapshot: (snapshot, mode) =>

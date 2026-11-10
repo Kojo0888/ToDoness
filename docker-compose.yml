@@ -5,6 +5,11 @@ services:
     environment:
       COOKIE_SECURE: 'true' # cookies only over HTTPS (Caddy provides it)
       TRUST_PROXY: 'true' # use the client IP that Caddy forwards (login rate limit)
+      # Reminders through ntfy (README, "Reminders through ntfy"); uncomment to switch on:
+      # NTFY_URL: 'http://ntfy:80'
+      # NTFY_TOKEN: ''
+      # NTFY_PUBLIC_URL: 'https://ntfy.company.example' # what phones subscribe to
+      # PUBLIC_URL: 'https://todo.company.example'
     volumes:
       - todoness-data:/data
     expose:

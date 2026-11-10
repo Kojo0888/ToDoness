@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import type { NtfySend } from './ntfy';
 import { sweepReminders, type PushSend } from './reminders';
 
 /**
@@ -8,11 +9,13 @@ import { sweepReminders, type PushSend } from './reminders';
 export function startReminderSweeper({
   db,
   send,
+  sendNtfy,
   intervalMs = 30_000,
   now = Date.now,
 }: {
   db: Database.Database;
   send: PushSend;
+  sendNtfy?: NtfySend;
   intervalMs?: number;
   now?: () => number;
 }): () => void {
@@ -21,7 +24,7 @@ export function startReminderSweeper({
     if (sweeping) return;
     sweeping = true;
     try {
-      await sweepReminders({ db, send, now: now() });
+      await sweepReminders({ db, send, ...(sendNtfy ? { sendNtfy } : {}), now: now() });
     } catch (err) {
       console.error('Reminder sweep failed:', err);
     } finally {

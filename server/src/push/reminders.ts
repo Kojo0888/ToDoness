@@ -4,6 +4,7 @@
  */
 import type Database from 'better-sqlite3';
 import { REMIND_MS, reminderKey, timeUntil } from '@todoness/shared';
+import type { NtfySend } from './ntfy';
 
 export interface PushPayload {
   title: string;
@@ -28,6 +29,9 @@ export type PushSend = (
 
 const FORGET_AFTER_MS = 60 * 24 * 3_600_000;
 
+/** How many reminders are sent at the same time. */
+const PARALLEL_SENDS = 8;
+
 interface Due {
   id: string;
   user_id: string;
@@ -40,13 +44,14 @@ interface Due {
 export async function sweepReminders(deps: {
   db: Database.Database;
   send: PushSend;
+  sendNtfy?: NtfySend;
   now: number;
 }): Promise<{ sent: number }> {
-  const { db, send, now } = deps;
+  const { db, send, sendNtfy, now } = deps;
 
   db.prepare('DELETE FROM sent_reminders WHERE due_at < ?').run(now - FORGET_AFTER_MS);
 
-  // Only users with a device: a reminder is not used up while nobody could receive it.
+  // Only users with a device or topic: a reminder is not used up while nobody could receive it.
   const due = db
     .prepare(
       `SELECT t.id, t.user_id, t.list_id, t.title, t.due_at, t.remind_before
@@ -61,7 +66,9 @@ export async function sweepReminders(deps: {
           AND NOT EXISTS (SELECT 1 FROM sent_reminders s
                            WHERE s.todo_id = t.id AND s.due_at = t.due_at
                              AND s.remind_before = t.remind_before)
-          AND EXISTS (SELECT 1 FROM push_subscriptions p WHERE p.user_id = t.user_id)
+          AND (EXISTS (SELECT 1 FROM push_subscriptions p WHERE p.user_id = t.user_id)${
+            sendNtfy ? ' OR EXISTS (SELECT 1 FROM ntfy_topics n WHERE n.user_id = t.user_id)' : ''
+          })
         ORDER BY t.due_at`,
     )
     .all({ now }) as Due[];
@@ -76,11 +83,12 @@ export async function sweepReminders(deps: {
     'SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?',
   );
   const forget = db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?');
+  const topicOf = db.prepare('SELECT topic FROM ntfy_topics WHERE user_id = ?');
 
   let sent = 0;
-  for (const t of due) {
+  async function deliver(t: Due) {
     // Remember first, so a slow or crashing send can never cause a second push.
-    if (record.run(t.id, t.due_at, t.remind_before, now).changes === 0) continue;
+    if (record.run(t.id, t.due_at, t.remind_before, now).changes === 0) return;
 
     const payload: PushPayload = {
       title: t.title,
@@ -98,8 +106,33 @@ export async function sweepReminders(deps: {
       else failed++;
     }
 
+    const row = sendNtfy ? (topicOf.get(t.user_id) as { topic: string } | undefined) : undefined;
+    if (sendNtfy && row) {
+      const outcome = await sendNtfy(row.topic, payload).catch(() => 'failed' as const);
+      if (outcome === 'ok') delivered++;
+      else failed++;
+    }
+
     if (delivered > 0) sent++;
     else if (failed > 0) unrecord.run(t.id, t.due_at, t.remind_before); // try again next time
   }
+
+  // A few at a time: one slow or dead push service must not hold up everyone's reminders
+  // for minutes, and a burst of due reminders must not flood the services either.
+  // A failing reminder (e.g. the database closed at shutdown) does not stop the others, and
+  // the sweep only ends once every worker has stopped, so the next sweep never overlaps it.
+  let next = 0;
+  let firstError: unknown;
+  const worker = async () => {
+    while (next < due.length) {
+      try {
+        await deliver(due[next++]!);
+      } catch (err) {
+        firstError ??= err;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(PARALLEL_SENDS, due.length) }, worker));
+  if (firstError !== undefined) throw firstError;
   return { sent };
 }

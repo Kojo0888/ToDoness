@@ -111,9 +111,15 @@ export const t = {
 
   manage: {
     title: 'Manage lists',
-    intro: 'Rename, reorder or delete your lists. The Inbox cannot be changed.',
+    intro:
+      'Drag a list by its handle to reorder it. Use ⋯ to rename or delete it. The Inbox cannot be changed.',
     empty: 'You have no lists besides the Inbox yet.',
     back: 'Back to tasks',
+    drag: (name: string) => `Drag to reorder list: ${name}`,
+    actions: (name: string) => `Actions: ${name}`,
+    dragInstructions:
+      'To reorder, press Space on the drag handle, move with the arrow keys, then press Space again to drop. Press Escape to cancel.',
+    reorderFailed: 'Could not move the list: it was changed or deleted meanwhile. Try again.',
   },
 
   list: {
@@ -127,8 +133,6 @@ export const t = {
     renameLabel: 'List name',
     save: 'Save',
     cancel: 'Cancel',
-    moveUp: 'Move list up',
-    moveDown: 'Move list down',
     deleteList: 'Delete list',
     deleteListTitle: 'Delete this list?',
     deleteListText: (name: string, n: number) =>
@@ -356,6 +360,34 @@ export const t = {
       failed:
         'Could not turn push on. The browser or the server could not set it up; try again later.',
       hint: 'Needs a connection to the server, and the server must be able to reach your browser’s push service.',
+    },
+    ntfy: {
+      title: 'Reminders through ntfy',
+      text: 'Get reminders in the ntfy app on your phone or computer. Works next to web push, and also on a network without internet if your server runs its own ntfy.',
+      topicLabel: 'Your topic',
+      generate: 'Generate a private topic',
+      save: 'Save',
+      saving: 'Saving…',
+      remove: 'Turn off',
+      test: 'Send a test notification',
+      testing: 'Sending…',
+      subscribe: (address: string) => `In the ntfy app, subscribe to: ${address}`,
+      active: 'On: reminders are also published to your topic.',
+      inactive: 'Off.',
+      saved: 'Saved.',
+      removed: 'Turned off.',
+      testSent: 'Sent. It should show up in the ntfy app in a moment.',
+      error: {
+        invalid: 'A topic has 1 to 64 letters, digits, "-" or "_".',
+        taken: 'This topic is already used by someone else. Pick another one.',
+        disabled: 'ntfy is not switched on on this server.',
+        failed: 'Could not do that. Check the connection and try again.',
+        noTopic: 'Save a topic first.',
+        rateLimited: 'Please wait a few seconds before sending another test.',
+        testFailed:
+          'The server could not reach the ntfy server. Check NTFY_URL and the server’s network.',
+      },
+      hint: 'On a shared ntfy server anyone who knows your topic can read your reminders: keep it secret.',
     },
     notifications: {
       title: 'Notifications',

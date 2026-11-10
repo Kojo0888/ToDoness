@@ -28,6 +28,17 @@ export interface Config {
   vapidPrivateKey: string | undefined;
   /** `mailto:` or `https:` contact sent to push services. */
   vapidSubject: string;
+  /** ntfy server for reminders (NTFY_URL); unset = ntfy is off. No trailing slash. */
+  ntfyUrl: string | undefined;
+  /** Access token for a protected ntfy server (NTFY_TOKEN). */
+  ntfyToken: string | undefined;
+  /**
+   * The ntfy address users subscribe to in the ntfy app (NTFY_PUBLIC_URL), when the server
+   * reaches ntfy by an internal name such as `http://ntfy:80`. Unset = NTFY_URL is shown.
+   */
+  ntfyPublicUrl: string | undefined;
+  /** Address of this app as users reach it (PUBLIC_URL); lets an ntfy click open the task. */
+  publicUrl: string | undefined;
 }
 
 type Env = Record<string, string | undefined>;
@@ -53,6 +64,18 @@ function wholeNumber(env: Env, key: string, fallback: number, min: number, max: 
     throw new ConfigError(`${key} must be a whole number from ${min} to ${max} (got "${v}")`);
   }
   return n;
+}
+
+/** An http(s) address with its trailing slashes removed. */
+function webAddress(env: Env, key: string): string | undefined {
+  const v = text(env, key);
+  if (v === undefined) return undefined;
+  if (!/^https?:\/\/[^\s/]+\S*$/.test(v)) {
+    throw new ConfigError(
+      `${key} must be an address starting with http:// or https:// (got "${v}")`,
+    );
+  }
+  return v.replace(/\/+$/, '');
 }
 
 export function loadConfig(env: Env = process.env): Config {
@@ -87,6 +110,19 @@ export function loadConfig(env: Env = process.env): Config {
     );
   }
 
+  const ntfyUrl = webAddress(env, 'NTFY_URL');
+  const ntfyToken = text(env, 'NTFY_TOKEN');
+  if (ntfyToken !== undefined && ntfyUrl === undefined) {
+    throw new ConfigError(
+      'NTFY_TOKEN is set but NTFY_URL is not: set NTFY_URL too, or remove the token',
+    );
+  }
+
+  const ntfyPublicUrl = webAddress(env, 'NTFY_PUBLIC_URL');
+  if (ntfyPublicUrl !== undefined && ntfyUrl === undefined) {
+    throw new ConfigError('NTFY_PUBLIC_URL is set but NTFY_URL is not: set NTFY_URL too');
+  }
+
   return {
     port,
     databasePath: resolvedDatabasePath,
@@ -101,5 +137,9 @@ export function loadConfig(env: Env = process.env): Config {
     vapidPublicKey,
     vapidPrivateKey,
     vapidSubject,
+    ntfyUrl,
+    ntfyToken,
+    ntfyPublicUrl,
+    publicUrl: webAddress(env, 'PUBLIC_URL'),
   };
 }

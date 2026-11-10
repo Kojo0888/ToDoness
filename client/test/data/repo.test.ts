@@ -321,7 +321,7 @@ describe('lists', () => {
   });
 });
 
-describe('moveList (reordering lists, FR-9)', () => {
+describe('reorderList (drag and drop on the Manage lists page)', () => {
   async function fourLists() {
     const ctx = testRepo();
     await seedInbox(ctx.db);
@@ -333,71 +333,68 @@ describe('moveList (reordering lists, FR-9)', () => {
   }
   const names = async (db: ReturnType<typeof testDb>) => (await getLists(db)).map((l) => l.name);
 
-  it('moves a list down and up by one place with a single operation', async () => {
+  it('puts a list before another one with a single orderKey operation', async () => {
     const { db, repo, a, c } = await fourLists();
-    await repo.moveList(a.id, 'down');
-    expect(await names(db)).toEqual(['Inbox', 'B', 'A', 'C']);
+    await repo.reorderList(c.id, a.id);
+    expect(await names(db)).toEqual(['Inbox', 'C', 'A', 'B']);
     const ops = await expectValidOutbox(db);
     expect(ops).toHaveLength(1);
-    expect(ops[0]).toMatchObject({ entity: 'list', type: 'update', entityId: a.id });
+    expect(ops[0]).toMatchObject({ entity: 'list', type: 'update', entityId: c.id });
     expect(Object.keys(ops[0]!.patch)).toEqual(['orderKey']);
+  });
 
-    await repo.moveList(c.id, 'up');
+  it('moves a list to the end with `null`, and jumps over several places at once', async () => {
+    const { db, repo, a } = await fourLists();
+    await repo.reorderList(a.id, null);
     expect(await names(db)).toEqual(['Inbox', 'B', 'C', 'A']);
   });
 
-  it('does nothing at the ends, and never moves above the Inbox', async () => {
-    const { db, repo, a, c } = await fourLists();
-    await repo.moveList(a.id, 'up'); // A is right below the Inbox
-    await repo.moveList(c.id, 'down'); // C is last
+  it('does nothing when the list is already there', async () => {
+    const { db, repo, a, b, c } = await fourLists();
+    await repo.reorderList(a.id, b.id); // A is already right before B
+    await repo.reorderList(c.id, null); // C is already last
+    await repo.reorderList(b.id, b.id);
     expect(await names(db)).toEqual(['Inbox', 'A', 'B', 'C']);
     expect(await db.outbox.count()).toBe(0);
   });
 
-  it('keeps the Inbox in place', async () => {
-    const { db, repo } = await fourLists();
+  it('can put a list first below the Inbox, but never above it', async () => {
+    const { db, repo, a, c } = await fourLists();
+    await repo.reorderList(c.id, a.id);
+    expect(await names(db)).toEqual(['Inbox', 'C', 'A', 'B']);
     const inbox = (await getLists(db))[0]!;
-    await expect(repo.moveList(inbox.id, 'down')).rejects.toMatchObject({
+    await expect(repo.reorderList(c.id, inbox.id)).rejects.toMatchObject({
       code: 'inbox_protected',
     });
   });
 
-  it('ignores deleted lists when counting places', async () => {
-    const { db, repo, a, b, c } = await fourLists();
-    await repo.deleteList(b.id);
-    await repo.moveList(a.id, 'down'); // jumps over the deleted B
-    expect(await names(db)).toEqual(['Inbox', 'C', 'A']);
-    await repo.moveList(c.id, 'down');
-    expect(await names(db)).toEqual(['Inbox', 'A', 'C']);
+  it('keeps the Inbox in place', async () => {
+    const { db, repo, a } = await fourLists();
+    const inbox = (await getLists(db))[0]!;
+    await expect(repo.reorderList(inbox.id, a.id)).rejects.toMatchObject({
+      code: 'inbox_protected',
+    });
+    await expect(repo.reorderList(inbox.id, null)).rejects.toMatchObject({
+      code: 'inbox_protected',
+    });
   });
 
-  it('survives many moves with valid, strictly ordered keys', async () => {
-    const { db, repo, a } = await fourLists();
-    for (let i = 0; i < 30; i++) {
-      await repo.moveList(a.id, 'down');
-      await repo.moveList(a.id, 'up');
+  it('refuses a list or target that does not exist or was deleted', async () => {
+    const { repo, a, b } = await fourLists();
+    await expect(repo.reorderList('nope', a.id)).rejects.toMatchObject({ code: 'not_found' });
+    await expect(repo.reorderList(a.id, 'nope')).rejects.toMatchObject({ code: 'not_found' });
+    await repo.deleteList(b.id);
+    await expect(repo.reorderList(a.id, b.id)).rejects.toMatchObject({ code: 'not_found' });
+  });
+
+  it('survives many drops without the order keys breaking', async () => {
+    const { db, repo, a, b, c } = await fourLists();
+    for (let i = 0; i < 25; i++) {
+      await repo.reorderList(c.id, a.id);
+      await repo.reorderList(a.id, b.id);
+      await repo.reorderList(c.id, null);
     }
     expect(await names(db)).toEqual(['Inbox', 'A', 'B', 'C']);
-    const keys = (await getLists(db)).map((l) => l.orderKey);
-    expect(keys).toEqual([...keys].sort());
-    expect(new Set(keys).size).toBe(4);
-    await expectValidOutbox(db);
-  });
-
-  it('copes with two lists that got the same key on different devices', async () => {
-    const { db, repo, a, b } = await fourLists();
-    await db.lists.update(b.id, { orderKey: a.orderKey }); // simulate the clash
-    await expect(repo.moveList(a.id, 'down')).resolves.toBeDefined();
-    expect((await getLists(db)).map((l) => l.name).sort()).toEqual(['A', 'B', 'C', 'Inbox']);
-  });
-
-  it('rejects an unknown list', async () => {
-    const { repo } = await fourLists();
-    await expect(repo.moveList('0192f0c1-0000-7000-8000-000000000000', 'up')).rejects.toMatchObject(
-      {
-        code: 'not_found',
-      },
-    );
   });
 });
 

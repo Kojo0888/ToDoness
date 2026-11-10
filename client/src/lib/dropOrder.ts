@@ -12,6 +12,11 @@ export interface DropOrder {
   orderFor(scope: string): string[] | null;
   /** The order the list now has: forget the pending order once it is there (or moot). */
   settle(scope: string, ids: string[]): void;
+  /**
+   * The drop that set `ids` was refused: show the stored order again at once. A newer drop
+   * (another pending order) is left alone.
+   */
+  cancel(scope: string, ids: string[]): void;
   subscribe(listener: () => void): () => void;
   /** Changes whenever the pending order does (for `useSyncExternalStore`). */
   getSnapshot(): unknown;
@@ -44,6 +49,10 @@ export function createDropOrder(giveUpMs = 3000): DropOrder {
       const done = !sameItems(pending.ids, ids) || pending.ids.every((id, i) => ids[i] === id);
       if (done) change(null);
     },
+    cancel(scope, ids) {
+      if (pending?.scope !== scope || pending.ids.length !== ids.length) return;
+      if (pending.ids.every((id, i) => ids[i] === id)) change(null);
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -60,4 +69,6 @@ export const dropScope = {
   list: (listId: string) => `list:${listId}`,
   publicList: (listId: string) => `public:${listId}`,
   notes: 'notes',
+  /** My lists on the Manage lists page. */
+  lists: 'lists',
 };

@@ -61,3 +61,33 @@ describe('dropOrder', () => {
     expect(store.orderFor('notes')).toEqual(['A', 'B']);
   });
 });
+
+describe('dropScope.lists', () => {
+  it('is its own scope, so a list drop never mixes with a task drop', async () => {
+    const { dropScope } = await import('../../src/lib/dropOrder');
+    expect(dropScope.lists).toBe('lists');
+    expect(dropScope.lists).not.toBe(dropScope.notes);
+    expect(dropScope.lists).not.toBe(dropScope.list('lists'));
+  });
+});
+
+describe('cancel', () => {
+  it('forgets the pending order of that list at once (a refused drop jumps back now)', async () => {
+    const { createDropOrder } = await import('../../src/lib/dropOrder');
+    const order = createDropOrder();
+    order.set('lists', ['b', 'a']);
+    order.cancel('other', ['b', 'a']);
+    expect(order.orderFor('lists')).toEqual(['b', 'a']); // another scope: untouched
+    order.cancel('lists', ['b', 'a']);
+    expect(order.orderFor('lists')).toBeNull();
+  });
+
+  it('leaves a newer drop alone when an older one is refused late', async () => {
+    const { createDropOrder } = await import('../../src/lib/dropOrder');
+    const order = createDropOrder();
+    order.set('lists', ['b', 'a', 'c']); // first drop
+    order.set('lists', ['c', 'b', 'a']); // second drop, before the first was written
+    order.cancel('lists', ['b', 'a', 'c']); // the first one is refused
+    expect(order.orderFor('lists')).toEqual(['c', 'b', 'a']);
+  });
+});

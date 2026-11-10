@@ -129,19 +129,33 @@ describe('tasks and lists', () => {
     expect(await page.locator('.nav-lists a').allTextContents()).toEqual(['Inbox', 'Work', 'Home']);
     await page.getByRole('link', { name: 'Manage lists' }).click();
     await page.getByRole('heading', { level: 2, name: 'Manage lists' }).waitFor();
-    await page.getByRole('button', { name: 'Move list up: Home' }).click();
-    await page.getByRole('link', { name: 'Back to tasks' }).waitFor();
+    // Drag Home above Work with the mouse (one handle per list, no up/down buttons).
+    expect(await page.getByRole('button', { name: /^Move list/ }).count()).toBe(0);
+    const from = await page
+      .getByRole('button', { name: 'Drag to reorder list: Home' })
+      .boundingBox();
+    const to = await page.getByRole('button', { name: 'Drag to reorder list: Work' }).boundingBox();
+    await page.mouse.move(from!.x + 10, from!.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(from!.x + 10, from!.y - 5, { steps: 5 });
+    await page.mouse.move(to!.x + 10, to!.y + 2, { steps: 15 });
+    await page.mouse.up();
     await expect
       .poll(() => page.locator('.nav-lists a').allTextContents())
       .toEqual(['Inbox', 'Home', 'Work']);
-    expect(await page.getByRole('button', { name: 'Move list up: Home' }).isDisabled()).toBe(true); // right below the Inbox
+    await expect
+      .poll(() => page.locator('.manage-name').allTextContents())
+      .toEqual(['Home', 'Work']);
 
-    await page.getByRole('button', { name: 'Rename: Work' }).click();
+    // Rename and delete are in the "⋯" menu of the list.
+    await page.getByRole('button', { name: 'Actions: Work' }).click();
+    await page.getByRole('menuitem', { name: 'Rename' }).click();
     await page.getByLabel('List name', { exact: true }).fill('Job');
     await page.getByRole('button', { name: 'Save' }).click();
     await page.locator('.manage-name', { hasText: 'Job' }).waitFor();
 
-    await page.getByRole('button', { name: 'Delete list: Job' }).click();
+    await page.getByRole('button', { name: 'Actions: Job' }).click();
+    await page.getByRole('menuitem', { name: 'Delete list' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByText('2 open and completed tasks').waitFor();
     await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
@@ -154,8 +168,47 @@ describe('tasks and lists', () => {
     await signUp(page, uniqueEmail());
     await page.getByRole('link', { name: 'Manage lists' }).click();
     await page.getByRole('heading', { level: 2, name: 'Manage lists' }).waitFor();
-    expect(await page.getByRole('button', { name: /^Delete list/ }).count()).toBe(0);
-    expect(await page.getByRole('button', { name: /^Rename/ }).count()).toBe(0);
+    expect(await page.getByRole('button', { name: /^Actions/ }).count()).toBe(0);
+    expect(await page.getByRole('button', { name: /^Drag to reorder list/ }).count()).toBe(0);
+  });
+
+  it('the ⋯ menu works with the keyboard and a click outside closes it', async () => {
+    const page = await newPage(await newDevice(browser, app));
+    await signUp(page, uniqueEmail());
+    await page.getByLabel('New list name').fill('Work');
+    await page.getByRole('button', { name: 'Add list' }).click();
+    await page.getByRole('heading', { level: 2, name: 'Work' }).waitFor();
+    await page.getByRole('link', { name: 'Manage lists' }).click();
+
+    const button = page.getByRole('button', { name: 'Actions: Work' });
+    await button.focus();
+    await page.keyboard.press('Enter');
+    const rename = page.getByRole('menuitem', { name: 'Rename' });
+    await rename.waitFor();
+    expect(await rename.evaluate((el) => el === document.activeElement)).toBe(true);
+    await page.keyboard.press('ArrowDown');
+    expect(
+      await page
+        .getByRole('menuitem', { name: 'Delete list' })
+        .evaluate((el) => el === document.activeElement),
+    ).toBe(true);
+
+    await page.keyboard.press('Escape');
+    await rename.waitFor({ state: 'detached' });
+    expect(await button.evaluate((el) => el === document.activeElement)).toBe(true);
+
+    // ArrowUp on the closed menu opens it on the last item (ARIA menu button pattern).
+    await page.keyboard.press('ArrowUp');
+    const del = page.getByRole('menuitem', { name: 'Delete list' });
+    await del.waitFor();
+    expect(await del.evaluate((el) => el === document.activeElement)).toBe(true);
+    await page.keyboard.press('Escape');
+    await del.waitFor({ state: 'detached' });
+
+    await button.click();
+    await rename.waitFor();
+    await page.getByRole('heading', { level: 2, name: 'Manage lists' }).click(); // outside
+    await rename.waitFor({ state: 'detached' });
   });
 });
 

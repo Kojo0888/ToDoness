@@ -18,6 +18,10 @@ describe('loadConfig', () => {
       vapidPublicKey: undefined,
       vapidPrivateKey: undefined,
       vapidSubject: 'mailto:todoness@localhost',
+      ntfyUrl: undefined,
+      ntfyToken: undefined,
+      ntfyPublicUrl: undefined,
+      publicUrl: undefined,
     });
   });
 
@@ -35,6 +39,10 @@ describe('loadConfig', () => {
       VAPID_PUBLIC_KEY: 'pub',
       VAPID_PRIVATE_KEY: 'priv',
       VAPID_SUBJECT: 'https://todo.company.internal',
+      NTFY_URL: 'https://ntfy.company.internal',
+      NTFY_TOKEN: 'tk_secret',
+      NTFY_PUBLIC_URL: 'https://ntfy.company.example',
+      PUBLIC_URL: 'https://todo.company.internal',
     });
     expect(c).toEqual({
       port: 8080,
@@ -49,6 +57,10 @@ describe('loadConfig', () => {
       vapidPublicKey: 'pub',
       vapidPrivateKey: 'priv',
       vapidSubject: 'https://todo.company.internal',
+      ntfyUrl: 'https://ntfy.company.internal',
+      ntfyToken: 'tk_secret',
+      ntfyPublicUrl: 'https://ntfy.company.example',
+      publicUrl: 'https://todo.company.internal',
     });
   });
 
@@ -133,5 +145,58 @@ describe('loadConfig – web push settings (FR-64)', () => {
     for (const v of ['a@b.co', 'http://x.example', 'ftp://x']) {
       expect(() => loadConfig({ VAPID_SUBJECT: v }), v).toThrow(/VAPID_SUBJECT/);
     }
+  });
+});
+
+describe('loadConfig – ntfy', () => {
+  it('is off unless NTFY_URL is set', () => {
+    expect(loadConfig({}).ntfyUrl).toBeUndefined();
+    expect(loadConfig({ NTFY_URL: '' }).ntfyUrl).toBeUndefined();
+  });
+
+  it('accepts http (a server on the local network) and https addresses', () => {
+    expect(loadConfig({ NTFY_URL: 'http://ntfy.lan:8080' }).ntfyUrl).toBe('http://ntfy.lan:8080');
+    expect(loadConfig({ NTFY_URL: 'https://ntfy.sh' }).ntfyUrl).toBe('https://ntfy.sh');
+  });
+
+  it('drops trailing slashes so the address can be used as it is', () => {
+    expect(loadConfig({ NTFY_URL: 'https://ntfy.sh/' }).ntfyUrl).toBe('https://ntfy.sh');
+    expect(loadConfig({ NTFY_URL: 'https://ntfy.example/base//' }).ntfyUrl).toBe(
+      'https://ntfy.example/base',
+    );
+  });
+
+  it('rejects an address that is not http(s)', () => {
+    for (const v of ['ntfy.sh', 'ftp://ntfy.sh', 'https://', 'https://has space', 'javascript:1']) {
+      expect(() => loadConfig({ NTFY_URL: v }), v).toThrow(ConfigError);
+      expect(() => loadConfig({ NTFY_URL: v }), v).toThrow(/NTFY_URL/);
+    }
+  });
+
+  it('NTFY_TOKEN is optional and needs NTFY_URL', () => {
+    expect(loadConfig({ NTFY_URL: 'https://ntfy.sh' }).ntfyToken).toBeUndefined();
+    expect(loadConfig({ NTFY_URL: 'https://ntfy.sh', NTFY_TOKEN: 'tk_x' }).ntfyToken).toBe('tk_x');
+    expect(() => loadConfig({ NTFY_TOKEN: 'tk_x' })).toThrow(/NTFY_TOKEN.*NTFY_URL/);
+  });
+
+  it('NTFY_PUBLIC_URL is what users subscribe to; it is checked and needs NTFY_URL', () => {
+    expect(
+      loadConfig({ NTFY_URL: 'http://ntfy:80', NTFY_PUBLIC_URL: 'https://ntfy.example/' })
+        .ntfyPublicUrl,
+    ).toBe('https://ntfy.example');
+    expect(loadConfig({ NTFY_URL: 'http://ntfy:80' }).ntfyPublicUrl).toBeUndefined();
+    expect(() =>
+      loadConfig({ NTFY_URL: 'http://ntfy:80', NTFY_PUBLIC_URL: 'ntfy.example' }),
+    ).toThrow(/NTFY_PUBLIC_URL/);
+    expect(() => loadConfig({ NTFY_PUBLIC_URL: 'https://ntfy.example' })).toThrow(
+      /NTFY_PUBLIC_URL.*NTFY_URL/,
+    );
+  });
+
+  it('PUBLIC_URL is checked like NTFY_URL and loses trailing slashes', () => {
+    expect(loadConfig({ PUBLIC_URL: 'https://todo.example/' }).publicUrl).toBe(
+      'https://todo.example',
+    );
+    expect(() => loadConfig({ PUBLIC_URL: 'todo.example' })).toThrow(/PUBLIC_URL/);
   });
 });
