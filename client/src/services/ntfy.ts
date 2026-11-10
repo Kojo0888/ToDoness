@@ -90,7 +90,7 @@ export function randomNtfyTopic(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(24));
   // 256 is not a multiple of 36, so a plain modulo would favour the first letters a little;
   // that is harmless for a name that is only used as a hard-to-guess secret.
-  return 'todoness-' + Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
+  return 'ToDoness_' + Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
 }
 
 /** The address to open (or subscribe to) in the ntfy app. */

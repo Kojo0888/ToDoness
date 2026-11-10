@@ -111,7 +111,7 @@ describe('sendNtfyTest', () => {
 describe('randomNtfyTopic', () => {
   it('makes a valid topic that is hard to guess, because on a shared ntfy server the name is the password', () => {
     const topic = randomNtfyTopic();
-    expect(topic).toMatch(/^todoness-[a-z0-9]{24}$/);
+    expect(topic).toMatch(/^ToDoness_[a-z0-9]{24}$/);
   });
 
   it('is different every time', () => {
