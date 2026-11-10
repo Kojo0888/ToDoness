@@ -119,10 +119,20 @@ export async function sweepReminders(deps: {
 
   // A few at a time: one slow or dead push service must not hold up everyone's reminders
   // for minutes, and a burst of due reminders must not flood the services either.
+  // A failing reminder (e.g. the database closed at shutdown) does not stop the others, and
+  // the sweep only ends once every worker has stopped, so the next sweep never overlaps it.
   let next = 0;
+  let firstError: unknown;
   const worker = async () => {
-    while (next < due.length) await deliver(due[next++]!);
+    while (next < due.length) {
+      try {
+        await deliver(due[next++]!);
+      } catch (err) {
+        firstError ??= err;
+      }
+    }
   };
   await Promise.all(Array.from({ length: Math.min(PARALLEL_SENDS, due.length) }, worker));
+  if (firstError !== undefined) throw firstError;
   return { sent };
 }

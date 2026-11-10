@@ -606,6 +606,32 @@ describe('reminder sweep with ntfy', () => {
     expect(most).toBeLessThanOrEqual(8); // capped, so ntfy is not flooded
   });
 
+  it('ends only after every send has finished, even when the database fails midway', async () => {
+    const s = await setup();
+    for (let i = 0; i < 4; i++) await s.mk(s.ann.device, {}, `Task ${i}`);
+    await s.topic(s.ann.device, 'ann-topic');
+    let inFlight = 0;
+    let first = true;
+    const closing: NtfySend = async () => {
+      inFlight++;
+      if (first) {
+        first = false;
+        s.db.close(); // every later database call throws
+        await new Promise((r) => setTimeout(r, 30)); // this send is still running...
+      } else await new Promise((r) => setTimeout(r, 1));
+      inFlight--;
+      return 'ok';
+    };
+    const sweep = sweepReminders({
+      db: s.db,
+      send: async () => 'ok',
+      sendNtfy: closing,
+      now: due - HOUR,
+    });
+    await expect(sweep).rejects.toThrow();
+    expect(inFlight).toBe(0); // ...and the sweep waited for it before reporting the error
+  });
+
   it('skips completed, deleted, undated and reminder-less tasks, like web push does', async () => {
     const s = await setup();
     await s.mk(s.ann.device, { done: true, completedAt: 1 });

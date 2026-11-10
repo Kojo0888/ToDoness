@@ -2,13 +2,13 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { menuStep } from '../../lib/menuNav';
 import { t } from '../../app/strings';
 
+/** The actions in the menu, in order. Rendering and keyboard handling both use this. */
+const ACTIONS = ['rename', 'delete'] as const;
+
 /**
  * One "⋯" button per list instead of a row of buttons: it opens a small menu with the
  * actions of the list. Arrow keys, Home, End, Escape and a click outside work as usual.
  */
-/** Rename and Delete list. */
-const ITEM_COUNT = 2;
-
 export function ListMenu({
   name,
   onRename,
@@ -52,7 +52,7 @@ export function ListMenu({
     const list = items();
     const current = list.indexOf(document.activeElement as HTMLElement);
     // While closed the items are not rendered yet; the menu always has these two.
-    const step = menuStep(e.key, current < 0 ? null : current, open ? list.length : ITEM_COUNT);
+    const step = menuStep(e.key, current < 0 ? null : current, open ? list.length : ACTIONS.length);
     if (!step) return;
     if ('close' in step) {
       // Tab moves on by itself; Escape brings focus back to the button.
@@ -99,12 +99,23 @@ export function ListMenu({
       </button>
       {open && (
         <div className="row-menu-popup" role="menu" id={menuId} aria-label={t.manage.actions(name)}>
-          <button type="button" role="menuitem" onClick={choose(onRename)}>
-            {t.list.rename}
-          </button>
-          <button type="button" role="menuitem" className="danger" onClick={choose(onDelete)}>
-            {t.list.deleteList}
-          </button>
+          {ACTIONS.map((action) =>
+            action === 'rename' ? (
+              <button key={action} type="button" role="menuitem" onClick={choose(onRename)}>
+                {t.list.rename}
+              </button>
+            ) : (
+              <button
+                key={action}
+                type="button"
+                role="menuitem"
+                className="danger"
+                onClick={choose(onDelete)}
+              >
+                {t.list.deleteList}
+              </button>
+            ),
+          )}
         </div>
       )}
     </div>

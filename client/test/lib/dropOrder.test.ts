@@ -76,9 +76,18 @@ describe('cancel', () => {
     const { createDropOrder } = await import('../../src/lib/dropOrder');
     const order = createDropOrder();
     order.set('lists', ['b', 'a']);
-    order.cancel('other');
+    order.cancel('other', ['b', 'a']);
     expect(order.orderFor('lists')).toEqual(['b', 'a']); // another scope: untouched
-    order.cancel('lists');
+    order.cancel('lists', ['b', 'a']);
     expect(order.orderFor('lists')).toBeNull();
+  });
+
+  it('leaves a newer drop alone when an older one is refused late', async () => {
+    const { createDropOrder } = await import('../../src/lib/dropOrder');
+    const order = createDropOrder();
+    order.set('lists', ['b', 'a', 'c']); // first drop
+    order.set('lists', ['c', 'b', 'a']); // second drop, before the first was written
+    order.cancel('lists', ['b', 'a', 'c']); // the first one is refused
+    expect(order.orderFor('lists')).toEqual(['c', 'b', 'a']);
   });
 });

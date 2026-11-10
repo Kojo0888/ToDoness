@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { Link } from 'wouter';
 import { getLists } from '../../data/queries';
 import { db, repo } from '../../app/container';
@@ -26,6 +26,8 @@ import { dropOrder, dropScope } from '../../lib/dropOrder';
 import { t } from '../../app/strings';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ListMenu } from './ListMenu';
+
+const REORDER_ERROR_MS = 6000;
 
 /** Rename, reorder (by dragging) and delete lists in one place (the Inbox is fixed). */
 export function ManageLists() {
@@ -40,6 +42,12 @@ export function ManageLists() {
   const [newName, setNewName] = useState('');
   const [dragging, setDragging] = useState<string | null>(null);
   const [reorderFailed, setReorderFailed] = useState(false);
+  // The message goes away by itself; it is about one drop, not a lasting state.
+  useEffect(() => {
+    if (!reorderFailed) return;
+    const timer = setTimeout(() => setReorderFailed(false), REORDER_ERROR_MS);
+    return () => clearTimeout(timer);
+  }, [reorderFailed]);
   const [deleting, setDeleting] = useState<{ id: string; name: string; count: number } | null>(
     null,
   );
@@ -85,7 +93,7 @@ export function ManageLists() {
       await repo.reorderList(action.todoId, action.beforeId);
     } catch {
       // E.g. the target list was deleted on another device meanwhile: put the row back now.
-      dropOrder.cancel(dropScope.lists);
+      if (shown) dropOrder.cancel(dropScope.lists, shown);
       setReorderFailed(true);
     }
   }
