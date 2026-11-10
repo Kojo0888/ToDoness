@@ -451,7 +451,7 @@ and `pnpm format:check`.
 
 (PRD 4.9; decisions in [Decisions.md](./Decisions.md).)
 
-- `client/src/app/timeField.ts` (tested) and `components/TimeField.tsx` replace `<input type="time">`.
+- `client/src/lib/timeField.ts` (tested) and `components/common/TimeField.tsx`: native `<input type="time">` plus suggested times.
   The control keeps a local draft value so two quick changes (hour, then minute) do not use stale
   props; a browser test caught that.
 - `attachmentPickers(touchScreen)` (tested) decides the pickers; browser tests use a phone

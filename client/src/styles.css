@@ -104,6 +104,7 @@ input[type='email'],
 input[type='password'],
 input[type='search'],
 input[type='date'],
+input[type='time'],
 select,
 textarea {
   width: 100%;
@@ -696,26 +697,14 @@ h2.nav-heading {
 
 .due-row {
   display: grid;
-  gap: 0.5rem;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 0.75rem;
+  align-items: end;
 }
 
-.field-label {
-  display: block;
-  margin: 0.75rem 0 0.25rem;
-  font-weight: 600;
-}
-
-.time-selects {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.time-selects select {
-  width: 5rem;
-  padding: 0.55rem 0.5rem;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
+.due-row > .time-presets {
+  grid-column: 1 / -1;
+  margin-top: 0;
 }
 
 .time-presets {
@@ -1317,6 +1306,7 @@ h2.nav-heading {
   input[type='password'],
   input[type='search'],
   input[type='date'],
+  input[type='time'],
   select,
   textarea {
     padding: 0.7rem 0.8rem;

@@ -843,49 +843,52 @@ describe('update 3: toggle, sticky Settings/Admin, sync diagnostics', () => {
 });
 
 describe('update 4: time control and phone file pickers', () => {
-  it('the due time is chosen with hour and minute lists, quick choices, and can be cleared', async () => {
+  it('the due time uses a clock input next to the date, with four suggested times', async () => {
     const { ann } = await getPair();
     const page = ann.page;
     await page.getByRole('navigation').getByRole('link', { name: 'Inbox' }).click();
     await addTask(page, 'Time control');
     await openTask(page, 'Time control');
 
-    const group = page.getByRole('group', { name: 'Due time (optional)' });
-    expect(await page.locator('input[type="time"]').count()).toBe(0); // the old control is gone
-    expect(await group.getByRole('combobox', { name: 'Hour' }).isDisabled()).toBe(true); // needs a date first
+    const time = page.getByLabel('Time (optional)');
+    const suggestions = page.getByRole('group', { name: 'Suggested times' });
+    expect(await time.getAttribute('type')).toBe('time');
+    expect(await time.isDisabled()).toBe(true); // needs a date first
+    expect(await suggestions.count()).toBe(0);
 
     await page.getByLabel('Due date').fill('2031-06-10');
-    // a quick choice
-    await group.getByRole('button', { name: /Morning/ }).click();
-    await expect.poll(() => group.getByRole('combobox', { name: 'Hour' }).inputValue()).toBe('09');
-    expect(await group.getByRole('combobox', { name: 'Minute' }).inputValue()).toBe('00');
-    expect(await group.getByRole('button', { name: /Morning/ }).getAttribute('aria-pressed')).toBe(
-      'true',
-    );
+    // same row: date and time side by side
+    const d = await page.getByLabel('Due date').boundingBox();
+    const tm = await time.boundingBox();
+    expect(Math.abs(d!.y - tm!.y)).toBeLessThan(4);
+    expect(
+      await suggestions.getByRole('button', { name: /Morning|Midday|Afternoon|Evening/ }).count(),
+    ).toBe(4);
+
+    await suggestions.getByRole('button', { name: /Morning/ }).click();
+    await expect.poll(() => time.inputValue()).toBe('09:00');
+    expect(
+      await suggestions.getByRole('button', { name: /Morning/ }).getAttribute('aria-pressed'),
+    ).toBe('true');
     await page
       .locator('.todos .todo', { hasText: 'Time control' })
       .getByText(/09:00|9:00/)
       .waitFor();
 
-    // hour and minute lists
-    await group.getByRole('combobox', { name: 'Hour' }).selectOption('17');
-    await group.getByRole('combobox', { name: 'Minute' }).selectOption('45');
+    await time.fill('17:45');
     await page
       .locator('.todos .todo', { hasText: 'Time control' })
       .getByText(/5:45|17:45/)
       .waitFor();
-    // reload: the time is kept
     await page.reload();
     await task(page, 'Time control').waitFor();
     await openTask(page, 'Time control');
-    await expect.poll(() => page.getByRole('combobox', { name: 'Hour' }).inputValue()).toBe('17');
-    expect(await page.getByRole('combobox', { name: 'Minute' }).inputValue()).toBe('45');
+    await expect.poll(() => page.getByLabel('Time (optional)').inputValue()).toBe('17:45');
 
     // clearing the time keeps the date
     await page.getByRole('button', { name: 'Clear time' }).click();
-    await expect.poll(() => page.getByRole('combobox', { name: 'Hour' }).inputValue()).toBe('');
+    await expect.poll(() => page.getByLabel('Time (optional)').inputValue()).toBe('');
     expect(await page.getByLabel('Due date').inputValue()).toBe('2031-06-10');
-    expect(await page.getByRole('combobox', { name: 'Minute' }).isDisabled()).toBe(true);
   });
 
   it('a phone gets separate pickers for photos/videos and documents, never "any file" or audio', async () => {
