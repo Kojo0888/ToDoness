@@ -1,6 +1,6 @@
 import { openDatabase } from '../../src/db/connection';
 import { migrate, MIGRATIONS_DIR } from '../../src/db/migrate';
-import { createApp } from '../../src/app';
+import { createApp, type AppDeps } from '../../src/app';
 import { loadConfig } from '../../src/config';
 
 /** A fresh in-memory database with all migrations applied. */
@@ -10,7 +10,10 @@ export function testDb() {
   return db;
 }
 
-export function testApp(env: Record<string, string> = {}, extra: { now?: () => number } = {}) {
+export function testApp(
+  env: Record<string, string> = {},
+  extra: Pick<AppDeps, 'now' | 'ntfySend'> = {},
+) {
   const db = testDb();
   const config = loadConfig(env);
   return { app: createApp({ db, config, ...extra }), db, config };

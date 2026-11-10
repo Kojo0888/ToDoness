@@ -4,6 +4,7 @@
  */
 import type Database from 'better-sqlite3';
 import { REMIND_MS, reminderKey, timeUntil } from '@todoness/shared';
+import type { NtfySend } from './ntfy';
 
 export interface PushPayload {
   title: string;
@@ -40,13 +41,14 @@ interface Due {
 export async function sweepReminders(deps: {
   db: Database.Database;
   send: PushSend;
+  sendNtfy?: NtfySend;
   now: number;
 }): Promise<{ sent: number }> {
-  const { db, send, now } = deps;
+  const { db, send, sendNtfy, now } = deps;
 
   db.prepare('DELETE FROM sent_reminders WHERE due_at < ?').run(now - FORGET_AFTER_MS);
 
-  // Only users with a device: a reminder is not used up while nobody could receive it.
+  // Only users with a device or topic: a reminder is not used up while nobody could receive it.
   const due = db
     .prepare(
       `SELECT t.id, t.user_id, t.list_id, t.title, t.due_at, t.remind_before
@@ -61,7 +63,9 @@ export async function sweepReminders(deps: {
           AND NOT EXISTS (SELECT 1 FROM sent_reminders s
                            WHERE s.todo_id = t.id AND s.due_at = t.due_at
                              AND s.remind_before = t.remind_before)
-          AND EXISTS (SELECT 1 FROM push_subscriptions p WHERE p.user_id = t.user_id)
+          AND (EXISTS (SELECT 1 FROM push_subscriptions p WHERE p.user_id = t.user_id)${
+            sendNtfy ? ' OR EXISTS (SELECT 1 FROM ntfy_topics n WHERE n.user_id = t.user_id)' : ''
+          })
         ORDER BY t.due_at`,
     )
     .all({ now }) as Due[];
@@ -76,6 +80,7 @@ export async function sweepReminders(deps: {
     'SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?',
   );
   const forget = db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?');
+  const topicOf = db.prepare('SELECT topic FROM ntfy_topics WHERE user_id = ?');
 
   let sent = 0;
   for (const t of due) {
@@ -95,6 +100,13 @@ export async function sweepReminders(deps: {
       const outcome = await send(target, payload).catch(() => 'failed' as const);
       if (outcome === 'ok') delivered++;
       else if (outcome === 'gone') forget.run(target.endpoint);
+      else failed++;
+    }
+
+    const row = sendNtfy ? (topicOf.get(t.user_id) as { topic: string } | undefined) : undefined;
+    if (sendNtfy && row) {
+      const outcome = await sendNtfy(row.topic, payload).catch(() => 'failed' as const);
+      if (outcome === 'ok') delivered++;
       else failed++;
     }
 

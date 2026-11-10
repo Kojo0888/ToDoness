@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { disablePush, enablePush, pushState, type PushState } from '../../services/push';
 import { notificationSupport, requestNotificationPermission } from '../../services/reminders';
 import { ChangePassword } from './ChangePassword';
+import { NtfySettings } from './NtfySettings';
 
 export function Settings({ user }: { user: StoredUser }) {
   const [theme, setTheme] = useTheme();
@@ -91,6 +92,7 @@ export function Settings({ user }: { user: StoredUser }) {
         )}
         <p className="hint">{t.settings.push.hint}</p>
       </section>
+      <NtfySettings />
       <ChangePassword />
       <button type="button" onClick={() => void session.logout()}>
         {t.settings.logout}

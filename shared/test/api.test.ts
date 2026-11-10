@@ -150,3 +150,32 @@ describe('reminder helpers and pushSubscriptionSchema', () => {
     expect(pushSubscriptionSchema.safeParse({}).success).toBe(false);
   });
 });
+
+describe('ntfy schemas', () => {
+  it('a topic is 1 to 64 letters, digits, "-" or "_" (what ntfy accepts)', async () => {
+    const { ntfyTopicSchema } = await import('../src/api');
+    for (const ok of ['a', 'my-topic_01', 'ABC', 'x'.repeat(64)]) {
+      expect(ntfyTopicSchema.safeParse(ok).success, ok).toBe(true);
+    }
+    for (const bad of ['', ' ', 'a b', 'a/b', 'a.b', 'ł', 'x'.repeat(65), '../x', 1, null]) {
+      expect(ntfyTopicSchema.safeParse(bad).success, String(bad)).toBe(false);
+    }
+  });
+
+  it('the settings body needs a topic', async () => {
+    const { ntfyTopicBodySchema } = await import('../src/api');
+    expect(ntfyTopicBodySchema.safeParse({ topic: 'abc' }).success).toBe(true);
+    expect(ntfyTopicBodySchema.safeParse({}).success).toBe(false);
+  });
+
+  it('the status answer is either off or on with an address and an optional topic', async () => {
+    const { ntfyStatusSchema } = await import('../src/api');
+    expect(ntfyStatusSchema.safeParse({ enabled: false, url: null, topic: null }).success).toBe(
+      true,
+    );
+    expect(
+      ntfyStatusSchema.safeParse({ enabled: true, url: 'http://ntfy.lan', topic: 'abc' }).success,
+    ).toBe(true);
+    expect(ntfyStatusSchema.safeParse({ enabled: true }).success).toBe(false);
+  });
+});

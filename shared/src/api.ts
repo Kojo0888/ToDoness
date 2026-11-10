@@ -72,6 +72,18 @@ export type PushSubscriptionBody = z.infer<typeof pushSubscriptionSchema>;
 
 export const pushUnsubscribeSchema = z.object({ endpoint: z.string().min(1).max(2048) });
 
+/** What ntfy accepts as a topic name: 1 to 64 letters, digits, `-` or `_`. */
+export const ntfyTopicSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+export const ntfyTopicBodySchema = z.object({ topic: ntfyTopicSchema });
+
+/** `url` is the ntfy server to subscribe to; `enabled` is false when the server has none. */
+export const ntfyStatusSchema = z.object({
+  enabled: z.boolean(),
+  url: z.string().nullable(),
+  topic: z.string().nullable(),
+});
+export type NtfyStatus = z.infer<typeof ntfyStatusSchema>;
+
 export const roleSchema = z.enum(['admin', 'user']);
 export type Role = z.infer<typeof roleSchema>;
 

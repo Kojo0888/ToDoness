@@ -33,6 +33,7 @@ describe('migrate (real migrations)', () => {
         'change_log',
         'lists',
         'notes',
+        'ntfy_topics',
         'processed_ops',
         'push_subscriptions',
         'sent_reminders',
@@ -207,7 +208,7 @@ describe('migration 004 (notes)', () => {
       DELETE FROM change_log WHERE entity_id = 't2';`);
     const before = seq(db);
 
-    expect(migrate(db, MIGRATIONS_DIR)).toBe(1);
+    expect(migrate(db, upTo(4))).toBe(1); // exactly migration 004
     expect(seq(db)).toEqual(before);
 
     db.exec(`INSERT INTO change_log (user_id, client_id, entity, entity_id, op_type, patch, hlc, created_at)
