@@ -119,6 +119,7 @@ export const t = {
     actions: (name: string) => `Actions: ${name}`,
     dragInstructions:
       'To reorder, press Space on the drag handle, move with the arrow keys, then press Space again to drop. Press Escape to cancel.',
+    reorderFailed: 'Could not move the list: it was changed or deleted meanwhile. Try again.',
   },
 
   list: {
@@ -382,6 +383,7 @@ export const t = {
         disabled: 'ntfy is not switched on on this server.',
         failed: 'Could not do that. Check the connection and try again.',
         noTopic: 'Save a topic first.',
+        rateLimited: 'Please wait a few seconds before sending another test.',
         testFailed:
           'The server could not reach the ntfy server. Check NTFY_URL and the server’s network.',
       },

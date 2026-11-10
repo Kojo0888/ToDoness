@@ -6,6 +6,9 @@ import { t } from '../../app/strings';
  * One "⋯" button per list instead of a row of buttons: it opens a small menu with the
  * actions of the list. Arrow keys, Home, End, Escape and a click outside work as usual.
  */
+/** Rename and Delete list. */
+const ITEM_COUNT = 2;
+
 export function ListMenu({
   name,
   onRename,
@@ -16,6 +19,8 @@ export function ListMenu({
   onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  /** Which item gets focus when the menu opens (ArrowUp and End open on the last one). */
+  const [openAt, setOpenAt] = useState(0);
   const wrap = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
   const menuId = useId();
@@ -23,10 +28,10 @@ export function ListMenu({
   const items = () =>
     Array.from(wrap.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
 
-  // Opening puts focus on the first action.
+  // Opening puts focus on the chosen action.
   useEffect(() => {
-    if (open) items()[0]?.focus();
-  }, [open]);
+    if (open) items()[openAt]?.focus();
+  }, [open, openAt]);
 
   // A click or touch outside closes it.
   useEffect(() => {
@@ -46,7 +51,8 @@ export function ListMenu({
   function onKeyDown(e: React.KeyboardEvent) {
     const list = items();
     const current = list.indexOf(document.activeElement as HTMLElement);
-    const step = menuStep(e.key, current < 0 ? null : current, list.length);
+    // While closed the items are not rendered yet; the menu always has these two.
+    const step = menuStep(e.key, current < 0 ? null : current, open ? list.length : ITEM_COUNT);
     if (!step) return;
     if ('close' in step) {
       // Tab moves on by itself; Escape brings focus back to the button.
@@ -55,8 +61,10 @@ export function ListMenu({
       return;
     }
     e.preventDefault();
-    if (!open) setOpen(true);
-    else list[step.focus]?.focus();
+    if (!open) {
+      setOpenAt(step.focus);
+      setOpen(true);
+    } else list[step.focus]?.focus();
   }
 
   const choose = (action: () => void) => () => {
@@ -74,7 +82,10 @@ export function ListMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          setOpenAt(0);
+          setOpen(!open);
+        }}
       >
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
           <path

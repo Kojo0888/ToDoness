@@ -3,9 +3,10 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useOnline, useSyncStatus } from '../../app/hooks';
 import { db, syncDiag } from '../../app/container';
 import { t } from '../../app/strings';
-import { getQueuedChanges } from '../../data/queries';
+import { countPending, getQueuedChanges } from '../../data/queries';
 import { browserStorage } from '../../lib/modules';
-import { diagRows, diagSummary } from './diagRows';
+import { diagRows } from './diagRows';
+import { syncSummary } from './syncSummary';
 
 const clock = (at: number) => {
   const d = new Date(at);
@@ -39,7 +40,8 @@ export function SyncDiagnostics() {
   const [open, setOpen] = useState(readOpen);
   const status = useSyncStatus();
   const online = useOnline();
-  const summary = diagSummary({ state: status.state, online });
+  const pending = useLiveQuery(() => countPending(db), [], 0);
+  const summary = syncSummary({ online, state: status.state, pending });
   const toggle = () => {
     saveOpen(!open);
     setOpen(!open);
@@ -83,10 +85,8 @@ function DiagnosticsPanel() {
   const online = useOnline();
   const [logOpen, setLogOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
-  const queuedCount = useLiveQuery(async () => {
-    const q = await getQueuedChanges(db);
-    return q.outbox.length + q.publicOutbox.length;
-  }, []);
+  // Counted, not loaded: thousands of queued changes stay cheap.
+  const queuedCount = useLiveQuery(() => countPending(db), []);
 
   // A clock for the live numbers (time a request has been waiting, countdown to the next try).
   const [now, setNow] = useState(() => Date.now());

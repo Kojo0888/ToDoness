@@ -65,13 +65,14 @@ export async function removeNtfyTopic(doFetch: Fetch = browserFetch): Promise<bo
   }
 }
 
-export type TestResult = 'ok' | 'no_topic' | 'disabled' | 'failed';
+export type TestResult = 'ok' | 'no_topic' | 'disabled' | 'rate_limited' | 'failed';
 
 /** Asks the server to publish a test message, so the whole chain can be checked. */
 export async function sendNtfyTest(doFetch: Fetch = browserFetch): Promise<TestResult> {
   try {
     const res = await doFetch('/api/ntfy/test', { method: 'POST' });
     if (res.ok) return 'ok';
+    if (res.status === 429) return 'rate_limited';
     const code = await errorCode(res);
     if (res.status === 409 && code === 'no_topic') return 'no_topic';
     if (res.status === 409 && code === 'ntfy_disabled') return 'disabled';

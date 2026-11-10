@@ -1,6 +1,6 @@
 /** The rows of the admin's sync diagnostics. */
 import { describe, expect, it } from 'vitest';
-import { diagRows, diagSummary } from '../../src/components/layout/diagRows';
+import { diagRows } from '../../src/components/layout/diagRows';
 import type { DiagFlags } from '../../src/sync/diagnostics';
 
 const NOW = 1_000_000;
@@ -48,30 +48,5 @@ describe('diagRows', () => {
       'Online event → saved',
       'Outage (first failure → saved)',
     ]);
-  });
-});
-
-describe('diagSummary (what the folded header shows)', () => {
-  it('says all is well when idle and online', () => {
-    expect(diagSummary({ state: 'idle', online: true })).toEqual({
-      text: 'All changes saved',
-      tone: 'ok',
-    });
-  });
-
-  it('says offline first, whatever the sync state is', () => {
-    expect(diagSummary({ state: 'idle', online: false })).toEqual({
-      text: 'Offline',
-      tone: 'warn',
-    });
-    expect(diagSummary({ state: 'syncing', online: false }).text).toBe('Offline');
-  });
-
-  it('names the other states and marks them as needing attention', () => {
-    const syncing = diagSummary({ state: 'syncing', online: true });
-    expect(syncing.tone).toBe('busy');
-    const authRequired = diagSummary({ state: 'auth_required', online: true });
-    expect(authRequired.tone).toBe('warn');
-    expect(authRequired.text).not.toBe('All changes saved');
   });
 });

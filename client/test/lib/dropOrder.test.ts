@@ -70,3 +70,15 @@ describe('dropScope.lists', () => {
     expect(dropScope.lists).not.toBe(dropScope.list('lists'));
   });
 });
+
+describe('cancel', () => {
+  it('forgets the pending order of that list at once (a refused drop jumps back now)', async () => {
+    const { createDropOrder } = await import('../../src/lib/dropOrder');
+    const order = createDropOrder();
+    order.set('lists', ['b', 'a']);
+    order.cancel('other');
+    expect(order.orderFor('lists')).toEqual(['b', 'a']); // another scope: untouched
+    order.cancel('lists');
+    expect(order.orderFor('lists')).toBeNull();
+  });
+});

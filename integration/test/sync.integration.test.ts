@@ -341,10 +341,10 @@ describe('reordering lists', () => {
     const { a, b } = await twoBrowsers();
     const x = await a.repo.createList('X');
     await a.repo.createList('Y');
-    await a.repo.createList('Z');
+    const z = await a.repo.createList('Z');
     await a.sync();
     await b.sync();
-    await a.repo.moveList(x.id, 'down');
+    await a.repo.reorderList(x.id, z.id);
     await a.sync();
     await b.sync();
     const names = async (br: Browser) => (await getLists(br.db)).map((l) => l.name);
@@ -366,10 +366,11 @@ describe('reordering lists', () => {
     expect((await names(a)).sort()).toEqual(['From laptop', 'From phone', 'Inbox']);
     expect(await names(a)).toEqual(await names(b));
     // They can still be reordered although both got the same key.
-    const second = (await getLists(a.db))[2]!;
-    await a.repo.moveList(second.id, 'up');
+    const [, first, second] = await getLists(a.db);
+    await a.repo.reorderList(second!.id, first!.id);
     await a.sync();
     await b.sync();
+    expect((await names(a))[1]).toBe(second!.name);
     expect(await names(a)).toEqual(await names(b));
   });
 });

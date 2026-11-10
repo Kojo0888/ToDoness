@@ -197,6 +197,14 @@ describe('tasks and lists', () => {
     await rename.waitFor({ state: 'detached' });
     expect(await button.evaluate((el) => el === document.activeElement)).toBe(true);
 
+    // ArrowUp on the closed menu opens it on the last item (ARIA menu button pattern).
+    await page.keyboard.press('ArrowUp');
+    const del = page.getByRole('menuitem', { name: 'Delete list' });
+    await del.waitFor();
+    expect(await del.evaluate((el) => el === document.activeElement)).toBe(true);
+    await page.keyboard.press('Escape');
+    await del.waitFor({ state: 'detached' });
+
     await button.click();
     await rename.waitFor();
     await page.getByRole('heading', { level: 2, name: 'Manage lists' }).click(); // outside

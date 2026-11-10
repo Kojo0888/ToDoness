@@ -32,6 +32,11 @@ export interface Config {
   ntfyUrl: string | undefined;
   /** Access token for a protected ntfy server (NTFY_TOKEN). */
   ntfyToken: string | undefined;
+  /**
+   * The ntfy address users subscribe to in the ntfy app (NTFY_PUBLIC_URL), when the server
+   * reaches ntfy by an internal name such as `http://ntfy:80`. Unset = NTFY_URL is shown.
+   */
+  ntfyPublicUrl: string | undefined;
   /** Address of this app as users reach it (PUBLIC_URL); lets an ntfy click open the task. */
   publicUrl: string | undefined;
 }
@@ -113,6 +118,11 @@ export function loadConfig(env: Env = process.env): Config {
     );
   }
 
+  const ntfyPublicUrl = webAddress(env, 'NTFY_PUBLIC_URL');
+  if (ntfyPublicUrl !== undefined && ntfyUrl === undefined) {
+    throw new ConfigError('NTFY_PUBLIC_URL is set but NTFY_URL is not: set NTFY_URL too');
+  }
+
   return {
     port,
     databasePath: resolvedDatabasePath,
@@ -129,6 +139,7 @@ export function loadConfig(env: Env = process.env): Config {
     vapidSubject,
     ntfyUrl,
     ntfyToken,
+    ntfyPublicUrl,
     publicUrl: webAddress(env, 'PUBLIC_URL'),
   };
 }

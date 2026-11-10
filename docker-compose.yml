@@ -8,6 +8,7 @@ services:
       # Reminders through ntfy (README, "Reminders through ntfy"); uncomment to switch on:
       # NTFY_URL: 'http://ntfy:80'
       # NTFY_TOKEN: ''
+      # NTFY_PUBLIC_URL: 'https://ntfy.company.example' # what phones subscribe to
       # PUBLIC_URL: 'https://todo.company.example'
     volumes:
       - todoness-data:/data

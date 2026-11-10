@@ -7,7 +7,8 @@ import type { PushPayload } from './reminders';
 /** There is no `gone`: an ntfy topic never expires, it just has no listener. */
 export type NtfySend = (topic: string, payload: PushPayload) => Promise<'ok' | 'failed'>;
 
-const TIMEOUT_MS = 10_000;
+/** Short: a dead ntfy server must not hold up the reminder sweep. */
+const TIMEOUT_MS = 4_000;
 
 export function createNtfySender({
   url,

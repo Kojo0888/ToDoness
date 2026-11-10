@@ -39,6 +39,7 @@ export function ManageLists() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [dragging, setDragging] = useState<string | null>(null);
+  const [reorderFailed, setReorderFailed] = useState(false);
   const [deleting, setDeleting] = useState<{ id: string; name: string; count: number } | null>(
     null,
   );
@@ -79,7 +80,14 @@ export function ManageLists() {
     // was dropped instead of jumping back first.
     const shown = orderAfterDrop(ids, action);
     if (shown) dropOrder.set(dropScope.lists, shown);
-    await repo.reorderList(action.todoId, action.beforeId);
+    setReorderFailed(false);
+    try {
+      await repo.reorderList(action.todoId, action.beforeId);
+    } catch {
+      // E.g. the target list was deleted on another device meanwhile: put the row back now.
+      dropOrder.cancel(dropScope.lists);
+      setReorderFailed(true);
+    }
   }
 
   return (
@@ -89,6 +97,11 @@ export function ManageLists() {
         <Link href="/tasks">{t.manage.back}</Link>
       </header>
       <p className="hint">{t.manage.intro}</p>
+      {reorderFailed && (
+        <p className="error" role="alert">
+          {t.manage.reorderFailed}
+        </p>
+      )}
 
       {editable.length === 0 ? (
         <p className="empty">{t.manage.empty}</p>

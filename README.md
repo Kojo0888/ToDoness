@@ -153,6 +153,7 @@ The server reads these environment variables. All are optional except
 | `VAPID_SUBJECT`                         | `mailto:todoness@localhost`                       | Contact address (`mailto:` or `https://`) sent to push services. Apple's service wants a real-looking address, so set e.g. `mailto:it@company.example` if you have iPhone users.                                                                                       |
 | `NTFY_URL`                              | _(unset = ntfy off)_                              | Address of an [ntfy](https://ntfy.sh) server (`http://` or `https://`), e.g. `http://ntfy.lan:8080` or `https://ntfy.sh`. Switches on **reminders through ntfy** (see below).                                                                                          |
 | `NTFY_TOKEN`                            | _(unset)_                                         | Access token if your ntfy server needs a login (sent as `Authorization: Bearer …`). Needs `NTFY_URL`.                                                                                                                                                                  |
+| `NTFY_PUBLIC_URL`                       | same as `NTFY_URL`                                | The ntfy address **users** subscribe to in the ntfy app, when the server reaches ntfy by an internal name (e.g. `NTFY_URL=http://ntfy:80` in Docker, `NTFY_PUBLIC_URL=https://ntfy.company.example`). Needs `NTFY_URL`.                                                |
 | `PUBLIC_URL`                            | _(unset)_                                         | Address of this app as users open it, e.g. `https://todo.company.example`. With it, tapping an ntfy notification opens the task; without it the notification just shows.                                                                                               |
 
 Example: allow files up to 250 MB:
@@ -194,7 +195,9 @@ user's pushes. What the server needs for this:
 **network without internet** when you run your own ntfy server on it, and it needs neither
 HTTPS nor a browser permission.
 
-1. Set `NTFY_URL` (and `NTFY_TOKEN`, `PUBLIC_URL` if wanted) and restart the server.
+1. Set `NTFY_URL` (and `NTFY_TOKEN`, `NTFY_PUBLIC_URL`, `PUBLIC_URL` if wanted) and restart
+   the server. If phones reach ntfy by a different address than the server does (in Docker
+   the server may use `http://ntfy:80`), set `NTFY_PUBLIC_URL` to the address phones use.
    Without `NTFY_URL` the feature is off and the card is not shown in Settings.
 2. Each user opens **Settings → Reminders through ntfy**, picks a topic (or presses
    _Generate a private topic_), saves it, subscribes to the shown address in the ntfy app,
@@ -209,7 +212,10 @@ Things to know:
 - The reminder rules are the same as for web push: once per task, due date and choice, only
   for open tasks, and only before the task is due. If the ntfy server is down, the
   reminder is retried every 30 seconds until the task is due, as long as no other device
-  received it. Failures are logged as `ntfy at … failed` (the topic and token are never logged).
+  received it. Up to 8 reminders are sent at the same time and each ntfy request gives up after 4 seconds,
+  so a dead ntfy server does not delay web push. Failures are logged as `ntfy at … failed`
+  (the topic and token are never logged). The test button allows one test per user every
+  10 seconds.
 - Phones that run the ntfy app on a network without internet need ntfy's _instant delivery_
   on Android. The iPhone app depends on Apple's push service, so it is not fully offline.
 

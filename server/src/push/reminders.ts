@@ -29,6 +29,9 @@ export type PushSend = (
 
 const FORGET_AFTER_MS = 60 * 24 * 3_600_000;
 
+/** How many reminders are sent at the same time. */
+const PARALLEL_SENDS = 8;
+
 interface Due {
   id: string;
   user_id: string;
@@ -83,9 +86,9 @@ export async function sweepReminders(deps: {
   const topicOf = db.prepare('SELECT topic FROM ntfy_topics WHERE user_id = ?');
 
   let sent = 0;
-  for (const t of due) {
+  async function deliver(t: Due) {
     // Remember first, so a slow or crashing send can never cause a second push.
-    if (record.run(t.id, t.due_at, t.remind_before, now).changes === 0) continue;
+    if (record.run(t.id, t.due_at, t.remind_before, now).changes === 0) return;
 
     const payload: PushPayload = {
       title: t.title,
@@ -113,5 +116,13 @@ export async function sweepReminders(deps: {
     if (delivered > 0) sent++;
     else if (failed > 0) unrecord.run(t.id, t.due_at, t.remind_before); // try again next time
   }
+
+  // A few at a time: one slow or dead push service must not hold up everyone's reminders
+  // for minutes, and a burst of due reminders must not flood the services either.
+  let next = 0;
+  const worker = async () => {
+    while (next < due.length) await deliver(due[next++]!);
+  };
+  await Promise.all(Array.from({ length: Math.min(PARALLEL_SENDS, due.length) }, worker));
   return { sent };
 }

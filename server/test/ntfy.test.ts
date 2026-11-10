@@ -136,7 +136,7 @@ describe('the ntfy sender', () => {
       });
       vi.useFakeTimers();
       const result = send('t', PAYLOAD);
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(5_000); // a dead server must not hold up the sweep
       expect(await result).toBe('failed');
       expect(fetchFn.mock.calls[0]![1]?.signal).toBeInstanceOf(AbortSignal);
     } finally {
@@ -189,6 +189,8 @@ describe('the ntfy sender over real HTTP', () => {
 
 describe('ntfy routes', () => {
   async function setup(env: Record<string, string> = NTFY_ENV) {
+    let clock = T0;
+    const now = () => clock;
     const sent: { topic: string; payload: PushPayload }[] = [];
     let result: 'ok' | 'failed' = 'ok';
     const ntfySend: NtfySend = async (topic, payload) => {
@@ -196,7 +198,7 @@ describe('ntfy routes', () => {
       return result;
     };
     // Without NTFY_URL the server has no sender at all, whatever the test would inject.
-    const t = testApp(env, env.NTFY_URL ? { ntfySend } : {});
+    const t = testApp(env, env.NTFY_URL ? { ntfySend, now } : { now });
     const ann = await registerDevice(t.app, 'ann@corp.test');
     const bob = await registerDevice(t.app, 'bob@corp.test');
     const rows = () =>
@@ -204,7 +206,15 @@ describe('ntfy routes', () => {
         user_id: string;
         topic: string;
       }[];
-    return { ...t, ann, bob, sent, rows, setResult: (r: typeof result) => (result = r) };
+    return {
+      ...t,
+      ann,
+      bob,
+      sent,
+      rows,
+      setResult: (r: typeof result) => (result = r),
+      tick: (ms: number) => (clock += ms),
+    };
   }
 
   it('everything needs a login', async () => {
@@ -329,6 +339,42 @@ describe('ntfy routes', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]!.topic).toBe('ann-topic');
     expect(sent[0]!.payload.title).toMatch(/ToDoness/);
+  });
+
+  it('shows users the public ntfy address when the server reaches ntfy by another one', async () => {
+    const { ann } = await setup({
+      NTFY_URL: 'http://ntfy:80',
+      NTFY_PUBLIC_URL: 'https://ntfy.example',
+    });
+    expect((await (await ann.device.http.get('/api/ntfy')).json()).url).toBe(
+      'https://ntfy.example',
+    );
+  });
+
+  it('allows one test notification per user every 10 seconds', async () => {
+    const { ann, bob, sent, tick } = await setup();
+    await ann.device.http.request('PUT', '/api/ntfy', { topic: 'ann-topic' });
+    await bob.device.http.request('PUT', '/api/ntfy', { topic: 'bob-topic' });
+    expect((await ann.device.http.post('/api/ntfy/test')).status).toBe(204);
+
+    const again = await ann.device.http.post('/api/ntfy/test');
+    expect(again.status).toBe(429);
+    expect((await again.json()).error).toBe('too_many_requests');
+    expect(Number(again.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect((await bob.device.http.post('/api/ntfy/test')).status).toBe(204); // others unaffected
+
+    tick(10_000);
+    expect((await ann.device.http.post('/api/ntfy/test')).status).toBe(204);
+    expect(sent.map((x) => x.topic)).toEqual(['ann-topic', 'bob-topic', 'ann-topic']);
+  });
+
+  it('a failed test notification counts too, so a looping client cannot hammer ntfy', async () => {
+    const { ann, sent, setResult } = await setup();
+    await ann.device.http.request('PUT', '/api/ntfy', { topic: 'ann-topic' });
+    setResult('failed');
+    expect((await ann.device.http.post('/api/ntfy/test')).status).toBe(502);
+    expect((await ann.device.http.post('/api/ntfy/test')).status).toBe(429);
+    expect(sent).toHaveLength(1);
   });
 
   it('the test notification needs a topic', async () => {
@@ -540,6 +586,24 @@ describe('reminder sweep with ntfy', () => {
     expect((await s.sweep(due - 3 * HOUR, {})).sent).toBe(0); // no sender given
     expect((await s.sweep(due - 2 * HOUR)).sent).toBe(1); // ntfy switched on later: still delivered
     expect(s.ntfy).toHaveLength(1);
+  });
+
+  it('sends several reminders at once, so a slow ntfy server cannot hold up the others', async () => {
+    const s = await setup();
+    for (let i = 0; i < 20; i++) await s.mk(s.ann.device, {}, `Task ${i}`);
+    await s.topic(s.ann.device, 'ann-topic');
+    let inFlight = 0;
+    let most = 0;
+    const slow: NtfySend = async () => {
+      inFlight++;
+      most = Math.max(most, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight--;
+      return 'ok';
+    };
+    expect((await s.sweep(due - HOUR, { sendNtfy: slow })).sent).toBe(20);
+    expect(most).toBeGreaterThan(1);
+    expect(most).toBeLessThanOrEqual(8); // capped, so ntfy is not flooded
   });
 
   it('skips completed, deleted, undated and reminder-less tasks, like web push does', async () => {

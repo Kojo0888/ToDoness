@@ -16,7 +16,10 @@ type Message = { kind: 'info' | 'error'; text: string } | undefined;
 export function NtfySettings() {
   const [status, setStatus] = useState<NtfyStatus | undefined>(undefined);
   const [topic, setTopic] = useState('');
-  const [busy, setBusy] = useState(false);
+  // Separate, so each button shows its own "working" label; either one disables both.
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const busy = saving || testing;
   const [message, setMessage] = useState<Message>(undefined);
 
   useEffect(() => {
@@ -36,7 +39,7 @@ export function NtfySettings() {
   const err = t.settings.ntfy.error;
 
   async function save() {
-    setBusy(true);
+    setSaving(true);
     setMessage(undefined);
     const result = await saveNtfyTopic(topic);
     if (result === 'ok') {
@@ -47,11 +50,11 @@ export function NtfySettings() {
     } else {
       setMessage({ kind: 'error', text: err[result] });
     }
-    setBusy(false);
+    setSaving(false);
   }
 
   async function turnOff() {
-    setBusy(true);
+    setSaving(true);
     setMessage(undefined);
     if (await removeNtfyTopic()) {
       setTopic('');
@@ -60,11 +63,11 @@ export function NtfySettings() {
     } else {
       setMessage({ kind: 'error', text: err.failed });
     }
-    setBusy(false);
+    setSaving(false);
   }
 
   async function test() {
-    setBusy(true);
+    setTesting(true);
     setMessage(undefined);
     const result = await sendNtfyTest();
     setMessage(
@@ -77,10 +80,12 @@ export function NtfySettings() {
                 ? err.noTopic
                 : result === 'disabled'
                   ? err.disabled
-                  : err.testFailed,
+                  : result === 'rate_limited'
+                    ? err.rateLimited
+                    : err.testFailed,
           },
     );
-    setBusy(false);
+    setTesting(false);
   }
 
   return (
@@ -109,7 +114,7 @@ export function NtfySettings() {
           disabled={busy || topic.trim() === ''}
           onClick={() => void save()}
         >
-          {busy ? t.settings.ntfy.saving : t.settings.ntfy.save}
+          {saving ? t.settings.ntfy.saving : t.settings.ntfy.save}
         </button>
       </p>
       {status.topic && status.url && (
@@ -117,7 +122,7 @@ export function NtfySettings() {
           <p>{t.settings.ntfy.subscribe(ntfySubscribeUrl(status.url, status.topic))}</p>
           <p>
             <button type="button" disabled={busy} onClick={() => void test()}>
-              {busy ? t.settings.ntfy.testing : t.settings.ntfy.test}
+              {testing ? t.settings.ntfy.testing : t.settings.ntfy.test}
             </button>{' '}
             <button type="button" disabled={busy} onClick={() => void turnOff()}>
               {t.settings.ntfy.remove}

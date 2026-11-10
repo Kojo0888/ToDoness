@@ -3,6 +3,7 @@ import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
 import { ntfyTopicBodySchema, type NtfyStatus } from '@todoness/shared';
 import { requireAuth } from '../auth/middleware';
+import { createRateLimiter } from '../auth/rate-limit';
 import type { Config } from '../config';
 import type { AppEnv } from '../http/types';
 import type { NtfySend } from '../push/ntfy';
@@ -22,6 +23,10 @@ export function ntfyRoutes({
   const app = new Hono<AppEnv>();
   app.use('*', requireAuth(db, now));
 
+  // One test per user every 10 s: a looping client must not get the server's IP rate
+  // limited or banned by a shared ntfy server, which would stop everyone's reminders.
+  const testLimiter = createRateLimiter({ max: 1, windowMs: 10_000, now });
+
   const topicOf = (userId: string) =>
     (
       db.prepare('SELECT topic FROM ntfy_topics WHERE user_id = ?').get(userId) as
@@ -30,7 +35,12 @@ export function ntfyRoutes({
 
   app.get('/', (c) => {
     const status: NtfyStatus = send
-      ? { enabled: true, url: config.ntfyUrl ?? null, topic: topicOf(c.get('user').id) }
+      ? {
+          enabled: true,
+          // What the phone can reach, which is not always what the server uses.
+          url: config.ntfyPublicUrl ?? config.ntfyUrl ?? null,
+          topic: topicOf(c.get('user').id),
+        }
       : { enabled: false, url: null, topic: null };
     return c.json(status);
   });
@@ -62,6 +72,13 @@ export function ntfyRoutes({
     if (!send) return c.json({ error: 'ntfy_disabled' }, 409);
     const topic = topicOf(c.get('user').id);
     if (!topic) return c.json({ error: 'no_topic' }, 409);
+    const userId = c.get('user').id;
+    const limit = testLimiter.check(userId);
+    if (!limit.allowed) {
+      c.header('Retry-After', String(limit.retryAfterSec));
+      return c.json({ error: 'too_many_requests' }, 429);
+    }
+    testLimiter.fail(userId); // every attempt counts, also a failed one
     const outcome = await send(topic, {
       title: 'ToDoness test',
       body: 'Reminders through ntfy work.',

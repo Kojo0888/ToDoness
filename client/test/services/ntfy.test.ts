@@ -105,6 +105,9 @@ describe('sendNtfyTest', () => {
     );
     expect(await sendNtfyTest(fakeFetch(() => json(502, { error: 'send_failed' })))).toBe('failed');
     expect(await sendNtfyTest(fakeFetch(() => 'network-error'))).toBe('failed');
+    expect(await sendNtfyTest(fakeFetch(() => json(429, { error: 'too_many_requests' })))).toBe(
+      'rate_limited',
+    );
   });
 });
 
