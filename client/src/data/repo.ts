@@ -64,6 +64,12 @@ export interface Repo {
   setListPublic(id: string, isPublic: boolean): Promise<List>;
   /** Moves a list one place up or down among the visible lists (never above the Inbox). */
   moveList(id: string, direction: 'up' | 'down'): Promise<List>;
+  /**
+   * Puts a list directly before another one (`null` = at the end), for drag and drop. One
+   * `orderKey` update; nothing happens if the position would not change. The Inbox stays
+   * first: it cannot be moved, and nothing can be put before it.
+   */
+  reorderList(id: string, beforeId: string | null): Promise<List>;
   /** A new note with this text, on top. Blank text is refused. */
   createNote(text: string): Promise<Note>;
   /** Replaces the text of a note (it may become empty). */
@@ -339,6 +345,25 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
           else lo = null;
         }
         return commit<List>('list', 'update', id, { orderKey: generateKeyBetween(lo, hi) });
+      }),
+
+    reorderList: (id, beforeId) =>
+      inTx(async () => {
+        const list = await liveList(id);
+        if (list.isInbox) throw new RepoError('inbox_protected', 'The Inbox cannot be moved');
+        if (beforeId !== null) {
+          const target = await liveList(beforeId);
+          if (target.isInbox) {
+            throw new RepoError('inbox_protected', 'Nothing can be put above the Inbox');
+          }
+        }
+        const live = (await db.lists.orderBy('orderKey').toArray()).filter(
+          (l) => l.deletedAt === null,
+        );
+        const choice = keyForPosition(live, id, beforeId);
+        if (choice.kind === 'same') return list;
+        if (choice.kind === 'missing') throw new RepoError('not_found', 'List or target not found');
+        return commit<List>('list', 'update', id, { orderKey: choice.key });
       }),
 
     restoreSnapshot: (snapshot, mode) =>

@@ -775,22 +775,104 @@ h2.nav-heading {
   font-size: 0.8rem;
 }
 
-.sync-diag-toggle {
+/* The folded header: a real button with the live state, not a text link. */
+.diag-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin-bottom: 0.3rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-align: left;
+}
+
+.diag-toggle:hover {
+  border-color: var(--accent);
+}
+
+.diag-chevron {
+  flex: none;
+  color: var(--muted);
+  transition: transform 0.15s ease;
+}
+
+.diag-toggle[aria-expanded='true'] .diag-chevron {
+  transform: rotate(90deg);
+}
+
+.diag-title {
+  flex: 1;
+}
+
+.diag-dot {
+  flex: none;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.diag-dot-ok {
+  background: var(--ok);
+}
+
+.diag-dot-warn {
+  background: var(--warn);
+}
+
+.diag-dot-busy {
+  background: var(--accent);
+}
+
+/* Log / Queued changes: two joined toggle buttons. */
+.seg {
+  display: flex;
+  margin: 0.3rem 0;
+}
+
+.seg-btn {
+  flex: 1;
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
-  margin-bottom: 0.25rem;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--bg);
+  color: inherit;
   font-size: 0.8rem;
 }
 
-.sync-diag-caret {
-  display: inline-block;
-  width: 0.8em;
+.seg-btn:first-child {
+  border-radius: 8px 0 0 8px;
 }
 
-.sync-diag-actions {
-  display: flex;
-  gap: 0.75rem;
+.seg-btn:last-child {
+  margin-left: -1px;
+  border-radius: 0 8px 8px 0;
+}
+
+.seg-btn[aria-expanded='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.seg-count {
+  min-width: 1.3rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .sync-queue pre {
@@ -1284,9 +1366,76 @@ h2.nav-heading {
 .manage-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
   gap: 0.6rem;
-  padding: 0.6rem 0.2rem;
+  padding: 0.4rem 0.2rem;
   border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.manage-row.is-dragging {
+  opacity: 0.35;
+}
+
+.manage-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.manage-row .rename {
+  flex: 1;
+}
+
+/* The "⋯" menu of a list. */
+.row-menu {
+  position: relative;
+  flex: none;
+}
+
+.row-menu-button {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.row-menu-button:hover,
+.row-menu-button[aria-expanded='true'] {
+  background: var(--surface);
+  color: inherit;
+}
+
+.row-menu-popup {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.2rem);
+  z-index: 20;
+  display: grid;
+  min-width: 9rem;
+  padding: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+}
+
+.row-menu-popup button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.row-menu-popup button:hover,
+.row-menu-popup button:focus-visible {
+  background: var(--surface);
+}
+
+.row-menu-popup button.danger {
+  color: var(--danger);
 }

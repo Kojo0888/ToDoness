@@ -61,3 +61,12 @@ describe('dropOrder', () => {
     expect(store.orderFor('notes')).toEqual(['A', 'B']);
   });
 });
+
+describe('dropScope.lists', () => {
+  it('is its own scope, so a list drop never mixes with a task drop', async () => {
+    const { dropScope } = await import('../../src/lib/dropOrder');
+    expect(dropScope.lists).toBe('lists');
+    expect(dropScope.lists).not.toBe(dropScope.notes);
+    expect(dropScope.lists).not.toBe(dropScope.list('lists'));
+  });
+});

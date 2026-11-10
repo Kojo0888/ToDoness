@@ -111,9 +111,14 @@ export const t = {
 
   manage: {
     title: 'Manage lists',
-    intro: 'Rename, reorder or delete your lists. The Inbox cannot be changed.',
+    intro:
+      'Drag a list by its handle to reorder it. Use ⋯ to rename or delete it. The Inbox cannot be changed.',
     empty: 'You have no lists besides the Inbox yet.',
     back: 'Back to tasks',
+    drag: (name: string) => `Drag to reorder list: ${name}`,
+    actions: (name: string) => `Actions: ${name}`,
+    dragInstructions:
+      'To reorder, press Space on the drag handle, move with the arrow keys, then press Space again to drop. Press Escape to cancel.',
   },
 
   list: {
@@ -127,8 +132,6 @@ export const t = {
     renameLabel: 'List name',
     save: 'Save',
     cancel: 'Cancel',
-    moveUp: 'Move list up',
-    moveDown: 'Move list down',
     deleteList: 'Delete list',
     deleteListTitle: 'Delete this list?',
     deleteListText: (name: string, n: number) =>

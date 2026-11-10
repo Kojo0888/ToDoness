@@ -58,3 +58,15 @@ export function diagRows({
     [t.syncDiag.outage, flags.outageMs === null ? t.syncDiag.none : fmt(flags.outageMs)],
   ];
 }
+
+/** The one-line state shown on the folded diagnostics header, with a tone for its dot. */
+export function diagSummary({ state, online }: { state: SyncStatus['state']; online: boolean }): {
+  text: string;
+  tone: 'ok' | 'warn' | 'busy';
+} {
+  if (!online) return { text: t.sync.offline, tone: 'warn' };
+  if (state === 'idle') return { text: t.sync.saved, tone: 'ok' };
+  if (state === 'syncing') return { text: t.sync.syncing, tone: 'busy' };
+  if (state === 'auth_required') return { text: t.syncDiag.states.auth_required, tone: 'warn' };
+  return { text: t.sync.problem, tone: 'warn' };
+}

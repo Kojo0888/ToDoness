@@ -60,4 +60,6 @@ export const dropScope = {
   list: (listId: string) => `list:${listId}`,
   publicList: (listId: string) => `public:${listId}`,
   notes: 'notes',
+  /** My lists on the Manage lists page. */
+  lists: 'lists',
 };
