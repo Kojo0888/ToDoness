@@ -127,33 +127,35 @@ describe('tasks and lists', () => {
     await page.getByRole('button', { name: 'Add list' }).click();
     await page.getByRole('heading', { level: 2, name: 'Home' }).waitFor();
     expect(await page.locator('.nav-lists a').allTextContents()).toEqual(['Inbox', 'Work', 'Home']);
-    await page.getByRole('button', { name: 'Move list up' }).click();
+    await page.getByRole('link', { name: 'Manage lists' }).click();
+    await page.getByRole('heading', { level: 2, name: 'Manage lists' }).waitFor();
+    await page.getByRole('button', { name: 'Move list up: Home' }).click();
+    await page.getByRole('link', { name: 'Back to tasks' }).waitFor();
     await expect
       .poll(() => page.locator('.nav-lists a').allTextContents())
       .toEqual(['Inbox', 'Home', 'Work']);
-    await page.getByRole('button', { name: 'Move list up' }).waitFor({ state: 'attached' });
-    expect(await page.getByRole('button', { name: 'Move list up' }).isDisabled()).toBe(true); // right below the Inbox
-    await page.getByRole('link', { name: 'Work' }).click();
-    await task(page, 'first').waitFor();
+    expect(await page.getByRole('button', { name: 'Move list up: Home' }).isDisabled()).toBe(true); // right below the Inbox
 
-    await page.getByRole('button', { name: 'Rename' }).click();
+    await page.getByRole('button', { name: 'Rename: Work' }).click();
     await page.getByLabel('List name', { exact: true }).fill('Job');
     await page.getByRole('button', { name: 'Save' }).click();
-    await page.getByRole('heading', { level: 2, name: 'Job' }).waitFor();
+    await page.locator('.manage-name', { hasText: 'Job' }).waitFor();
 
-    await page.getByRole('button', { name: 'Delete list' }).click();
+    await page.getByRole('button', { name: 'Delete list: Job' }).click();
     const dialog = page.getByRole('dialog');
     await dialog.getByText('2 open and completed tasks').waitFor();
     await dialog.getByRole('button', { name: 'Delete', exact: true }).click();
-    await page.getByRole('heading', { level: 2, name: 'Inbox' }).waitFor();
+    await page.locator('.manage-name', { hasText: 'Job' }).waitFor({ state: 'detached' });
     expect(await page.getByRole('link', { name: 'Job' }).count()).toBe(0);
   });
 
   it('does not allow deleting or renaming the Inbox', async () => {
     const page = await newPage(await newDevice(browser, app));
     await signUp(page, uniqueEmail());
-    expect(await page.getByRole('button', { name: 'Delete list' }).count()).toBe(0);
-    expect(await page.getByRole('button', { name: 'Rename' }).count()).toBe(0);
+    await page.getByRole('link', { name: 'Manage lists' }).click();
+    await page.getByRole('heading', { level: 2, name: 'Manage lists' }).waitFor();
+    expect(await page.getByRole('button', { name: /^Delete list/ }).count()).toBe(0);
+    expect(await page.getByRole('button', { name: /^Rename/ }).count()).toBe(0);
   });
 });
 

@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Link, useLocation } from 'wouter';
 import { listDropId } from '../../lib/dnd';
+import { MANAGE_LISTS_PATH } from '../../lib/listManage';
 import { getLists, getNotes } from '../../data/queries';
 import { useModule } from '../../app/hooks';
 import { usePublicLists, usePublicNotes } from '../../app/publicHooks';
@@ -112,6 +113,14 @@ function TasksNav({
       {publicLists === null && publicFailed && (
         <p className="hint nav-note">{t.nav.publicNeedsConnection}</p>
       )}
+
+      <Link
+        href={MANAGE_LISTS_PATH}
+        onClick={onNavigate}
+        className={`manage-lists-link${active(MANAGE_LISTS_PATH) ? ' active' : ''}`}
+      >
+        {t.nav.manageLists}
+      </Link>
 
       <form onSubmit={addList} className="new-list">
         <input
