@@ -7,7 +7,7 @@ import {
 } from '../../src/sync/runner';
 import type { SyncEngine, SyncResult, SyncStatus } from '../../src/sync/engine';
 
-/** Most tests are about syncing, so the 3 s connection check is far away unless asked for. */
+/** Most tests are about syncing, so the 5 s connection check is far away unless asked for. */
 const createSyncRunner = (o: RunnerOptions) => createRunner({ probeIntervalMs: 600_000, ...o });
 
 function fakeEngine(results: SyncResult[] = []) {
@@ -322,7 +322,7 @@ describe('createSyncRunner', () => {
   });
 });
 
-describe('connection check every 3 seconds (the browser flag is only a hint)', () => {
+describe('connection check every 5 seconds (the browser flag is only a hint)', () => {
   function setup(opts: { sync?: SyncResult[]; ping?: boolean[] } = {}) {
     const engine = fakeEngine(opts.sync ?? [ok]);
     const answers = opts.ping ?? [true];
@@ -334,16 +334,16 @@ describe('connection check every 3 seconds (the browser flag is only a hint)', (
     return { engine, env, connectivity, runner };
   }
 
-  it('asks the server every 3 seconds, not before', async () => {
+  it('asks the server every 5 seconds, not before', async () => {
     const { engine, runner } = setup();
     runner.start();
     await flush();
     expect(engine.ping).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(2999);
+    await vi.advanceTimersByTimeAsync(4999);
     expect(engine.ping).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(engine.ping).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(5000);
     expect(engine.ping).toHaveBeenCalledTimes(2);
     runner.stop();
     await vi.advanceTimersByTimeAsync(10_000);
@@ -355,7 +355,7 @@ describe('connection check every 3 seconds (the browser flag is only a hint)', (
     runner.start();
     await flush();
     engine.sync.mockClear();
-    await vi.advanceTimersByTimeAsync(9000);
+    await vi.advanceTimersByTimeAsync(15_000);
     expect(engine.ping).toHaveBeenCalledTimes(3);
     expect(engine.sync).not.toHaveBeenCalled();
     expect(connectivity.getSnapshot().online).toBe(true);
@@ -365,7 +365,7 @@ describe('connection check every 3 seconds (the browser flag is only a hint)', (
     const { engine, connectivity, runner } = setup({ ping: [false] });
     runner.start();
     await flush();
-    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(5000);
     expect(connectivity.getSnapshot().online).toBe(false);
     expect(engine.markOffline).toHaveBeenCalled();
     expect(engine.status.state).toBe('offline');
@@ -375,11 +375,11 @@ describe('connection check every 3 seconds (the browser flag is only a hint)', (
     const { engine, connectivity, runner } = setup({ ping: [false, false, true] });
     runner.start();
     await flush();
-    await vi.advanceTimersByTimeAsync(3000); // no answer
-    await vi.advanceTimersByTimeAsync(3000); // no answer
+    await vi.advanceTimersByTimeAsync(5000); // no answer
+    await vi.advanceTimersByTimeAsync(5000); // no answer
     expect(connectivity.getSnapshot().online).toBe(false);
     engine.sync.mockClear();
-    await vi.advanceTimersByTimeAsync(3000); // answer
+    await vi.advanceTimersByTimeAsync(5000); // answer
     expect(connectivity.getSnapshot().online).toBe(true);
     expect(engine.sync).toHaveBeenCalledTimes(1); // no waiting for the next timer
   });
@@ -393,8 +393,8 @@ describe('connection check every 3 seconds (the browser flag is only a hint)', (
     runner.start();
     await flush();
     expect(connectivity.getSnapshot().online).toBe(false); // the first sync failed
-    await vi.advanceTimersByTimeAsync(3000);
-    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(5000);
+    await vi.advanceTimersByTimeAsync(5000);
     expect(connectivity.getSnapshot().online).toBe(true);
     expect(engine.sync.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
@@ -430,7 +430,7 @@ describe('connection check every 3 seconds (the browser flag is only a hint)', (
     env.fire('offline');
     expect(connectivity.getSnapshot().online).toBe(false); // at once
     await flush();
-    expect(engine.ping).toHaveBeenCalledTimes(1); // no waiting for the 3 s timer
+    expect(engine.ping).toHaveBeenCalledTimes(1); // no waiting for the 5 s timer
     expect(connectivity.getSnapshot().online).toBe(true); // it was a false alarm
   });
 
@@ -448,8 +448,55 @@ describe('connection check every 3 seconds (the browser flag is only a hint)', (
     });
     runner.start();
     await flush();
-    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(5000);
     expect(diag.getSnapshot().flags.lastProbe).toMatchObject({ ok: false });
     expect(diag.getSnapshot().events.some((e) => e.kind === 'connection')).toBe(true);
+  });
+});
+
+describe('the browser flag shown in the diagnostics', () => {
+  it('start() records the flag without inventing an "online event" or a reconnect timer', async () => {
+    const { createSyncDiagnostics } = await import('../../src/sync/diagnostics');
+    const diag = createSyncDiagnostics(() => Date.now());
+    const env = fakeEnv();
+    env.online = false;
+    createSyncRunner({ engine: fakeEngine([ok]), env, diag }).start();
+    await flush();
+    expect(diag.getSnapshot().flags.browserOnline).toBe(false);
+    expect(diag.getSnapshot().events.some((e) => e.kind === 'browser')).toBe(false);
+    expect(diag.getSnapshot().flags.reconnectMs).toBeNull();
+  });
+
+  it('follows the real flag when an event arrives, not just the event name', async () => {
+    const { createSyncDiagnostics } = await import('../../src/sync/diagnostics');
+    const diag = createSyncDiagnostics(() => Date.now());
+    const env = fakeEnv();
+    createSyncRunner({ engine: fakeEngine([ok]), env, diag }).start();
+    await flush();
+    env.online = false;
+    env.fire('offline');
+    expect(diag.getSnapshot().flags.browserOnline).toBe(false);
+    env.online = true;
+    env.fire('online');
+    expect(diag.getSnapshot().flags.browserOnline).toBe(true);
+  });
+
+  it('an "online" event whose abort came too late does not make the next real failure look like our own abort', async () => {
+    let finishFirst!: (r: SyncResult) => void;
+    const engine = fakeEngine([offline]);
+    engine.sync.mockImplementationOnce(() => new Promise<SyncResult>((r) => (finishFirst = r)));
+    const env = fakeEnv();
+    const connectivity = createConnectivity(true);
+    createSyncRunner({ engine, env, connectivity, intervalMs: 600_000 }).start();
+    await flush();
+    env.fire('online'); // aborts, but the request had already worked
+    finishFirst(ok);
+    await flush();
+    engine.sync.mockClear();
+    // a genuine outage afterwards must be reported, not swallowed as "our abort"
+    env.fire('offline');
+    await flush();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(connectivity.getSnapshot().online).toBe(false);
   });
 });

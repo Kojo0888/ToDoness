@@ -2,7 +2,7 @@
  * Decides WHEN to sync (docs/mvp/TechStack.md section 6.2):
  * at start, when the browser comes back online, when the tab becomes visible,
  * about one second after a local change, and every 5 seconds.
- * Every 3 seconds it also asks the server whether it can be reached, because the browser's
+ * Every 5 seconds it also asks the server whether it can be reached, because the browser's
  * online flag is only a hint (it can be wrong both ways). After a failure it retries: every second while the connection is down, with growing
  * delays (up to 5 s) for server errors.
  */
@@ -53,7 +53,7 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
     debounceMs = 1000,
     diag,
     connectivity,
-    probeIntervalMs = 3000,
+    probeIntervalMs = 5000,
   } = opts;
 
   let started = false;
@@ -86,7 +86,7 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
   }
 
   /**
-   * Asks the server whether it can be reached (every 3 s). The browser's own flag is only
+   * Asks the server whether it can be reached (every 5 s). The browser's own flag is only
    * a hint and can be wrong in both directions, so this is what decides.
    */
   async function probe(): Promise<void> {
@@ -132,11 +132,13 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
         if (!started) return;
         if (result.ok) {
           attempt = 0;
+          urgent = false; // an abort that came too late must not outlive this run
           report(true, 'a sync worked');
           diag?.runEnd(true, 'all changes saved');
         } else if (result.kind === 'auth') {
           blocked = true;
           attempt = 0;
+          urgent = false;
           again = false;
           report(true, 'the server answered (login needed)');
           diag?.runEnd(false, 'login required');
@@ -178,7 +180,7 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
     start() {
       if (started) return;
       started = true;
-      diag?.browserOnline(env.isOnline());
+      diag?.browserOnline(env.isOnline(), false); // the current value, not an event
       unsubscribe.push(
         env.on('online', () => {
           diag?.browserOnline(true);

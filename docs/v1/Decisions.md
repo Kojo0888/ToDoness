@@ -106,9 +106,9 @@
     `online` event may never fire. It had been used in two places that mattered: the runner refused
     to send anything while the flag said offline, and every "needs a connection" part of the UI
     (including both attachment buttons) was disabled by it. Now the runner always tries, a request
-    that works or a check every 3 seconds (`GET /api/health`, 2 s limit) means online, and no answer
+    that works or a check every 5 seconds (`GET /api/health`, 2 s limit) means online, and no answer
     means offline. A server error still counts as reachable. The cost is one tiny request every
-    3 seconds, which is negligible on an intranet. The admin diagnostics show "Browser says" next to
+    5 seconds, which is negligible on an intranet. The admin diagnostics show "Browser says" next to
     "App found" so a wrong flag is visible.
 20. **File picker buttons are labels, and the input is re-created after every pick or cancel.** The
     reported "both buttons stopped working after cancelling" was most likely the false-offline flag

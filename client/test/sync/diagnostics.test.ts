@@ -82,6 +82,15 @@ describe('sync diagnostics (admin)', () => {
     });
   });
 
+  it('can record the flag silently (no event happened, e.g. at start)', () => {
+    const { diag, advance } = setup();
+    diag.browserOnline(true, false);
+    advance(3000);
+    diag.runEnd(true, 'saved');
+    expect(diag.getSnapshot().events.some((e) => e.kind === 'browser')).toBe(false);
+    expect(diag.getSnapshot().flags.reconnectMs).toBeNull();
+  });
+
   it('gives a new snapshot after every change and tells subscribers', () => {
     const { diag } = setup();
     const listener = vi.fn();
