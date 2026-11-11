@@ -54,7 +54,7 @@ export function createApp({ db, config, log = false, now = Date.now, ntfySend }:
   app.route('/api/me', meRoute({ db, now }));
   app.route('/api/admin', adminRoutes({ db, now, presence, config }));
   app.route('/api', attachmentRoutes({ db, config, now }));
-  app.route('/api/sync', syncRoutes({ db, now }));
+  app.route('/api/sync', syncRoutes({ db, now, serverClock }));
   app.route('/api/public', publicRoutes({ db, now }));
   app.route('/api/ntfy', ntfyRoutes({ db, now, config, send: ntfySend ?? ntfySenderFor(config) }));
   app.route('/api/push', pushRoutes({ db, now, publicKey: getVapidKeys(db, config).publicKey }));

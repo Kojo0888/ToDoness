@@ -231,6 +231,7 @@ describe('todoSchema / listSchema', () => {
       id: newId(),
       name: 'Inbox',
       isInbox: true,
+      module: 'tasks',
       isPublic: false,
       orderKey: 'a0',
       fieldHlc: {},
@@ -309,8 +310,14 @@ describe('v1 fields', () => {
       deletedAt: null,
     };
     expect(
-      listSchema.safeParse({ ...base, name: 'A', orderKey: 'a0', isInbox: false, isPublic: true })
-        .success,
+      listSchema.safeParse({
+        ...base,
+        name: 'A',
+        orderKey: 'a0',
+        isInbox: false,
+        isPublic: true,
+        module: 'tasks',
+      }).success,
     ).toBe(true);
     expect(
       todoSchema.safeParse({

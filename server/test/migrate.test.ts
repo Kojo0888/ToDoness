@@ -186,6 +186,23 @@ describe('migration 002 (v1)', () => {
     ]);
   });
 
+  it('migration 007 allows one default list per user and module, and notes keep a list', () => {
+    const db = new Database(':memory:');
+    migrate(db, MIGRATIONS_DIR);
+    db.exec(`INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
+      INSERT INTO lists (id, user_id, name, is_inbox, order_key, created_at, updated_at) VALUES ('l1','u1','Inbox',1,'a0',1,1);
+      INSERT INTO lists (id, user_id, name, is_inbox, module, order_key, created_at, updated_at) VALUES ('l2','u1','My notes',1,'notes','a0',1,1);
+      INSERT INTO notes (id, user_id, text, list_id, order_key, created_at, updated_at) VALUES ('n1','u1','x','l2','a0',1,1);`);
+    expect(() =>
+      db.exec(`INSERT INTO lists (id, user_id, name, is_inbox, module, order_key, created_at, updated_at)
+        VALUES ('l3','u1','Again',1,'notes','a1',1,1)`),
+    ).toThrow();
+    expect(() => db.exec("UPDATE lists SET module = 'other' WHERE id = 'l1'")).toThrow();
+    expect(db.prepare("SELECT module FROM lists WHERE id = 'l1'").get()).toEqual({
+      module: 'tasks',
+    });
+  });
+
   it('removes attachment rows with their task owner (cascade)', () => {
     const db = new Database(':memory:');
     db.pragma('foreign_keys = ON');

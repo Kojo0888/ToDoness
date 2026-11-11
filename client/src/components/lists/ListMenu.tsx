@@ -16,7 +16,8 @@ export function ListMenu({
 }: {
   name: string;
   onRename: () => void;
-  onDelete: () => void;
+  /** Left out for a list that cannot be deleted ("My notes"): the menu only renames. */
+  onDelete?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   /** Which item gets focus when the menu opens (ArrowUp and End open on the last one). */
@@ -99,7 +100,7 @@ export function ListMenu({
       </button>
       {open && (
         <div className="row-menu-popup" role="menu" id={menuId} aria-label={t.manage.actions(name)}>
-          {ACTIONS.map((action) =>
+          {ACTIONS.filter((a) => a !== 'delete' || onDelete).map((action) =>
             action === 'rename' ? (
               <button key={action} type="button" role="menuitem" onClick={choose(onRename)}>
                 {t.list.rename}
@@ -110,7 +111,7 @@ export function ListMenu({
                 type="button"
                 role="menuitem"
                 className="danger"
-                onClick={choose(onDelete)}
+                onClick={choose(onDelete!)}
               >
                 {t.list.deleteList}
               </button>

@@ -76,6 +76,7 @@ describe('applyOp – create', () => {
       id: LIST_ID,
       name: 'Work',
       isInbox: false,
+      module: 'tasks',
       isPublic: false,
       orderKey: 'a0',
       fieldHlc: { name: hlc(T0), orderKey: hlc(T0) },

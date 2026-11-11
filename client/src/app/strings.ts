@@ -23,6 +23,13 @@ export const t = {
   appName: 'ToDoness',
   loading: 'Loading…',
 
+  common: {
+    /** The "i" button next to a setting or control (docs/note-lists FR-123). */
+    moreInfo: (about: string) => `About ${about}`,
+    openTasks: (n: number) => `${n} open task${n === 1 ? '' : 's'}`,
+    notesCount: (n: number) => `${n} note${n === 1 ? '' : 's'}`,
+  },
+
   login: {
     titleLogin: 'Log in',
     titleRegister: 'Create an account',
@@ -111,8 +118,12 @@ export const t = {
 
   manage: {
     title: 'Manage lists',
+    notesTitle: 'Manage note lists',
     empty: 'You have no lists besides the Inbox yet.',
     back: 'Back to tasks',
+    backNotes: 'Back to notes',
+    locked: (name: string) => `${name} cannot be renamed, moved or deleted.`,
+    lockedLabel: 'Locked',
     drag: (name: string) => `Drag to reorder list: ${name}`,
     actions: (name: string) => `Actions: ${name}`,
     dragInstructions:
@@ -174,10 +185,20 @@ export const t = {
     myNotes: 'My notes',
     publicNotes: 'Public notes',
     publicNeedsConnection: 'Public notes need a connection the first time.',
+    lists: 'Note lists',
+    newList: 'New list name',
+    addList: 'Add list',
+    manageLists: 'Manage lists',
+    listNotFound: 'This note list does not exist.',
+    deleteListText: (name: string, n: number) =>
+      n === 0
+        ? `The note list "${name}" will be deleted.`
+        : `The note list "${name}" and its ${n} note${n === 1 ? '' : 's'} will be deleted.`,
     newLabel: 'New note',
     newPlaceholder: 'Write a note…',
     add: 'Add note',
     addHint: 'Ctrl + Enter (⌘ + Enter on a Mac) adds the note.',
+    addAbout: 'writing notes',
     empty: 'No notes yet. Write your first one above.',
     noteLabel: (n: number) => `Note ${n}`,
     changed: (when: string) => `Changed ${when}`,
@@ -342,7 +363,7 @@ export const t = {
     logout: 'Log out',
     push: {
       title: 'Push notifications',
-      text: 'Get reminders as notifications even when the app is closed.',
+      text: 'Get reminders as notifications even when the app is closed. Needs a connection to the server, and the server must be able to reach your browser’s push service.',
       status: {
         unsupported: 'Not available: this browser does not support web push.',
         insecure: 'Not available: push needs a secure connection (HTTPS).',
@@ -350,20 +371,22 @@ export const t = {
         off: 'Off on this device.',
         on: 'On for this device.',
       },
+      switchLabel: 'Push notifications on this device',
       enable: 'Turn on push',
       disable: 'Turn off push',
       failed:
         'Could not turn push on. The browser or the server could not set it up; try again later.',
-      hint: 'Needs a connection to the server, and the server must be able to reach your browser’s push service.',
     },
     ntfy: {
       title: 'Reminders through ntfy',
-      text: 'Get reminders in the ntfy app on your phone or computer. Works next to web push, and also on a network without internet if your server runs its own ntfy.',
+      text: 'Get reminders in the ntfy app on your phone or computer. Works next to web push, and also on a network without internet if your server runs its own ntfy. On a shared ntfy server anyone who knows your topic can read your reminders: keep it secret.',
+      switchLabel: 'Reminders through ntfy',
+      topicInfo:
+        'A private name only you know. Generate one, then subscribe to it in the ntfy app.',
       topicLabel: 'Your topic',
       generate: 'Generate a private topic',
       save: 'Save',
       saving: 'Saving…',
-      remove: 'Turn off',
       test: 'Send a test notification',
       testing: 'Sending…',
       subscribe: (address: string) => `In the ntfy app, subscribe to: ${address}`,
@@ -382,10 +405,12 @@ export const t = {
         testFailed:
           'The server could not reach the ntfy server. Check NTFY_URL and the server’s network.',
       },
-      hint: 'On a shared ntfy server anyone who knows your topic can read your reminders: keep it secret.',
     },
     notifications: {
-      title: 'Notifications',
+      title: 'Notifications on this device',
+      text: 'Reminders shown by the app on this device: a message inside the app and a system notification. They appear only while the app is open (in a tab or installed). Switch off to get no reminders here; push and ntfy have their own switches.',
+      switchLabel: 'Notifications on this device',
+      off: 'Off on this device.',
       enable: 'Enable notifications',
       status: {
         insecure: 'Not available: notifications need a secure connection (HTTPS).',
@@ -394,7 +419,7 @@ export const t = {
         default: 'Not enabled yet.',
         granted: 'Enabled.',
       },
-      hint: 'Reminders only appear while the app is open (in a tab or installed).',
+      onInAppOnly: 'On: messages inside the app only (system notifications are not allowed here).',
     },
     password: {
       title: 'Change password',
@@ -404,6 +429,7 @@ export const t = {
       submit: 'Change password',
       working: 'Changing…',
       hint: 'At least 8 characters. You stay logged in here; your other devices are logged out.',
+      hintLabel: 'password rules',
       mismatch: 'The two new passwords are not the same.',
       done: 'Password changed. Your other devices were logged out.',
       needsConnection: 'Changing the password needs a connection to the server.',

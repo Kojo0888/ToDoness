@@ -126,7 +126,11 @@ describe('tasks and lists', () => {
     await page.getByLabel('New list name').fill('Home');
     await page.getByRole('button', { name: 'Add list' }).click();
     await page.getByRole('heading', { level: 2, name: 'Home' }).waitFor();
-    expect(await page.locator('.nav-lists a').allTextContents()).toEqual(['Inbox', 'Work', 'Home']);
+    expect(await page.locator('.nav-lists a .nav-name').allTextContents()).toEqual([
+      'Inbox',
+      'Work',
+      'Home',
+    ]);
     await page.getByRole('link', { name: 'Manage lists' }).click();
     await page.getByRole('heading', { level: 2, name: 'Manage lists' }).waitFor();
     // Drag Home above Work with the mouse (one handle per list, no up/down buttons).
@@ -141,7 +145,7 @@ describe('tasks and lists', () => {
     await page.mouse.move(to!.x + 10, to!.y + 2, { steps: 15 });
     await page.mouse.up();
     await expect
-      .poll(() => page.locator('.nav-lists a').allTextContents())
+      .poll(() => page.locator('.nav-lists a .nav-name').allTextContents())
       .toEqual(['Inbox', 'Home', 'Work']);
     await expect
       .poll(() => page.locator('.manage-name').allTextContents())

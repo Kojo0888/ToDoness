@@ -185,7 +185,7 @@ describe('push: repeating is safe', () => {
     const create = todoCreate(t, c.inbox, 'A', hlcAt(1));
     const res = await c.ann.push([create, create]);
     expect(res.accepted).toEqual([create.opId, create.opId]);
-    expect(logCount(c)).toBe(2); // Inbox + this todo
+    expect(logCount(c)).toBe(3); // Inbox + My notes + this todo
   });
 });
 
@@ -353,8 +353,8 @@ describe('users cannot reach each other’s data', () => {
     await bob.push([todoCreate(newId(), bobInbox, 'Bob’s', hlcAt(1))]);
     const annSees = await c.ann.pullAll();
     const bobSees = await bob.pullAll();
-    expect(annSees.map((x) => x.entity)).toEqual(['list', 'todo']);
-    expect(bobSees.map((x) => x.entity)).toEqual(['list', 'todo']);
+    expect(annSees.map((x) => x.entity)).toEqual(['list', 'list', 'todo']);
+    expect(bobSees.map((x) => x.entity)).toEqual(['list', 'list', 'todo']);
     expect(JSON.stringify(annSees)).not.toContain('Bob’s');
     expect(JSON.stringify(bobSees)).not.toContain('Ann’s');
   });
@@ -369,16 +369,17 @@ describe('users cannot reach each other’s data', () => {
 });
 
 describe('pull', () => {
-  it('starts with the Inbox created at sign-up', async () => {
+  it('starts with the Inbox (and My notes) created at sign-up', async () => {
     const { changes, nextSeq, hasMore } = await c.ann.pull(0);
-    expect(changes).toHaveLength(1);
+    expect(changes).toHaveLength(2);
+    expect(changes[1]!.patch).toMatchObject({ name: 'My notes', module: 'notes' });
     expect(changes[0]).toMatchObject({
       entity: 'list',
       entityId: c.inbox,
       type: 'create',
       patch: { name: 'Inbox', orderKey: 'a0', isInbox: true },
     });
-    expect(nextSeq).toBe(changes[0]!.serverSeq);
+    expect(nextSeq).toBe(changes[1]!.serverSeq);
     expect(hasMore).toBe(false);
   });
 
@@ -402,15 +403,15 @@ describe('pull', () => {
     await c.ann.push(
       Array.from({ length: 5 }, (_, i) => todoCreate(newId(), c.inbox, `t${i}`, hlcAt(i))),
     );
-    // 6 changes in total (Inbox + 5 todos)
+    // 7 changes in total (Inbox + My notes + 5 todos)
     const p1 = await c.ann.pull(0, 4);
     expect(p1.changes).toHaveLength(4);
     expect(p1.hasMore).toBe(true);
     const p2 = await c.ann.pull(p1.nextSeq, 4);
-    expect(p2.changes).toHaveLength(2);
+    expect(p2.changes).toHaveLength(3);
     expect(p2.hasMore).toBe(false);
     const all = [...p1.changes, ...p2.changes].map((x) => x.serverSeq);
-    expect(new Set(all).size).toBe(6);
+    expect(new Set(all).size).toBe(7);
   });
 
   it('returns nothing and keeps the cursor when up to date', async () => {

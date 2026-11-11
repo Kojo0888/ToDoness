@@ -7,7 +7,9 @@ import {
   toLegacyRemindBefore,
   type PullResponse,
 } from '@todoness/shared';
+import type { HlcClock } from '@todoness/shared';
 import { requireAuth } from '../auth/middleware';
+import { ensureNotesList } from '../auth/users';
 import { applyPush } from '../sync/apply-ops';
 import type { AppEnv } from '../http/types';
 
@@ -20,7 +22,15 @@ function wholeNumber(value: string | undefined, fallback: number): number | unde
   return /^\d+$/.test(value) ? Number(value) : undefined;
 }
 
-export function syncRoutes({ db, now }: { db: Database.Database; now: () => number }) {
+export function syncRoutes({
+  db,
+  now,
+  serverClock,
+}: {
+  db: Database.Database;
+  now: () => number;
+  serverClock: HlcClock;
+}) {
   const app = new Hono<AppEnv>();
   app.use('*', requireAuth(db, now));
 
@@ -46,6 +56,13 @@ export function syncRoutes({ db, now }: { db: Database.Database; now: () => numb
     // and reject the whole answer otherwise, so they only get the earliest reminder.
     // The current app asks for lists (`reminders=list`). docs/ui-refresh, FR-115.
     const remindersAsList = c.req.query('reminders') === 'list';
+    // Apps from before note lists (docs/note-lists, decision L4) would take a note list for
+    // a task list and reject a note's `listId`. The current app asks with `lists=modules`.
+    const knowsModules = c.req.query('lists') === 'modules';
+    const userId = c.get('user').id;
+
+    // Accounts from before note lists get "My notes" at their first sync (FR-124).
+    db.transaction(() => ensureNotesList(db, userId, now(), () => serverClock.now())).immediate();
 
     const rows = db
       .prepare(
@@ -55,7 +72,7 @@ export function syncRoutes({ db, now }: { db: Database.Database; now: () => numb
           ORDER BY server_seq
           LIMIT ?`,
       )
-      .all(c.get('user').id, since, limit + 1) as {
+      .all(userId, since, limit + 1) as {
       server_seq: number;
       entity: 'todo' | 'list' | 'note';
       entity_id: string;
@@ -66,13 +83,29 @@ export function syncRoutes({ db, now }: { db: Database.Database; now: () => numb
 
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
+    const noteLists = knowsModules
+      ? undefined
+      : new Set(
+          (
+            db
+              .prepare("SELECT id FROM lists WHERE user_id = ? AND module = 'notes'")
+              .all(userId) as {
+              id: string;
+            }[]
+          ).map((r) => r.id),
+        );
+    const shown = noteLists
+      ? page.filter((r) => !(r.entity === 'list' && noteLists.has(r.entity_id)))
+      : page;
     const body = {
-      changes: page.map((r) => ({
+      changes: shown.map((r) => ({
         serverSeq: r.server_seq,
         entity: r.entity,
         entityId: r.entity_id,
         type: r.op_type,
-        patch: remindersAsList ? JSON.parse(r.patch) : legacyPatch(r.entity, JSON.parse(r.patch)),
+        patch: ((p: Record<string, unknown>) => (knowsModules ? p : withoutModules(r.entity, p)))(
+          remindersAsList ? JSON.parse(r.patch) : legacyPatch(r.entity, JSON.parse(r.patch)),
+        ),
         hlc: r.hlc,
       })),
       nextSeq: page.at(-1)?.server_seq ?? since,
@@ -91,4 +124,13 @@ function legacyPatch(entity: string, patch: Record<string, unknown>): Record<str
     ...patch,
     remindBefore: toLegacyRemindBefore(normalizeRemindBefore(patch.remindBefore)),
   };
+}
+
+/** For apps from before note lists: no `module` on lists, no `listId` on notes. */
+function withoutModules(entity: string, patch: Record<string, unknown>): Record<string, unknown> {
+  const field = entity === 'list' ? 'module' : entity === 'note' ? 'listId' : undefined;
+  if (field === undefined || !(field in patch)) return patch;
+  const rest = { ...patch };
+  delete rest[field];
+  return rest;
 }

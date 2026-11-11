@@ -116,6 +116,22 @@ export class TodonessDB extends Dexie {
           t.remindBefore = normalizeRemindBefore(t.remindBefore);
         });
     });
+    // Note lists (docs/note-lists): every stored list is a task list, every note is in
+    // "My notes" (`listId: null`).
+    this.version(6).upgrade(async (tx) => {
+      await tx
+        .table('lists')
+        .toCollection()
+        .modify((l) => {
+          l.module ??= 'tasks';
+        });
+      await tx
+        .table('notes')
+        .toCollection()
+        .modify((n) => {
+          n.listId ??= null;
+        });
+    });
   }
 
   async getMeta<T>(key: string): Promise<T | undefined> {

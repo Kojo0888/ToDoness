@@ -1522,3 +1522,210 @@ h2.nav-heading {
 .row-menu-popup button.danger {
   color: var(--danger);
 }
+
+/* ---------- "i" info button (UI_GUIDELINES.md, docs/note-lists FR-123) ---------- */
+
+.info-tip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.info-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  cursor: help;
+}
+
+.info-btn:hover,
+.info-btn[aria-expanded='true'] {
+  background: var(--border);
+  color: var(--fg);
+}
+
+.info-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.info-pop {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: -0.5rem;
+  z-index: 30;
+  width: max-content;
+  max-width: min(20rem, calc(100vw - 2rem));
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.2);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  display: none; /* not just invisible: a hidden tooltip must not widen the page */
+  pointer-events: none;
+}
+
+.info-tip:hover .info-pop,
+.info-btn:focus-visible + .info-pop,
+.info-pop.open {
+  display: block;
+}
+
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.title-row h3 {
+  margin: 0;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* ---------- settings: one row per on/off setting (FR-119) ---------- */
+
+.setting {
+  margin: 1rem 0;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.setting-row h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.setting-switch {
+  margin: 0 0 0 auto;
+  padding-left: 0.75rem;
+}
+
+.setting-status {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.setting-status.error {
+  color: var(--danger);
+}
+
+.setting > button,
+.setting .button-row {
+  margin-top: 0.75rem;
+}
+
+/* ---------- app bar of a sub-page: round back button + title (FR-133) ---------- */
+
+.list-head.app-bar {
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.app-bar h2 {
+  margin: 0;
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--fg);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s;
+}
+
+.icon-btn:hover {
+  background: var(--bg);
+  border-color: var(--accent);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* ---------- Manage lists: fixed and locked rows (FR-129, FR-130) ---------- */
+
+.drag-handle-space {
+  flex: none;
+  width: 2rem;
+}
+
+.manage-row.locked .manage-name {
+  color: var(--muted);
+}
+
+.manage-row .lock {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  color: var(--muted);
+}
+
+.fixed-rows + .manage-list-rows .manage-row:first-child,
+.manage-list-rows + .fixed-rows .manage-row {
+  border-top: 0;
+}
+
+@media (max-width: 760px) {
+  .icon-btn,
+  .info-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* On a phone the tooltip spans the row it belongs to, so it never leaves the screen. */
+  .setting-row,
+  .title-row,
+  .list-head,
+  .note-add-actions {
+    position: relative;
+  }
+
+  .info-tip {
+    position: static;
+  }
+
+  .info-pop {
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: none;
+  }
+}

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { InfoTip } from '../common/InfoTip';
 import { PASSWORD_MIN } from '@todoness/shared';
 import { useOnline } from '../../app/hooks';
 import { session } from '../../app/container';
@@ -37,7 +38,13 @@ export function ChangePassword() {
 
   return (
     <form className="card password-form" onSubmit={(e) => void submit(e)}>
-      <h3>{t.settings.password.title}</h3>
+      <div className="title-row">
+        <h3>{t.settings.password.title}</h3>
+        <InfoTip
+          text={t.settings.password.hint}
+          label={t.common.moreInfo(t.settings.password.hintLabel)}
+        />
+      </div>
       <label>
         {t.settings.password.current}
         <input
@@ -70,7 +77,6 @@ export function ChangePassword() {
           onChange={(e) => setRepeat(e.target.value)}
         />
       </label>
-      <p className="hint">{t.settings.password.hint}</p>
       {!online && <p className="notice">{t.settings.password.needsConnection}</p>}
       {error && (
         <p className="error" role="alert">

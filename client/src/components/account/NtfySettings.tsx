@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { t } from '../../app/strings';
+import { SettingRow } from '../common/SettingRow';
+import { InfoTip } from '../common/InfoTip';
 import {
   loadNtfyStatus,
   ntfySubscribeUrl,
@@ -21,6 +23,8 @@ export function NtfySettings() {
   const [testing, setTesting] = useState(false);
   const busy = saving || testing;
   const [message, setMessage] = useState<Message>(undefined);
+  // Switched on, but no topic saved yet: the setup is open (FR-122).
+  const [setupOpen, setSetupOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,6 +50,7 @@ export function NtfySettings() {
       const trimmed = topic.trim();
       setTopic(trimmed);
       setStatus((s) => (s ? { ...s, topic: trimmed } : s));
+      setSetupOpen(false);
       setMessage({ kind: 'info', text: t.settings.ntfy.saved });
     } else {
       setMessage({ kind: 'error', text: err[result] });
@@ -88,44 +93,67 @@ export function NtfySettings() {
     setTesting(false);
   }
 
+  const on = Boolean(status.topic) || setupOpen;
+
+  async function change(next: boolean) {
+    setMessage(undefined);
+    if (next) {
+      setSetupOpen(true);
+      return;
+    }
+    setSetupOpen(false);
+    if (status?.topic) await turnOff();
+  }
+
   return (
-    <section className="card notifications" aria-label={t.settings.ntfy.title}>
-      <h3>{t.settings.ntfy.title}</h3>
-      <p>{t.settings.ntfy.text}</p>
-      <p role="status">{status.topic ? t.settings.ntfy.active : t.settings.ntfy.inactive}</p>
-      <label>
-        {t.settings.ntfy.topicLabel}
-        <input
-          value={topic}
-          maxLength={64}
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          onChange={(e) => setTopic(e.target.value)}
-        />
-      </label>
-      <p>
-        <button type="button" disabled={busy} onClick={() => setTopic(randomNtfyTopic())}>
-          {t.settings.ntfy.generate}
-        </button>{' '}
-        <button
-          type="button"
-          className="primary"
-          disabled={busy || topic.trim() === ''}
-          onClick={() => void save()}
-        >
-          {saving ? t.settings.ntfy.saving : t.settings.ntfy.save}
-        </button>
-      </p>
+    <SettingRow
+      title={t.settings.ntfy.title}
+      info={t.settings.ntfy.text}
+      checked={on}
+      disabled={busy}
+      onChange={(v) => void change(v)}
+      status={status.topic ? t.settings.ntfy.active : on ? undefined : t.settings.ntfy.inactive}
+    >
+      {on && (
+        <>
+          <label>
+            <span className="title-row">
+              {t.settings.ntfy.topicLabel}
+              <InfoTip
+                text={t.settings.ntfy.topicInfo}
+                label={t.common.moreInfo(t.settings.ntfy.topicLabel)}
+              />
+            </span>
+            <input
+              value={topic}
+              maxLength={64}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              onChange={(e) => setTopic(e.target.value)}
+            />
+          </label>
+          <p className="button-row">
+            <button type="button" disabled={busy} onClick={() => setTopic(randomNtfyTopic())}>
+              {t.settings.ntfy.generate}
+            </button>
+            <button
+              type="button"
+              className="primary"
+              disabled={busy || topic.trim() === '' || topic.trim() === status.topic}
+              onClick={() => void save()}
+            >
+              {saving ? t.settings.ntfy.saving : t.settings.ntfy.save}
+            </button>
+          </p>
+        </>
+      )}
       {status.topic && status.url && (
         <>
           <p>{t.settings.ntfy.subscribe(ntfySubscribeUrl(status.url, status.topic))}</p>
           <p>
             <button type="button" disabled={busy} onClick={() => void test()}>
               {testing ? t.settings.ntfy.testing : t.settings.ntfy.test}
-            </button>{' '}
-            <button type="button" disabled={busy} onClick={() => void turnOff()}>
-              {t.settings.ntfy.remove}
             </button>
           </p>
         </>
@@ -138,7 +166,6 @@ export function NtfySettings() {
           {message.text}
         </p>
       )}
-      <p className="hint">{t.settings.ntfy.hint}</p>
-    </section>
+    </SettingRow>
   );
 }
