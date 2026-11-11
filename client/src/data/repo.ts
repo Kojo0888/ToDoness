@@ -16,6 +16,7 @@ import {
   syncOpSchema,
   type Entity,
   type List,
+  type ListModule,
   type Note,
   type OpType,
   type Todo,
@@ -24,6 +25,7 @@ import {
 import { nextHlc as nextHlcOf } from './clock';
 import type { TodonessDB } from './db';
 import { keyForPosition } from './order';
+import { moduleOf } from './queries';
 import type { RecoverySnapshot, RestoreMode } from './recovery';
 
 export type RepoErrorCode = 'invalid' | 'not_found' | 'inbox_protected';
@@ -53,7 +55,8 @@ export interface Repo {
   deleteTodo(id: string): Promise<Todo>;
   restoreTodo(id: string): Promise<Todo>;
   moveTodo(id: string, listId: string): Promise<Todo>;
-  createList(name: string): Promise<List>;
+  /** A new list at the end of its module's lists (`tasks` unless said otherwise). */
+  createList(name: string, module?: ListModule): Promise<List>;
   renameList(id: string, name: string): Promise<List>;
   deleteList(id: string): Promise<List>;
   /**
@@ -69,8 +72,11 @@ export interface Repo {
    * first: it cannot be moved, and nothing can be put before it.
    */
   reorderList(id: string, beforeId: string | null): Promise<List>;
-  /** A new note with this text, on top. Blank text is refused. */
-  createNote(text: string): Promise<Note>;
+  /**
+   * A new note with this text, on top of its note list (`null` = My notes). Blank text is
+   * refused.
+   */
+  createNote(text: string, listId?: string | null): Promise<Note>;
   /** Replaces the text of a note (it may become empty). */
   updateNoteText(id: string, text: string): Promise<Note>;
   /** Makes a note readable and editable (or not) by every logged-in user. */
@@ -168,6 +174,18 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
     return rows.filter((t) => t.deletedAt === null);
   }
 
+  /** Live notes of a note list (`null` = My notes, also by its id), in key order. */
+  async function notesOfList(listId: string | null): Promise<Note[]> {
+    const myNotes = (await db.lists.toArray()).find(
+      (l) => l.deletedAt === null && l.isInbox && moduleOf(l) === 'notes',
+    )?.id;
+    const key = (n: Note) => (n.listId == null || n.listId === myNotes ? null : n.listId);
+    const own = listId === myNotes ? null : listId;
+    return (await db.notes.orderBy('orderKey').toArray()).filter(
+      (n) => n.deletedAt === null && key(n) === own,
+    );
+  }
+
   /** A key that sorts before every todo of the list, so the new one lands on top. */
   async function topKey(listId: string): Promise<string> {
     const first = await db.todos
@@ -241,14 +259,20 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         return commit<Todo>('todo', 'update', id, { orderKey: choice.key });
       }),
 
-    createNote: (text) =>
+    createNote: (text, listId = null) =>
       inTx(async () => {
         if (!text.trim()) throw new RepoError('invalid', 'A new note needs text');
-        const first = await db.notes.orderBy('orderKey').first();
-        return commit<Note>('note', 'create', newId(now()), {
+        if (listId !== null) {
+          const list = await liveList(listId);
+          if (moduleOf(list) !== 'notes') throw new RepoError('not_found', 'Not a note list');
+        }
+        const first = (await notesOfList(listId))[0];
+        const patch: Record<string, unknown> = {
           text,
           orderKey: generateKeyBetween(null, first?.orderKey ?? null),
-        });
+        };
+        if (listId !== null) patch.listId = listId; // My notes: as older apps write it
+        return commit<Note>('note', 'create', newId(now()), patch);
       }),
 
     updateNoteText: (id, text) =>
@@ -268,9 +292,7 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
     reorderNote: (id, beforeId) =>
       inTx(async () => {
         const note = await liveNote(id);
-        const live = (await db.notes.orderBy('orderKey').toArray()).filter(
-          (n) => n.deletedAt === null,
-        );
+        const live = await notesOfList(note.listId ?? null);
         const choice = keyForPosition(live, id, beforeId);
         if (choice.kind === 'same') return note;
         if (choice.kind === 'missing') throw new RepoError('not_found', 'Note or target not found');
@@ -300,19 +322,24 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         return commit<List>('list', 'update', id, { isPublic });
       }),
 
-    createList: (name) =>
+    createList: (name, module = 'tasks') =>
       inTx(async () => {
         const last = await db.lists.orderBy('orderKey').last();
-        return commit<List>('list', 'create', newId(now()), {
+        const patch: Record<string, unknown> = {
           name,
           orderKey: generateKeyBetween(last?.orderKey ?? null, null),
-        });
+        };
+        if (module !== 'tasks') patch.module = module; // task lists: as before note lists
+        return commit<List>('list', 'create', newId(now()), patch);
       }),
 
     renameList: (id, name) =>
       inTx(async () => {
         const list = await liveList(id);
-        if (list.isInbox) throw new RepoError('inbox_protected', 'The Inbox cannot be renamed');
+        // "My notes" may be renamed (docs/note-lists FR-129); the task Inbox may not.
+        if (list.isInbox && moduleOf(list) === 'tasks') {
+          throw new RepoError('inbox_protected', 'The Inbox cannot be renamed');
+        }
         return commit<List>('list', 'update', id, { name });
       }),
 
@@ -326,8 +353,9 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
             throw new RepoError('inbox_protected', 'Nothing can be put above the Inbox');
           }
         }
+        // Among the lists of the same module (task lists and note lists are ordered apart).
         const live = (await db.lists.orderBy('orderKey').toArray()).filter(
-          (l) => l.deletedAt === null,
+          (l) => l.deletedAt === null && moduleOf(l) === moduleOf(list),
         );
         const choice = keyForPosition(live, id, beforeId);
         if (choice.kind === 'same') return list;
@@ -337,7 +365,9 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
 
     restoreSnapshot: (snapshot, mode) =>
       inTx(async () => {
-        const inbox = (await db.lists.toArray()).find((l) => l.isInbox && l.deletedAt === null);
+        const inbox = (await db.lists.toArray()).find(
+          (l) => l.isInbox && l.deletedAt === null && moduleOf(l) === 'tasks',
+        );
         if (!inbox) throw new RepoError('not_found', 'The Inbox is not here yet');
 
         if (mode === 'overwrite') {
@@ -363,17 +393,24 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
           if (existing && existing.deletedAt !== null) await commit<T>(entity, 'restore', id, {});
         }
 
-        const listIds = new Set(snapshot.lists.map((l) => l.id));
+        const taskListIds = new Set(
+          snapshot.lists.filter((l) => moduleOf(l) === 'tasks').map((l) => l.id),
+        );
+        const noteListIds = new Set(
+          snapshot.lists.filter((l) => moduleOf(l) === 'notes').map((l) => l.id),
+        );
         for (const l of snapshot.lists) {
-          await put<List>('list', l.id, {
+          const patch: Record<string, unknown> = {
             name: l.name,
             orderKey: l.orderKey,
             isPublic: l.isPublic,
-          });
+          };
+          if (moduleOf(l) !== 'tasks') patch.module = moduleOf(l);
+          await put<List>('list', l.id, patch);
         }
         for (const t of snapshot.todos) {
           await put<Todo>('todo', t.id, {
-            listId: listIds.has(t.listId) ? t.listId : inbox.id,
+            listId: taskListIds.has(t.listId) ? t.listId : inbox.id,
             title: t.title,
             orderKey: t.orderKey,
             notes: t.notes,
@@ -386,11 +423,14 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         }
         const notes = snapshot.notes ?? []; // missing in a copy kept before notes existed
         for (const n of notes) {
-          await put<Note>('note', n.id, {
+          const patch: Record<string, unknown> = {
             text: n.text,
             orderKey: n.orderKey,
             isPublic: n.isPublic,
-          });
+          };
+          // Notes of the old "My notes" (or of a list not kept) go to this account's My notes.
+          if (n.listId != null && noteListIds.has(n.listId)) patch.listId = n.listId;
+          await put<Note>('note', n.id, patch);
         }
         return {
           lists: snapshot.lists.length,
@@ -408,6 +448,12 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         const todos = await db.todos.where('listId').equals(id).toArray();
         for (const t of todos) {
           if (t.deletedAt === null) await commit<Todo>('todo', 'delete', t.id, {});
+        }
+        // A note list takes its notes with it (docs/note-lists FR-128).
+        for (const n of await db.notes.toArray()) {
+          if (n.listId === id && n.deletedAt === null) {
+            await commit<Note>('note', 'delete', n.id, {});
+          }
         }
         return commit<List>('list', 'delete', id, {});
       }),

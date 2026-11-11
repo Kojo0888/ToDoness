@@ -77,10 +77,18 @@ describe('POST /api/auth/register', () => {
   it('creates exactly one Inbox and a change-log entry so it syncs', async () => {
     const { app, db } = testApp();
     const me = await (await register(new TestClient(app))).json();
-    const lists = db.prepare('SELECT * FROM lists WHERE user_id = ?').all(me.id) as Row[];
+    const lists = db
+      .prepare("SELECT * FROM lists WHERE user_id = ? AND module = 'tasks'")
+      .all(me.id) as Row[];
     expect(lists).toHaveLength(1);
     expect(lists[0]).toMatchObject({ name: 'Inbox', is_inbox: 1, deleted_at: null });
-    const log = db.prepare('SELECT * FROM change_log WHERE user_id = ?').all(me.id) as Row[];
+    // "My notes" is created with the account too (docs/note-lists FR-124).
+    expect(
+      db.prepare("SELECT name FROM lists WHERE user_id = ? AND module = 'notes'").all(me.id),
+    ).toEqual([{ name: 'My notes' }]);
+    const log = db
+      .prepare('SELECT * FROM change_log WHERE user_id = ? AND entity_id = ?')
+      .all(me.id, lists[0]!.id) as Row[];
     expect(log).toHaveLength(1);
     expect(log[0]).toMatchObject({ entity: 'list', entity_id: lists[0]!.id, op_type: 'create' });
     expect(JSON.parse(log[0]!.patch!)).toEqual({ name: 'Inbox', orderKey: 'a0', isInbox: true });
@@ -353,7 +361,7 @@ describe('admin', () => {
     const { admin, userMe, db } = await setup();
     await admin.post(`/api/admin/users/${userMe.id}/reset-password`);
     expect(db.prepare('SELECT COUNT(*) n FROM lists WHERE user_id = ?').get(userMe.id)).toEqual({
-      n: 1,
+      n: 2, // Inbox and My notes
     });
   });
 

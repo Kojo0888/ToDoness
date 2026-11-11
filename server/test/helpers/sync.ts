@@ -54,7 +54,7 @@ export class Device {
 
   async pull(since = 0, limit?: number): Promise<PullResponse> {
     // `reminders=list`: like the current app, which understands several reminders per task.
-    const q = `since=${since}${limit === undefined ? '' : `&limit=${limit}`}&reminders=list`;
+    const q = `since=${since}${limit === undefined ? '' : `&limit=${limit}`}&reminders=list&lists=modules`;
     const res = await this.http.get(`/api/sync/pull?${q}`);
     if (res.status !== 200) throw new Error(`pull failed with ${res.status}`);
     return pullResponseSchema.parse(await res.json());
@@ -68,7 +68,11 @@ export class Device {
   async inboxId(): Promise<string> {
     const changes = await this.pullAll();
     const inbox = changes.find(
-      (c) => c.entity === 'list' && 'isInbox' in c.patch && c.patch.isInbox,
+      (c) =>
+        c.entity === 'list' &&
+        'isInbox' in c.patch &&
+        c.patch.isInbox &&
+        c.patch.module !== 'notes',
     );
     if (!inbox) throw new Error('no inbox');
     return inbox.entityId;

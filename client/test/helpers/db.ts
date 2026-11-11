@@ -39,6 +39,7 @@ export async function seedInbox(db: TodonessDB, id = newId(T0)): Promise<List> {
     name: 'Inbox',
     isInbox: true,
     isPublic: false,
+    module: 'tasks',
     orderKey: 'a0',
     fieldHlc: { name: hlc, orderKey: hlc, isInbox: hlc },
     createdAt: T0 - 1000,
@@ -61,4 +62,23 @@ export async function expectValidOutbox(db: TodonessDB) {
       throw new Error(`invalid outbox op: ${JSON.stringify(wire)} ${r.error.message}`);
   }
   return ops;
+}
+
+/** The default note list "My notes" the server would deliver (docs/note-lists FR-124). */
+export async function seedNotesList(db: TodonessDB, id = newId(T0)): Promise<List> {
+  const hlc = formatHlc({ wall: T0 - 1000, counter: 0, clientId: 'server' });
+  const list: List = {
+    id,
+    name: 'My notes',
+    isInbox: true,
+    isPublic: false,
+    module: 'notes',
+    orderKey: 'a0',
+    fieldHlc: { name: hlc, orderKey: hlc, isInbox: hlc, module: hlc },
+    createdAt: T0 - 1000,
+    updatedAt: T0 - 1000,
+    deletedAt: null,
+  };
+  await db.lists.put(list);
+  return list;
 }

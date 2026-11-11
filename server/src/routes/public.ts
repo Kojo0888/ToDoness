@@ -54,7 +54,7 @@ export function publicRoutes({ db, now }: { db: Database.Database; now: () => nu
       .prepare(
         `SELECT l.id, l.name, u.email AS owner_email
            FROM lists l JOIN users u ON u.id = l.user_id
-          WHERE l.is_public = 1 AND l.deleted_at IS NULL AND l.user_id != ?
+          WHERE l.is_public = 1 AND l.module = 'tasks' AND l.deleted_at IS NULL AND l.user_id != ?
           ORDER BY u.email COLLATE NOCASE, l.order_key, l.id`,
       )
       .all(c.get('user').id) as { id: string; name: string; owner_email: string }[];
@@ -73,7 +73,7 @@ export function publicRoutes({ db, now }: { db: Database.Database; now: () => nu
       .prepare(
         `SELECT l.id, l.name, u.email AS owner_email
            FROM lists l JOIN users u ON u.id = l.user_id
-          WHERE l.id = ? AND l.is_public = 1 AND l.deleted_at IS NULL`,
+          WHERE l.id = ? AND l.is_public = 1 AND l.module = 'tasks' AND l.deleted_at IS NULL`,
       )
       .get(id.data) as { id: string; name: string; owner_email: string } | undefined;
     if (!list) return c.json({ error: 'not_found' }, 404);
@@ -153,7 +153,7 @@ export function publicRoutes({ db, now }: { db: Database.Database; now: () => nu
       const list = id.success
         ? (db
             .prepare(
-              'SELECT user_id FROM lists WHERE id = ? AND is_public = 1 AND deleted_at IS NULL',
+              "SELECT user_id FROM lists WHERE id = ? AND is_public = 1 AND module = 'tasks' AND deleted_at IS NULL",
             )
             .get(id.data) as { user_id: string } | undefined)
         : undefined;

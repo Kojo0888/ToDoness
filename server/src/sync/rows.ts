@@ -1,6 +1,12 @@
 /** Converting between database rows (snake_case, 0/1, JSON text) and shared types. */
 import type Database from 'better-sqlite3';
-import { normalizeRemindBefore, type List, type Note, type Todo } from '@todoness/shared';
+import {
+  normalizeRemindBefore,
+  type List,
+  type ListModule,
+  type Note,
+  type Todo,
+} from '@todoness/shared';
 
 interface TodoDb {
   id: string;
@@ -24,6 +30,7 @@ interface ListDb {
   name: string;
   is_inbox: number;
   is_public: number;
+  module: ListModule;
   order_key: string;
   field_hlc: string;
   created_at: number;
@@ -95,6 +102,7 @@ export function getList(db: Database.Database, id: string): Owned<List> | undefi
       name: r.name,
       isInbox: r.is_inbox === 1,
       isPublic: r.is_public === 1,
+      module: r.module,
       orderKey: r.order_key,
       fieldHlc: JSON.parse(r.field_hlc),
       createdAt: r.created_at,
@@ -106,8 +114,8 @@ export function getList(db: Database.Database, id: string): Owned<List> | undefi
 
 export function saveList(db: Database.Database, userId: string, l: List): void {
   db.prepare(
-    `INSERT INTO lists (id, user_id, name, is_inbox, is_public, order_key, field_hlc, created_at, updated_at, deleted_at)
-     VALUES (@id, @userId, @name, @isInbox, @isPublic, @orderKey, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
+    `INSERT INTO lists (id, user_id, name, is_inbox, is_public, module, order_key, field_hlc, created_at, updated_at, deleted_at)
+     VALUES (@id, @userId, @name, @isInbox, @isPublic, @module, @orderKey, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
      ON CONFLICT(id) DO UPDATE SET
        name = excluded.name, is_public = excluded.is_public, order_key = excluded.order_key,
        field_hlc = excluded.field_hlc,
@@ -121,17 +129,21 @@ export function saveList(db: Database.Database, userId: string, l: List): void {
   });
 }
 
-/** The owner of a list, if it exists (deleted lists still count). */
-export function listOwner(db: Database.Database, id: string): string | undefined {
-  const r = db.prepare('SELECT user_id FROM lists WHERE id = ?').get(id) as
-    { user_id: string } | undefined;
-  return r?.user_id;
+/** The owner and module of a list, if it exists (deleted lists still count). */
+export function listOwner(
+  db: Database.Database,
+  id: string,
+): { userId: string; module: ListModule } | undefined {
+  const r = db.prepare('SELECT user_id, module FROM lists WHERE id = ?').get(id) as
+    { user_id: string; module: ListModule } | undefined;
+  return r && { userId: r.user_id, module: r.module };
 }
 
 interface NoteDb {
   id: string;
   user_id: string;
   text: string;
+  list_id: string | null;
   is_public: number;
   order_key: string;
   field_hlc: string;
@@ -148,6 +160,7 @@ export function getNote(db: Database.Database, id: string): Owned<Note> | undefi
     row: {
       id: r.id,
       text: r.text,
+      listId: r.list_id,
       isPublic: r.is_public === 1,
       orderKey: r.order_key,
       fieldHlc: JSON.parse(r.field_hlc),
@@ -160,10 +173,10 @@ export function getNote(db: Database.Database, id: string): Owned<Note> | undefi
 
 export function saveNote(db: Database.Database, userId: string, n: Note): void {
   db.prepare(
-    `INSERT INTO notes (id, user_id, text, is_public, order_key, field_hlc, created_at, updated_at, deleted_at)
-     VALUES (@id, @userId, @text, @isPublic, @orderKey, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
+    `INSERT INTO notes (id, user_id, text, list_id, is_public, order_key, field_hlc, created_at, updated_at, deleted_at)
+     VALUES (@id, @userId, @text, @listId, @isPublic, @orderKey, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
      ON CONFLICT(id) DO UPDATE SET
-       text = excluded.text, is_public = excluded.is_public, order_key = excluded.order_key,
+       text = excluded.text, list_id = excluded.list_id, is_public = excluded.is_public, order_key = excluded.order_key,
        field_hlc = excluded.field_hlc,
        updated_at = excluded.updated_at, deleted_at = excluded.deleted_at`,
   ).run({
