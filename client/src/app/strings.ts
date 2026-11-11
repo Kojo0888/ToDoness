@@ -264,6 +264,7 @@ export const t = {
     done: 'Done',
     activityDeleted: 'Activity deleted.',
     loop: 'That link would make a loop: the two activities would wait for each other.',
+    tooManyLinks: 'This activity already depends on as many activities as it can (50).',
     failed: 'That change could not be made.',
   },
 

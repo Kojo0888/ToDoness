@@ -74,6 +74,29 @@ export function dragResult(
   return { start: earliest !== null && start < earliest ? earliest : start, days: span.days };
 }
 
+/**
+ * A press of an arrow key on a block (FR-132): one day earlier or later, or with Shift one
+ * day shorter or longer, between one day and the longest allowed activity.
+ */
+export function nudge(
+  span: Span,
+  step: -1 | 1,
+  resize: boolean,
+): { start: string } | { days: number } {
+  return resize
+    ? { days: Math.min(ACTIVITY_DAYS_MAX, Math.max(1, span.days + step)) }
+    : { start: addDays(span.start, step) };
+}
+
+/**
+ * How many days after a Monday the grid starts (0 = it starts on a Monday). The weekend
+ * shading is one repeating background, a week wide, shifted left by this many days.
+ */
+export function weekShift(first: string): number {
+  // 1970-01-01 was a Thursday.
+  return (((dayNumber(first) + 3) % 7) + 7) % 7;
+}
+
 /** A block leaves this much of its row free above and below (`.plan-block` in styles.css). */
 export const BLOCK_INSET = 7;
 

@@ -9,9 +9,11 @@ import {
   dayNumber,
   dayOf,
   earliestStart,
+  ignoredLinks,
   daysBetween,
   endDay,
   isDay,
+  linkCandidates,
   liveLinks,
   localDay,
   schedulePlan,
@@ -361,5 +363,58 @@ describe('localDay', () => {
     const d = new Date(2026, 2, 5, 23, 59);
     expect(localDay(d.getTime())).toBe('2026-03-05');
     expect(localDay(new Date(2026, 0, 1, 0, 0).getTime())).toBe('2026-01-01');
+  });
+});
+
+describe('links computed once (review: performance)', () => {
+  const list = [act('a', 1, 5), act('b', 3, 2, ['a']), act('c', 4, 1, ['b'])];
+
+  it('schedulePlan, brokenLinks and earliestStart give the same answer with the links passed in', () => {
+    const links = liveLinks(list);
+    expect(starts(schedulePlan(list, links))).toEqual(starts(schedulePlan(list)));
+    expect(brokenLinks(list, links)).toEqual(brokenLinks(list));
+    expect(earliestStart(list, 'b', links)).toBe(earliestStart(list, 'b'));
+  });
+
+  it('use the links they are given (they do not depend on the days)', () => {
+    expect(starts(schedulePlan(list, []))).toEqual({});
+    expect(brokenLinks(list, [])).toEqual([]);
+    expect(earliestStart(list, 'b', [])).toBeNull();
+  });
+});
+
+describe('linkCandidates ("Starts after")', () => {
+  it('offers what can still come before an activity: not itself, not linked, no loop', () => {
+    const list = [
+      act('a', 1, 1),
+      act('b', 2, 1, ['a']),
+      act('c', 3, 1, ['b']),
+      act('d', 4, 1),
+      { ...act('gone', 1, 1), deletedAt: 5 },
+      { ...act('far', 1, 1), planId: 'other' },
+    ];
+    expect(linkCandidates(list, 'b')).toEqual(['d']); // a is linked, c would loop
+    expect(linkCandidates(list, 'a')).toEqual(['d']); // b and c come after a
+    expect(linkCandidates(list, 'd')).toEqual(['a', 'b', 'c']);
+    expect(linkCandidates(list, 'nope')).toEqual([]);
+  });
+
+  it('goes by the links that count: a stored link that is ignored does not hide a candidate', () => {
+    // b names a deleted activity and itself; neither is a link.
+    const list = [act('a', 1, 1), act('b', 2, 1, ['b', 'ghost'])];
+    expect(linkCandidates(list, 'b')).toEqual(['a']);
+  });
+});
+
+describe('ignoredLinks', () => {
+  it('lists stored links between live activities that are dropped as loop closers or self links', () => {
+    const loop = [act('a', 1, 1, ['b', 'a']), act('b', 2, 1, ['a', 'ghost'])];
+    // liveLinks keeps b → a (first by id) and drops a → b.
+    expect(liveLinks(loop)).toEqual([{ from: 'b', to: 'a' }]);
+    expect(ignoredLinks(loop)).toEqual([
+      { from: 'a', to: 'a' },
+      { from: 'a', to: 'b' },
+    ]);
+    expect(ignoredLinks([act('a', 1, 1), act('b', 2, 1, ['a'])])).toEqual([]);
   });
 });

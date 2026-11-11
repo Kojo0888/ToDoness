@@ -123,13 +123,21 @@ function freeAfter(activities: readonly Scheduled[]): Map<string, number> {
 }
 
 /**
+ * The functions below take the plan's links as an optional last argument. The links do not
+ * depend on the days, so a caller that asks several questions about one plan (the timeline,
+ * on every pointer move) computes `liveLinks` once and passes it in.
+ */
+
+/**
  * The start days that have to change so that every activity starts after its predecessors
  * have ended (docs/plan/PRD.md FR-136): id → new start. Durations stay; an activity is only
  * ever moved later, to the first allowed day. Empty when the plan is consistent.
  */
-export function schedulePlan(activities: readonly Scheduled[]): Map<string, string> {
+export function schedulePlan(
+  activities: readonly Scheduled[],
+  links: readonly Link[] = liveLinks(activities),
+): Map<string, string> {
   const live = activities.filter((a) => a.deletedAt === null);
-  const links = liveLinks(live);
   const preds = new Map<string, string[]>();
   const succs = new Map<string, string[]>();
   for (const l of links) {
@@ -164,17 +172,88 @@ export function schedulePlan(activities: readonly Scheduled[]): Map<string, stri
 }
 
 /** Links whose successor starts before the predecessor has ended (FR-139). */
-export function brokenLinks(activities: readonly Scheduled[]): Link[] {
+export function brokenLinks(
+  activities: readonly Scheduled[],
+  links: readonly Link[] = liveLinks(activities),
+): Link[] {
   const free = freeAfter(activities);
   const start = new Map(activities.map((a) => [a.id, dayNumber(a.start)]));
-  return liveLinks(activities).filter((l) => start.get(l.to)! < free.get(l.from)!);
+  return links.filter((l) => start.get(l.to)! < free.get(l.from)!);
 }
 
 /** The first day `id` may start on because of its predecessors; `null` if it has none. */
-export function earliestStart(activities: readonly Scheduled[], id: string): string | null {
+export function earliestStart(
+  activities: readonly Scheduled[],
+  id: string,
+  links: readonly Link[] = liveLinks(activities),
+): string | null {
   const free = freeAfter(activities);
-  const ends = liveLinks(activities)
+  const ends = links
     .filter((l) => l.to === id)
     .map((l) => free.get(l.from)!);
   return ends.length === 0 ? null : dayOf(Math.max(...ends));
+}
+
+/**
+ * The activities that can still be put before `id` ("Starts after"): live ones of the same
+ * plan that are not linked to it yet (by the links that count) and that do not come after
+ * it, which would close a loop. In the given order. One walk over the links, however many
+ * candidates there are.
+ */
+export function linkCandidates(
+  activities: readonly Scheduled[],
+  id: string,
+  links: readonly Link[] = liveLinks(activities),
+): string[] {
+  const target = activities.find((a) => a.id === id && a.deletedAt === null);
+  if (!target) return [];
+  const next = new Map<string, string[]>();
+  for (const l of links) next.set(l.from, [...(next.get(l.from) ?? []), l.to]);
+  // Everything that already waits for `id`, directly or not.
+  const after = new Set<string>();
+  const todo = [id];
+  while (todo.length > 0) {
+    for (const s of next.get(todo.pop()!) ?? []) {
+      if (!after.has(s)) {
+        after.add(s);
+        todo.push(s);
+      }
+    }
+  }
+  const linked = new Set(links.filter((l) => l.to === id).map((l) => l.from));
+  return activities
+    .filter(
+      (a) =>
+        a.deletedAt === null &&
+        a.planId === target.planId &&
+        a.id !== id &&
+        !linked.has(a.id) &&
+        !after.has(a.id),
+    )
+    .map((a) => a.id);
+}
+
+/**
+ * Stored links between live activities of one plan that `liveLinks` leaves out: the ones
+ * that close a loop (after a merge of two devices) and links of an activity to itself.
+ * They are invisible, and would show up by themselves once the link they clash with is
+ * removed, so the client clears them at that moment. Sorted like `liveLinks`.
+ */
+export function ignoredLinks(
+  activities: readonly Scheduled[],
+  links: readonly Link[] = liveLinks(activities),
+): Link[] {
+  const live = activities
+    .filter((a) => a.deletedAt === null)
+    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const byId = new Map(live.map((a) => [a.id, a]));
+  const counted = new Set(links.map((l) => `${l.from}>${l.to}`));
+  const ignored: Link[] = [];
+  for (const to of live) {
+    for (const from of [...new Set(to.dependsOn)].sort()) {
+      if (byId.get(from)?.planId !== to.planId) continue;
+      if (!counted.has(`${from}>${to.id}`)) ignored.push({ from, to: to.id });
+    }
+  }
+  return ignored;
 }

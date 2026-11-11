@@ -10,10 +10,13 @@
 import { generateKeyBetween } from 'fractional-indexing';
 import Dexie from 'dexie';
 import {
+  ACTIVITY_LINKS_MAX,
   addDays,
   applyOp,
   dayNumber,
   earliestStart,
+  ignoredLinks,
+  liveLinks,
   localDay,
   newId,
   normalizeRemindBefore,
@@ -32,12 +35,16 @@ import {
 import { nextHlc as nextHlcOf } from './clock';
 import type { TodonessDB } from './db';
 import { keyForPosition } from './order';
+import { sameLinks, type ActivityChange } from '../lib/planUndo';
 import type { RecoverySnapshot, RestoreMode } from './recovery';
 
-export type RepoErrorCode = 'invalid' | 'not_found' | 'inbox_protected' | 'loop';
+export type RepoErrorCode = 'invalid' | 'not_found' | 'inbox_protected' | 'loop' | 'limit';
 
-/** What a change on the timeline can alter in an activity. */
-export type ActivityState = Pick<Activity, 'id' | 'start' | 'days' | 'dependsOn'>;
+export interface ActivityEdit {
+  name?: string;
+  start?: string;
+  days?: number;
+}
 
 /** How long a new activity lasts (docs/plan/PRD.md FR-124). */
 export const NEW_ACTIVITY_DAYS = 3;
@@ -110,29 +117,38 @@ export interface Repo {
   createActivity(planId: string, name: string): Promise<Activity>;
   /**
    * Changes the name, the start day or the duration. A start before the end of a
-   * predecessor becomes the first allowed day, and activities that depend on this one are
-   * pushed later where needed, in the same transaction (docs/plan/PRD.md FR-136).
+   * predecessor becomes the first allowed day, and when the start or the duration changes,
+   * activities are pushed later where a dependency needs it, in the same transaction
+   * (docs/plan/PRD.md FR-136). A rename alone moves nothing.
    */
   updateActivity(
     id: string,
-    patch: { name?: string; start?: string; days?: number },
+    /** The new values, or a function that works them out from the stored activity. */
+    patch: ActivityEdit | ((current: Activity) => ActivityEdit),
   ): Promise<Activity>;
   deleteActivity(id: string): Promise<Activity>;
   restoreActivity(id: string): Promise<Activity>;
   /**
    * Makes `toId` depend on `fromId` (it starts after `fromId` has ended) and pushes it later
    * where needed. Returns `toId`'s activity. Errors: `loop` (the link would close a loop, or
-   * both are the same activity), `invalid` (different plans).
+   * both are the same activity), `invalid` (different plans), `limit` (it already depends on
+   * `ACTIVITY_LINKS_MAX` activities). "Already linked" goes by the links that count
+   * (`liveLinks`), not by what is stored.
    */
   linkActivities(fromId: string, toId: string): Promise<Activity>;
-  /** Removes that dependency. Nothing moves. */
+  /**
+   * Removes that dependency. Nothing moves. Stored links of the plan that do not count
+   * because they close a loop (left by a merge) are removed with it, so that none of them
+   * turns into an arrow by itself.
+   */
   unlinkActivities(fromId: string, toId: string): Promise<Activity>;
   /**
-   * Undo (docs/plan/PRD.md FR-147): gives the activities the start, duration and links they
-   * had when `before` was taken. Only what differs is written; activities deleted meanwhile
-   * are skipped; nothing is shifted (the earlier state was consistent by itself).
+   * Undo (docs/plan/PRD.md FR-147): takes back what a change did (lib/planUndo.ts). A field
+   * gets its earlier value only while it still has the value the change gave it, so edits
+   * made since, here or on another device, are never overwritten. Activities deleted
+   * meanwhile are skipped; nothing is shifted.
    */
-  revertActivities(before: readonly ActivityState[]): Promise<void>;
+  revertActivities(changes: readonly ActivityChange[]): Promise<void>;
   /**
    * Puts the data of another account (kept aside at sign-up) into this one, as normal queued
    * changes. `append` keeps what is here; `overwrite` deletes the live tasks, lists (never
@@ -479,9 +495,10 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         });
       }),
 
-    updateActivity: (id, patch) =>
+    updateActivity: (id, edit) =>
       inTx(async () => {
         const activity = await liveActivity(id);
+        const patch = typeof edit === 'function' ? edit(activity) : edit;
         const changes: Record<string, unknown> = {};
         if (patch.name !== undefined && patch.name.trim() !== activity.name) {
           changes.name = patch.name;
@@ -494,7 +511,9 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
           if (start !== activity.start) changes.start = start;
         }
         if (Object.keys(changes).length === 0) return activity;
-        await commit<Activity>('activity', 'update', id, changes);
+        const saved = await commit<Activity>('activity', 'update', id, changes);
+        // A rename must not move anything (and has no undo point): only dates do.
+        if (!('start' in changes) && !('days' in changes)) return saved;
         await reschedule(activity.planId);
         return liveActivity(id);
       }),
@@ -525,13 +544,21 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         if (from.planId !== to.planId) {
           throw new RepoError('invalid', 'Activities of different plans cannot be linked');
         }
-        if (to.dependsOn.includes(fromId)) return to;
-        if (wouldLoop(await activitiesOfPlan(to.planId), fromId, toId)) {
+        const all = await activitiesOfPlan(to.planId);
+        if (liveLinks(all).some((l) => l.from === fromId && l.to === toId)) return to;
+        if (wouldLoop(all, fromId, toId)) {
           throw new RepoError('loop', 'The link would close a loop');
         }
-        await commit<Activity>('activity', 'update', toId, {
-          dependsOn: [...to.dependsOn, fromId],
-        });
+        let dependsOn = to.dependsOn.filter((id) => id !== fromId);
+        if (dependsOn.length >= ACTIVITY_LINKS_MAX) {
+          // Ids of deleted (or unknown) activities must not use up the limit.
+          const live = new Set(all.map((a) => a.id));
+          dependsOn = dependsOn.filter((id) => live.has(id));
+        }
+        if (dependsOn.length >= ACTIVITY_LINKS_MAX) {
+          throw new RepoError('limit', 'An activity cannot depend on more activities');
+        }
+        await commit<Activity>('activity', 'update', toId, { dependsOn: [...dependsOn, fromId] });
         await reschedule(to.planId);
         return liveActivity(toId);
       }),
@@ -540,23 +567,38 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
       inTx(async () => {
         const to = await liveActivity(toId);
         if (!to.dependsOn.includes(fromId)) return to;
-        return commit<Activity>('activity', 'update', toId, {
-          dependsOn: to.dependsOn.filter((id) => id !== fromId),
-        });
+        // What goes: this link and the plan's stored links that do not count.
+        const drop = new Map<string, Set<string>>([[toId, new Set([fromId])]]);
+        for (const l of ignoredLinks(await activitiesOfPlan(to.planId))) {
+          drop.set(l.to, (drop.get(l.to) ?? new Set()).add(l.from));
+        }
+        for (const [id, gone] of drop) {
+          const activity = id === toId ? to : await liveActivity(id);
+          await commit<Activity>('activity', 'update', id, {
+            dependsOn: activity.dependsOn.filter((from) => !gone.has(from)),
+          });
+        }
+        return liveActivity(toId);
       }),
 
-    revertActivities: (before) =>
+    revertActivities: (changes) =>
       inTx(async () => {
-        for (const was of before) {
-          const now = await db.activities.get(was.id);
+        for (const { id, before, after } of changes) {
+          const now = await db.activities.get(id);
           if (!now || now.deletedAt !== null) continue;
+          // Only fields that still hold what the change wrote: nothing newer is lost.
           const patch: Record<string, unknown> = {};
-          if (now.start !== was.start) patch.start = was.start;
-          if (now.days !== was.days) patch.days = was.days;
-          if (now.dependsOn.join() !== was.dependsOn.join()) patch.dependsOn = was.dependsOn;
-          if (Object.keys(patch).length > 0) {
-            await commit<Activity>('activity', 'update', was.id, patch);
+          if (before.start !== undefined && now.start === after.start) patch.start = before.start;
+          if (before.days !== undefined && now.days === after.days) patch.days = before.days;
+          if (
+            before.dependsOn !== undefined &&
+            after.dependsOn !== undefined &&
+            sameLinks(now.dependsOn, after.dependsOn)
+          ) {
+            patch.dependsOn = before.dependsOn;
           }
+          if (Object.keys(patch).length > 0)
+            await commit<Activity>('activity', 'update', id, patch);
         }
       }),
 

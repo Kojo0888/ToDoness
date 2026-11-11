@@ -5,7 +5,7 @@ import {
   daysBetween,
   endDay,
   isDay,
-  wouldLoop,
+  linkCandidates,
   type Activity,
 } from '@todoness/shared';
 import { repo } from '../../app/container';
@@ -26,7 +26,7 @@ export function ActivityBar({
   activity: Activity;
   /** All activities of the plan (to choose what this one starts after). */
   others: Activity[];
-  /** Runs a change so that "Undo last change" can take it back. */
+  /** Runs a change: undoable where it alters dates or links, and failures are shown. */
   change: (run: () => Promise<unknown>) => void;
   onDelete: () => void;
   onClose: () => void;
@@ -35,17 +35,16 @@ export function ActivityBar({
   const [draft, setDraft] = useState<string | null>(null);
   const end = endDay(activity.start, activity.days);
   // What can still come before this one: not linked yet, and not closing a loop.
-  const candidates = others.filter(
-    (o) =>
-      o.id !== activity.id &&
-      !activity.dependsOn.includes(o.id) &&
-      !wouldLoop(others, o.id, activity.id),
-  );
+  const offered = new Set(linkCandidates(others, activity.id));
+  const candidates = others.filter((o) => offered.has(o.id));
 
   function saveName() {
     const next = draft?.trim();
     setDraft(null);
-    if (next && next !== activity.name) void repo.updateActivity(activity.id, { name: next });
+    // Through `change`, so that a failure (the activity was deleted elsewhere) is shown.
+    if (next && next !== activity.name) {
+      change(() => repo.updateActivity(activity.id, { name: next }));
+    }
   }
 
   return (

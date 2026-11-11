@@ -1777,23 +1777,30 @@ h2.nav-heading {
       to right,
       transparent 0 calc(var(--plan-day) - 1px),
       var(--surface) calc(var(--plan-day) - 1px) var(--plan-day)
-    );
+    ),
+    /* Weekends: the last two days of a week that starts on Monday, repeated. The grid's
+       first day shifts it (--plan-week-shift, set by the component). */
+    linear-gradient(
+        to right,
+        transparent 0 calc(5 * var(--plan-day)),
+        var(--surface) calc(5 * var(--plan-day)) calc(7 * var(--plan-day))
+      );
+  background-size:
+    auto,
+    auto,
+    calc(7 * var(--plan-day)) 100%;
+  background-position:
+    0 0,
+    0 0,
+    var(--plan-week-shift, 0) 0;
+  background-repeat: repeat, repeat, repeat-x;
 }
 
-.plan-shade,
 .plan-today {
   position: absolute;
   top: 0;
   bottom: 0;
   pointer-events: none;
-}
-
-.plan-shade {
-  width: var(--plan-day);
-  background: var(--surface);
-}
-
-.plan-today {
   width: var(--plan-day);
   border-left: 2px solid var(--accent);
 }

@@ -286,6 +286,42 @@ describe('activities on the timeline (FR-123 – FR-131)', () => {
     await waitDays(page, 'Design', t0, plus(t0, 2));
   });
 
+  it('a drag whose pointer capture is lost is dropped, and the next drag works (review)', async () => {
+    const { page, t0 } = await withPlan('capture');
+    await addActivity(page, 'Design');
+    const b = (await block(page, 'Design').boundingBox())!;
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width / 2 + 4 * DAY, b.y + b.height / 2, { steps: 5 });
+    await waitDays(page, 'Design', plus(t0, 4), plus(t0, 6)); // the preview
+    // What the browser sends when capture ends without a release (e.g. the window lost focus).
+    await block(page, 'Design').evaluate((el) =>
+      el.dispatchEvent(new PointerEvent('lostpointercapture', { bubbles: true })),
+    );
+    await waitDays(page, 'Design', t0, plus(t0, 2));
+    await page.mouse.up();
+    expect(await days(page, 'Design')).toEqual([t0, plus(t0, 2)]);
+
+    await drag(page, block(page, 'Design'), { dx: 2 * DAY });
+    await waitDays(page, 'Design', plus(t0, 2), plus(t0, 4));
+  });
+
+  it('two quick key presses are two changes: Undo takes back the last one only (review)', async () => {
+    const { page, t0 } = await withPlan('quick');
+    await addActivity(page, 'Design');
+    await block(page, 'Design').focus();
+    // Both keys in one go, so the second starts while the first is being saved.
+    await page.evaluate(() => {
+      const el = document.activeElement!;
+      for (let i = 0; i < 2; i++) {
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      }
+    });
+    await waitDays(page, 'Design', plus(t0, 2), plus(t0, 4));
+    await undo(page).click();
+    await waitDays(page, 'Design', plus(t0, 1), plus(t0, 3));
+  });
+
   it('the edit bar renames, sets dates and deletes with Undo; the keyboard moves a block', async () => {
     const { page, t0 } = await withPlan('bar');
     await addActivity(page, 'Design');

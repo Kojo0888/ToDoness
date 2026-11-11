@@ -57,9 +57,13 @@ describe('plans sync', () => {
       ]);
     }
 
-    // The next change to the plan repairs it, and the repair syncs.
+    // The next change of dates or links in the plan repairs it, and the repair syncs.
     b.time += 1000;
+    // A rename is not such a change: it moves nothing (review of PR 17).
     await b.repo.updateActivity(design.id, { name: 'Design it' });
+    expect(brokenLinks(await getActivities(b.db, plan.id))).toHaveLength(1);
+    // A change of dates is: Build's own duration here.
+    await b.repo.updateActivity(build.id, { days: 4 });
     await b.sync();
     await a.sync();
     for (const x of [a, b]) {

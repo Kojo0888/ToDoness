@@ -1,25 +1,22 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore, type FormEvent } from 'react';
 import { Redirect } from 'wouter';
 import { ACTIVITY_NAME_MAX } from '@todoness/shared';
 import { getActivities, getPlanById } from '../../data/queries';
-import { RepoError, type ActivityState } from '../../data/repo';
 import { browserStorage } from '../../lib/modules';
 import { NAME_MODES, readNameMode, saveNameMode, type NameMode } from '../../lib/planNames';
+import { createPlanChanges, type PlanError } from '../../services/planChanges';
 import { db, repo } from '../../app/container';
 import { t } from '../../app/strings';
 import { useUndoToast } from '../common/Toast';
 import { ActivityBar } from './ActivityBar';
 import { Timeline } from './Timeline';
 
-const stateOf = ({ id, start, days, dependsOn }: ActivityState): ActivityState => ({
-  id,
-  start,
-  days,
-  dependsOn,
-});
-const sameState = (a: ActivityState[], b: ActivityState[]) =>
-  JSON.stringify(a) === JSON.stringify(b);
+const ERRORS: Record<PlanError, string> = {
+  loop: t.plan.loop,
+  limit: t.plan.tooManyLinks,
+  failed: t.plan.failed,
+};
 
 /**
  * One plan: its name, a field for new activities and the timeline (docs/plan/PRD.md).
@@ -33,42 +30,17 @@ export function PlanPage({ planId }: { planId: string }) {
 
   const [nameMode, setNameMode] = useState<NameMode>(() => readNameMode(browserStorage()));
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
-  /** The plan's activities as they were before the last change on the timeline (FR-147). */
-  const [undo, setUndo] = useState<ActivityState[] | null>(null);
-
-  /**
-   * Runs a change of dates or links and remembers what the plan looked like before it, so
-   * "Undo last change" can put exactly that back, including what the change pushed.
-   */
-  const change = useCallback(
-    async <T,>(run: () => Promise<T>): Promise<T | undefined> => {
-      const read = async () => (await getActivities(db, planId)).map(stateOf);
-      const before = await read();
-      setMessage(null);
-      try {
-        const result = await run();
-        if (!sameState(before, await read())) setUndo(before);
-        return result;
-      } catch (err) {
-        setMessage(err instanceof RepoError && err.code === 'loop' ? t.plan.loop : t.plan.failed);
-        return undefined;
-      }
-    },
-    [planId],
-  );
-
-  const undoLast = useCallback(() => {
-    if (!undo) return;
-    setUndo(null);
-    setMessage(null);
-    void repo.revertActivities(undo);
-  }, [undo]);
+  // Every change of this page goes through here: one at a time, undoable where it alters
+  // dates or links, and failures are shown (services/planChanges.ts, FR-147).
+  const [changes] = useState(() => createPlanChanges({ db, repo, planId }));
+  const { undo, error } = useSyncExternalStore(changes.subscribe, changes.getState);
+  const message = error ? ERRORS[error] : null;
 
   // Ctrl / ⌘ + Z, except while typing in a field (there it undoes the typing).
+  const canUndo = undo !== null;
   useEffect(() => {
-    if (!undo) return;
+    if (!canUndo) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== 'z' || !(e.ctrlKey || e.metaKey) || e.shiftKey) return;
       const el = e.target as HTMLElement | null;
@@ -76,20 +48,23 @@ export function PlanPage({ planId }: { planId: string }) {
         return;
       }
       e.preventDefault();
-      undoLast();
+      void changes.undo();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, undoLast]);
+  }, [canUndo, changes]);
 
   const deleteActivity = useCallback(
     (id: string) => {
       setSelectedId((current) => (current === id ? null : current));
-      void repo.deleteActivity(id).then(() => {
-        toast(t.plan.activityDeleted, () => void repo.restoreActivity(id));
-      });
+      void changes
+        .run(() => repo.deleteActivity(id))
+        .then((deleted) => {
+          if (!deleted) return; // refused: the page shows why
+          toast(t.plan.activityDeleted, () => void changes.run(() => repo.restoreActivity(id)));
+        });
     },
-    [toast],
+    [changes, toast],
   );
 
   if (plan === undefined) return null;
@@ -107,8 +82,7 @@ export function PlanPage({ planId }: { planId: string }) {
     const trimmed = newName.trim();
     if (!trimmed) return;
     setNewName('');
-    setMessage(null);
-    await repo.createActivity(planId, trimmed);
+    await changes.run(() => repo.createActivity(planId, trimmed));
   }
 
   return (
@@ -132,7 +106,12 @@ export function PlanPage({ planId }: { planId: string }) {
           </button>
         </form>
         <div className="plan-view">
-          <button type="button" className="plan-undo" disabled={!undo} onClick={undoLast}>
+          <button
+            type="button"
+            className="plan-undo"
+            disabled={!canUndo}
+            onClick={() => void changes.undo()}
+          >
             <span aria-hidden="true" className="btn-icon">
               ↶
             </span>
@@ -165,7 +144,7 @@ export function PlanPage({ planId }: { planId: string }) {
           key={selected.id}
           activity={selected}
           others={activities}
-          change={(run) => void change(run)}
+          change={(run) => void changes.run(run)}
           onDelete={() => deleteActivity(selected.id)}
           onClose={() => setSelectedId(null)}
         />
@@ -179,7 +158,7 @@ export function PlanPage({ planId }: { planId: string }) {
         selectedId={selected?.id ?? null}
         onSelect={setSelectedId}
         onDelete={deleteActivity}
-        change={change}
+        change={changes.run}
       />
     </section>
   );

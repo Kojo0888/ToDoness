@@ -1,4 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react';
 import {
   brokenLinks,
   daysBetween,
@@ -20,7 +28,9 @@ import {
   blockBox,
   dragResult,
   monthSpans,
+  nudge,
   timelineRange,
+  weekShift,
   type DragKind,
   type Span,
 } from '../../lib/timeline';
@@ -84,11 +94,15 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
   const dragged = drag ? activities.find((a) => a.id === drag.id) : undefined;
   if (drag?.settling && (!dragged || !sameSpan(dragged, drag.origin))) setDrag(null);
 
+  // The links do not depend on the days, so they are worked out once per saved state and
+  // not on every pointer move of a drag.
+  const links = useMemo(() => liveLinks(activities), [activities]);
+
   // What is drawn: the dragged block where it would land, and what it would push (FR-136).
   let shown = activities;
   if (drag && !drag.linkTo) {
     shown = activities.map((a) => (a.id === drag.id ? { ...a, ...drag.preview } : a));
-    const pushed = schedulePlan(shown);
+    const pushed = schedulePlan(shown, links);
     if (pushed.size > 0) {
       shown = shown.map((a) => (pushed.has(a.id) ? { ...a, start: pushed.get(a.id)! } : a));
     }
@@ -154,7 +168,7 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
       grip,
       startX: e.clientX,
       origin,
-      earliest: kind === 'move' ? earliestStart(activities, a.id) : null,
+      earliest: kind === 'move' ? earliestStart(activities, a.id, links) : null,
       preview: origin,
       moved: false,
       linkTo: null,
@@ -214,14 +228,21 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
     );
   }
 
+  /** The drag ended without a release: forget it (a drop being saved stays). */
+  function abandonDrag() {
+    released();
+    setDrag((d) => (d?.settling ? d : null));
+  }
+
   const dragHandlers = (a: Activity, grip: Drag['grip']) => ({
     onPointerDown: (e: React.PointerEvent<HTMLElement>) => startDrag(e, a, grip),
     onPointerMove: moveDrag,
     onPointerUp: endDrag,
-    onPointerCancel: () => {
-      released();
-      setDrag((d) => (d?.settling ? d : null));
-    },
+    onPointerCancel: abandonDrag,
+    // The capture can end without a pointerup or pointercancel (the window lost focus, the
+    // element was detached). Without this the preview would stay and block every new drag.
+    // After a normal release this comes last and finds nothing to do.
+    onLostPointerCapture: abandonDrag,
   });
 
   function choose(id: string) {
@@ -233,10 +254,10 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       e.preventDefault();
       const step = e.key === 'ArrowLeft' ? -1 : 1;
-      const patch = e.shiftKey
-        ? { days: Math.max(1, a.days + step) }
-        : { start: addDays(a.start, step) };
-      void change(() => repo.updateActivity(a.id, patch));
+      const resize = e.shiftKey;
+      // From the stored activity, not the one on screen: with key repeat the next press
+      // comes before the screen has caught up, and must still add up.
+      void change(() => repo.updateActivity(a.id, (now) => nudge(now, step, resize)));
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       onDelete(a.id);
@@ -250,8 +271,8 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
 
   const rowOf = new Map(shown.map((a, i) => [a.id, i]));
   const boxOf = new Map(shown.map((a) => [a.id, blockBox(a, range)]));
-  const broken = new Set(brokenLinks(shown).map((l) => `${l.from}>${l.to}`));
-  const arrows = liveLinks(shown).map((l) => {
+  const broken = new Set(brokenLinks(shown, links).map((l) => `${l.from}>${l.to}`));
+  const arrows = links.map((l) => {
     const from = boxOf.get(l.from)!;
     const to = boxOf.get(l.to)!;
     const source = { x: from.left + from.width, row: rowOf.get(l.from)! };
@@ -266,7 +287,6 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
     };
   });
 
-  const days = Array.from({ length: range.days }, (_, i) => addDays(range.first, i));
   const todayIndex = daysBetween(range.first, today);
   const dragBox = drag ? boxOf.get(drag.id) : undefined;
 
@@ -302,45 +322,24 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
           )}
 
           <div className="plan-grid" style={{ width: gridWidth }}>
-            <div className="plan-months" aria-hidden="true">
-              {monthSpans(range).map((m) => (
-                <div
-                  key={m.month}
-                  className="plan-month"
-                  style={{ left: m.index * DAY_WIDTH, width: m.days * DAY_WIDTH }}
-                >
-                  <span>{formatMonth(m.month)}</span>
-                </div>
-              ))}
-            </div>
-            <div className="plan-days" aria-hidden="true">
-              {days.map((day, i) => (
-                <div
-                  key={day}
-                  className={`plan-day${isWeekend(day) ? ' is-weekend' : ''}${i === todayIndex ? ' is-today' : ''}`}
-                  title={i === todayIndex ? t.plan.today : undefined}
-                >
-                  {Number(day.slice(8))}
-                </div>
-              ))}
-            </div>
+            <TimelineHeader first={range.first} days={range.days} today={today} />
 
             <div
               className="plan-rows"
               ref={rowsRef}
-              style={{ height: rowsHeight }}
+              // Weekends are one repeating background, shifted to the grid's first day.
+              style={
+                {
+                  height: rowsHeight,
+                  '--plan-week-shift': `${-weekShift(range.first) * DAY_WIDTH}px`,
+                } as CSSProperties
+              }
               onClick={(e) => {
                 // A click on the empty grid lets go of what was selected.
                 if (e.target !== e.currentTarget || suppressClick.current) return;
                 onSelect(null);
               }}
             >
-              {days.map(
-                (day, i) =>
-                  isWeekend(day) && (
-                    <div key={day} className="plan-shade" style={{ left: i * DAY_WIDTH }} />
-                  ),
-              )}
               <div className="plan-today" style={{ left: todayIndex * DAY_WIDTH }} />
 
               <svg className="plan-arrows" width={gridWidth} height={rowsHeight}>
@@ -452,3 +451,48 @@ const isWeekend = (day: string) => {
   const weekday = weekdayOf(day);
   return weekday === 0 || weekday === 6;
 };
+
+/**
+ * Months and day numbers. Its own memoised component: it only depends on the range, so the
+ * (possibly thousands of) day cells are not rendered again while a block is dragged.
+ */
+const TimelineHeader = memo(function TimelineHeader({
+  first,
+  days,
+  today,
+}: {
+  first: string;
+  days: number;
+  today: string;
+}) {
+  const todayIndex = daysBetween(first, today);
+  return (
+    <>
+      <div className="plan-months" aria-hidden="true">
+        {monthSpans({ first, days }).map((m) => (
+          <div
+            key={m.month}
+            className="plan-month"
+            style={{ left: m.index * DAY_WIDTH, width: m.days * DAY_WIDTH }}
+          >
+            <span>{formatMonth(m.month)}</span>
+          </div>
+        ))}
+      </div>
+      <div className="plan-days" aria-hidden="true">
+        {Array.from({ length: days }, (_, i) => {
+          const day = addDays(first, i);
+          return (
+            <div
+              key={day}
+              className={`plan-day${isWeekend(day) ? ' is-weekend' : ''}${i === todayIndex ? ' is-today' : ''}`}
+              title={i === todayIndex ? t.plan.today : undefined}
+            >
+              {Number(day.slice(8))}
+            </div>
+          );
+        })}
+      </div>
+    </>
+  );
+});

@@ -11,7 +11,9 @@ import {
   dayAtX,
   dragResult,
   monthSpans,
+  nudge,
   timelineRange,
+  weekShift,
 } from '../../src/lib/timeline';
 
 const TODAY = '2026-03-10';
@@ -164,5 +166,31 @@ describe('monthSpans', () => {
       { month: '2026-02', index: 3, days: 28 },
       { month: '2026-03', index: 31, days: 5 },
     ]);
+  });
+});
+
+describe('nudge (keyboard, FR-132)', () => {
+  const a = { start: '2026-03-10', days: 3 };
+
+  it('moves by a day, or changes the duration by a day', () => {
+    expect(nudge(a, 1, false)).toEqual({ start: '2026-03-11' });
+    expect(nudge(a, -1, false)).toEqual({ start: '2026-03-09' });
+    expect(nudge(a, 1, true)).toEqual({ days: 4 });
+    expect(nudge(a, -1, true)).toEqual({ days: 2 });
+  });
+
+  it('keeps the duration between one day and the maximum (review: Shift + ArrowRight)', () => {
+    expect(nudge({ ...a, days: 1 }, -1, true)).toEqual({ days: 1 });
+    expect(nudge({ ...a, days: ACTIVITY_DAYS_MAX }, 1, true)).toEqual({ days: ACTIVITY_DAYS_MAX });
+  });
+});
+
+describe('weekShift (weekend shading as one background)', () => {
+  it('says how many days after a Monday the grid starts', () => {
+    expect(weekShift('2026-03-09')).toBe(0); // a Monday
+    expect(weekShift('2026-03-10')).toBe(1);
+    expect(weekShift('2026-03-14')).toBe(5); // Saturday
+    expect(weekShift('2026-03-15')).toBe(6); // Sunday
+    expect(weekShift('1969-12-29')).toBe(0); // before 1970 too
   });
 });
