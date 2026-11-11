@@ -776,6 +776,20 @@ h2.nav-heading {
   margin-top: 0.5rem;
 }
 
+/* Compact suggestion chips (explicit exception to the 44 px phone rule, requested by the
+   product owner): short, small text, and on phones the clock time moves to the tooltip so
+   all four fit on one row. */
+.time-presets .chip {
+  min-height: 0;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.time-presets .chip .hint {
+  font-size: 0.7rem;
+}
+
 .chip {
   padding: 0.3rem 0.7rem;
   border: 1px solid var(--border);
@@ -1241,9 +1255,12 @@ h2.nav-heading {
 @media (max-width: 760px) {
   /* 44 px touch targets (UI_GUIDELINES.md). */
   .btn,
-  .chip-group .chip,
-  .time-presets .chip {
+  .chip-group .chip {
     min-height: 44px;
+  }
+
+  .time-presets .chip .hint {
+    display: none;
   }
 
   .btn:not(.btn-back) {

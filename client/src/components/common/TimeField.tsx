@@ -53,6 +53,7 @@ export function TimeField({
               key={p.value}
               type="button"
               className={`chip${value === p.value ? ' is-selected' : ''}`}
+              title={p.value}
               aria-pressed={value === p.value}
               onClick={() => pick(p.value)}
             >

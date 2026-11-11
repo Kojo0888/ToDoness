@@ -941,7 +941,13 @@ describe('update 4: time control and phone file pickers', () => {
           return { x: r.x, y: r.y, right: r.right, height: r.height };
         }),
       );
-      for (const b of boxes) expect(b.height).toBeGreaterThanOrEqual(44);
+      if (chips === presets) {
+        // deliberate exception to the 44 px rule: compact suggestion chips that share one row
+        for (const b of boxes) expect(b.height).toBeLessThanOrEqual(32);
+        expect(new Set(boxes.map((b) => Math.round(b.y))).size).toBe(1);
+      } else {
+        for (const b of boxes) expect(b.height).toBeGreaterThanOrEqual(44);
+      }
       for (let i = 1; i < boxes.length; i++) {
         if (Math.abs(boxes[i]!.y - boxes[i - 1]!.y) < 1) {
           expect(boxes[i]!.x - boxes[i - 1]!.right).toBeGreaterThanOrEqual(8); // same line
