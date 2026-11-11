@@ -1,5 +1,4 @@
-/** `web-push` is a CommonJS package; this gives the same object however it is imported. */
-import * as ns from 'web-push';
+/** `web-push` (v4) is an ES module with named exports only: its namespace is the API. */
+import * as webpushModule from 'web-push';
 
-type WebPush = typeof import('web-push');
-export const webpush: WebPush = (ns as unknown as { default?: WebPush }).default ?? (ns as WebPush);
+export const webpush: typeof import('web-push') = webpushModule;
