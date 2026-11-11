@@ -18,7 +18,7 @@ export const hlcAt = (n: number, clientId = 'aaaa', counter = 0) =>
 
 export interface Op {
   opId: string;
-  entity: 'todo' | 'list' | 'note';
+  entity: 'todo' | 'list' | 'note' | 'plan' | 'activity';
   entityId: string;
   type: 'create' | 'update' | 'delete' | 'restore';
   patch: Record<string, unknown>;
@@ -53,8 +53,9 @@ export class Device {
   }
 
   async pull(since = 0, limit?: number): Promise<PullResponse> {
-    // `reminders=list`: like the current app, which understands several reminders per task.
-    const q = `since=${since}${limit === undefined ? '' : `&limit=${limit}`}&reminders=list`;
+    // `reminders=list` and `plans=1`: like the current app, which understands several
+    // reminders per task and the Plan module.
+    const q = `since=${since}${limit === undefined ? '' : `&limit=${limit}`}&reminders=list&plans=1`;
     const res = await this.http.get(`/api/sync/pull?${q}`);
     if (res.status !== 200) throw new Error(`pull failed with ${res.status}`);
     return pullResponseSchema.parse(await res.json());

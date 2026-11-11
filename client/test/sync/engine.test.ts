@@ -155,10 +155,12 @@ describe('pull', () => {
     });
     expect(await db.todos.get(todo.entityId as string)).toMatchObject({ title: 'From server' });
     expect(await db.getMeta('lastServerSeq')).toBe(todo.serverSeq);
-    expect(f.calls[0]!.url).toBe('/api/sync/pull?since=0&limit=500&reminders=list');
+    expect(f.calls[0]!.url).toBe('/api/sync/pull?since=0&limit=500&reminders=list&plans=1');
 
     await engine.pull();
-    expect(f.calls[1]!.url).toBe(`/api/sync/pull?since=${todo.serverSeq}&limit=500&reminders=list`);
+    expect(f.calls[1]!.url).toBe(
+      `/api/sync/pull?since=${todo.serverSeq}&limit=500&reminders=list&plans=1`,
+    );
   });
 
   it('keeps asking while the server says there is more', async () => {

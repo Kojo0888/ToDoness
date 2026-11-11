@@ -28,12 +28,14 @@ describe('migrate (real migrations)', () => {
     expect(applied).toBeGreaterThanOrEqual(1);
     expect(tables(db)).toEqual(
       [
+        'activities',
         'app_settings',
         'attachments',
         'change_log',
         'lists',
         'notes',
         'ntfy_topics',
+        'plans',
         'processed_ops',
         'push_subscriptions',
         'sent_reminders',
@@ -258,5 +260,65 @@ describe('migration 004 (notes)', () => {
     ).toThrow();
     db.exec("DELETE FROM users WHERE id = 'u1'");
     expect((db.prepare('SELECT COUNT(*) n FROM notes').get() as { n: number }).n).toBe(0);
+  });
+});
+
+describe('migration 007 (plans)', () => {
+  const upTo = (version: number) => {
+    const dir = mkdtempSync(join(tmpdir(), 'todoness-mig-'));
+    for (const f of readdirSync(MIGRATIONS_DIR)) {
+      if (Number(f.slice(0, 3)) <= version) copyFileSync(join(MIGRATIONS_DIR, f), join(dir, f));
+    }
+    return dir;
+  };
+  const LOG = `INSERT INTO change_log (user_id, client_id, entity, entity_id, op_type, patch, hlc, created_at)`;
+  const seq = (db: Database.Database) =>
+    db.prepare('SELECT server_seq, entity, entity_id FROM change_log ORDER BY server_seq').all();
+
+  it('keeps every change-log row and its server_seq, and accepts plans and activities', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, upTo(6));
+    db.exec(`INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
+      ${LOG} VALUES ('u1','c','list','l1','create','{}','h',1), ('u1','c','note','n1','create','{}','h',1),
+                    ('u1','c','todo','t2','create','{}','h',1);
+      DELETE FROM change_log WHERE entity_id = 't2';`);
+    const before = seq(db);
+
+    expect(migrate(db, upTo(7))).toBe(1); // exactly migration 007
+    expect(seq(db)).toEqual(before);
+
+    db.exec(
+      `${LOG} VALUES ('u1','c','plan','p1','create','{}','h',1), ('u1','c','activity','a1','create','{}','h',1)`,
+    );
+    // AUTOINCREMENT never reuses 3 (the deleted row), as before the migration.
+    expect(seq(db).slice(-2)).toEqual([
+      { server_seq: 4, entity: 'plan', entity_id: 'p1' },
+      { server_seq: 5, entity: 'activity', entity_id: 'a1' },
+    ]);
+    expect(() => db.exec(`${LOG} VALUES ('u1','c','other','x','create','{}','h',1)`)).toThrow();
+    const idx = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'change_log'")
+      .all();
+    expect(idx).toEqual([{ name: 'change_log_pull_idx' }]);
+  });
+
+  it('checks activity columns and removes activities with their plan row', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, MIGRATIONS_DIR);
+    db.exec(`INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
+      INSERT INTO plans (id, user_id, name, order_key, created_at, updated_at) VALUES ('p1','u1','P','a0',1,1);
+      INSERT INTO activities (id, user_id, plan_id, name, start_day, order_key, created_at, updated_at)
+        VALUES ('a1','u1','p1','A','2026-03-02','a0',1,1);`);
+    expect(db.prepare('SELECT days, depends_on, deleted_at FROM activities').get()).toEqual({
+      days: 1,
+      depends_on: '[]',
+      deleted_at: null,
+    });
+    expect(() => db.exec("UPDATE activities SET days = 0 WHERE id = 'a1'")).toThrow();
+    expect(() => db.exec("UPDATE activities SET plan_id = 'nope' WHERE id = 'a1'")).toThrow();
+    db.exec("DELETE FROM plans WHERE id = 'p1'");
+    expect((db.prepare('SELECT COUNT(*) n FROM activities').get() as { n: number }).n).toBe(0);
   });
 });

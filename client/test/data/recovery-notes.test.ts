@@ -98,7 +98,7 @@ describe('restoreSnapshot with notes', () => {
     void notes;
     const fresh = await freshAccount();
     const counts = await fresh.repo.restoreSnapshot(legacy as RecoverySnapshot, 'append');
-    expect(counts).toEqual({ lists: 0, todos: 1, notes: 0 });
+    expect(counts).toEqual({ lists: 0, todos: 1, notes: 0, plans: 0 });
   });
 });
 

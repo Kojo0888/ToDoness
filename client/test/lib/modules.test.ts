@@ -37,6 +37,9 @@ describe('moduleOfPath', () => {
     ['/notes', 'notes'],
     ['/notes/', 'notes'],
     ['/notes/public', 'notes'],
+    ['/plans', 'plan'],
+    ['/plans/', 'plan'],
+    ['/plan/abc', 'plan'],
   ])('%s belongs to %s', (path, id) => {
     expect(moduleOfPath(path)).toBe(id);
   });
@@ -58,7 +61,7 @@ describe('moduleOfPath', () => {
 
 describe('the module list', () => {
   it('has Tasks first, then Notes, each with a home address it owns', () => {
-    expect(MODULES.map((m) => m.id)).toEqual(['tasks', 'notes']);
+    expect(MODULES.map((m) => m.id)).toEqual(['tasks', 'notes', 'plan']);
     for (const m of MODULES) expect(moduleOfPath(m.home)).toBe(m.id);
     expect(homeOf('notes')).toBe('/notes');
     expect(homeOf('tasks')).toBe('/tasks');
