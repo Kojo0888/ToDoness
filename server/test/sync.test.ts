@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { newId } from '@todoness/shared';
+import { newId, remindBeforeSchema } from '@todoness/shared';
 import { testApp } from './helpers/app';
 import { TestClient } from './helpers/client';
 import { Device, hlcAt, loginDevice, op, registerDevice, T0 } from './helpers/sync';
@@ -534,6 +534,33 @@ describe('v1 fields (isPublic, remindBefore)', () => {
     expect(row(c, 'todos', id)).toMatchObject({ reminders: '' });
     await c.ann.push([op('todo', 'update', id, { remindBefore: null }, hlcAt(5))]); // v1 "none"
     expect(row(c, 'todos', id)).toMatchObject({ reminders: '' });
+  });
+
+  it('older app versions get one reminder per change, which their strict v1 check accepts', async () => {
+    const id = newId();
+    await c.ann.push([
+      todoCreate(id, c.inbox, 'Call', hlcAt(1), {
+        dueAt: T0 + 86_400_000,
+        remindBefore: ['day', 'hour'],
+      }),
+    ]);
+    await c.ann.push([op('todo', 'update', id, { remindBefore: [] }, hlcAt(2))]);
+    const reminders = async (query: string) => {
+      const res = await c.ann.http.get(`/api/sync/pull?since=0${query}`);
+      const body = (await res.json()) as { changes: { entityId: string; patch: object }[] };
+      return body.changes
+        .filter((ch) => ch.entityId === id)
+        .map((ch) => (ch.patch as { remindBefore?: unknown }).remindBefore);
+    };
+
+    // An app that does not ask for lists: the earliest chosen reminder, or null (v1 format).
+    const legacy = await reminders('');
+    expect(legacy).toEqual(['day', null]);
+    const v1Field = remindBeforeSchema.nullable(); // the field as v1 apps check it
+    for (const v of legacy) expect(v1Field.safeParse(v).success).toBe(true);
+
+    // The current app asks for lists and gets them unchanged.
+    expect(await reminders('&reminders=list')).toEqual([['day', 'hour'], []]);
   });
 
   it('rejects invalid values', async () => {

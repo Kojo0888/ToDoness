@@ -337,7 +337,7 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
     let applied = 0;
     for (;;) {
       const since = (await db.getMeta<number>('lastServerSeq')) ?? 0;
-      const res = await request(`/api/sync/pull?since=${since}&limit=${pullLimit}`);
+      const res = await request(`/api/sync/pull?since=${since}&limit=${pullLimit}&reminders=list`);
       if (!res.ok) throw new SyncError('server', `Server answered ${res.status}`);
 
       const parsed = pullResponseSchema.safeParse(await res.json().catch(() => undefined));

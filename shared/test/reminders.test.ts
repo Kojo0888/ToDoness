@@ -29,3 +29,24 @@ describe('reminders with several choices', () => {
     expect(latestDueChoice(t, due - 10 * H)).toBe('day');
   });
 });
+
+describe('reminders for older app versions', () => {
+  it('a list becomes the single v1 value: the earliest chosen reminder, or null', async () => {
+    const { toLegacyRemindBefore } = await import('../src/schemas');
+    expect(toLegacyRemindBefore([])).toBeNull();
+    expect(toLegacyRemindBefore(['hour'])).toBe('hour');
+    expect(toLegacyRemindBefore(['day', 'hour'])).toBe('day');
+    expect(toLegacyRemindBefore(['week', 'day', 'hour'])).toBe('week');
+  });
+
+  it('one rule reads v1 values, for the sync check and for stored rows alike', async () => {
+    const { legacyRemindList, normalizeRemindBefore } = await import('../src/schemas');
+    expect(legacyRemindList(null)).toEqual([]);
+    expect(legacyRemindList(undefined)).toEqual([]);
+    expect(legacyRemindList('day')).toEqual(['day']);
+    expect(legacyRemindList(['hour'])).toEqual(['hour']);
+    // the sync check keeps invalid values so it can reject them; stored rows drop them
+    expect(legacyRemindList('month')).toEqual(['month']);
+    expect(normalizeRemindBefore('month')).toEqual([]);
+  });
+});

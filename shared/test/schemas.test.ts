@@ -281,6 +281,11 @@ describe('v1 fields', () => {
     expect(normalizeRemindBefore(['hour', 'day'])).toEqual(['day', 'hour']);
   });
 
+  it('todos: a patch without remindBefore does not gain one (it would clear reminders)', () => {
+    const parsed = syncOpSchema.parse(op({ type: 'update', patch: { title: 'x' } }));
+    expect(parsed.patch).toEqual({ title: 'x' });
+  });
+
   it('todos: remindBefore can be set on create', () => {
     const o = op({
       type: 'create',

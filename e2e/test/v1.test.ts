@@ -915,6 +915,58 @@ describe('update 4: time control and phone file pickers', () => {
     expect(await page.getByLabel('Due date').inputValue()).toBe('2031-06-10');
   });
 
+  it('due, reminder and button controls follow UI_GUIDELINES.md on a phone', async () => {
+    const context = await newDevice(
+      browser,
+      app,
+      { width: 390, height: 780 },
+      { isMobile: true, hasTouch: true },
+    );
+    const page = await newPage(context);
+    // log in the shared user: sign-ups are limited per hour, and this file has many already
+    const { ann } = await getPair();
+    await logIn(page, ann.email);
+    await addTask(page, 'Touch rules');
+    await page.getByRole('link', { name: 'Touch rules' }).click();
+    await page.getByRole('complementary', { name: 'Task details' }).waitFor();
+    await page.getByLabel('Due date').fill('2031-06-10');
+
+    const presets = page.getByRole('group', { name: 'Suggested times' }).getByRole('button');
+    await presets.first().waitFor();
+    const reminders = page.getByRole('group', { name: 'Remind me' }).getByRole('button');
+    for (const chips of [presets, reminders]) {
+      const boxes = await chips.evaluateAll((els) =>
+        els.map((e) => {
+          const r = e.getBoundingClientRect();
+          return { x: r.x, y: r.y, right: r.right, height: r.height };
+        }),
+      );
+      for (const b of boxes) expect(b.height).toBeGreaterThanOrEqual(44);
+      for (let i = 1; i < boxes.length; i++) {
+        if (Math.abs(boxes[i]!.y - boxes[i - 1]!.y) < 1) {
+          expect(boxes[i]!.x - boxes[i - 1]!.right).toBeGreaterThanOrEqual(8); // same line
+        }
+      }
+    }
+
+    // the "Remind me" heading looks like the other field labels
+    const label = await page
+      .locator('#remind-label')
+      .evaluate((e) => [getComputedStyle(e).display, getComputedStyle(e).fontWeight]);
+    expect(label).toEqual(['block', '600']);
+
+    // buttons: 12 px radius on phones, no hard-coded shadow on hover
+    await page.getByRole('button', { name: 'Menu' }).click();
+    const manage = page.getByRole('link', { name: 'Manage lists' });
+    await manage.hover();
+    expect(
+      await manage.evaluate((e) => [
+        getComputedStyle(e).borderRadius,
+        getComputedStyle(e).boxShadow,
+      ]),
+    ).toEqual(['12px', 'none']);
+  });
+
   it('a phone gets separate pickers for photos/videos and documents, never "any file" or audio', async () => {
     const context = await newDevice(
       browser,

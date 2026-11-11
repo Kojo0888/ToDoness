@@ -13,6 +13,16 @@ export function normalizeTime(value: string): string {
   return parseTime(value) && value !== '00:00' ? value : '';
 }
 
+/**
+ * What a change of `<input type="time">` means: a time, '' for "no time", or `undefined`
+ * while the user is still typing (the browser reports '' with `validity.badInput` while a
+ * segment is empty) — that must not be saved as "no time".
+ */
+export function timeFromInput(raw: string, badInput: boolean): string | undefined {
+  if (raw === '' && badInput) return undefined;
+  return normalizeTime(raw);
+}
+
 export const TIME_PRESETS = [
   { label: 'Morning', value: '09:00' },
   { label: 'Midday', value: '12:00' },

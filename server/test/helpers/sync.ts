@@ -53,7 +53,8 @@ export class Device {
   }
 
   async pull(since = 0, limit?: number): Promise<PullResponse> {
-    const q = `since=${since}${limit === undefined ? '' : `&limit=${limit}`}`;
+    // `reminders=list`: like the current app, which understands several reminders per task.
+    const q = `since=${since}${limit === undefined ? '' : `&limit=${limit}`}&reminders=list`;
     const res = await this.http.get(`/api/sync/pull?${q}`);
     if (res.status !== 200) throw new Error(`pull failed with ${res.status}`);
     return pullResponseSchema.parse(await res.json());

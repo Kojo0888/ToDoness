@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TIME_PRESETS, normalizeTime } from '../../lib/timeField';
+import { TIME_PRESETS, timeFromInput } from '../../lib/timeField';
 import { t } from '../../app/strings';
 
 /**
@@ -17,18 +17,18 @@ export function TimeField({
   onChange: (value: string) => void;
   disabled?: boolean;
 }) {
-  // The value shown right now. It follows `value` (e.g. a change from another device), but
-  // changes at once when the user picks something, before the saved value comes back.
-  const [draft, setDraft] = useState(value);
+  // `value` already includes a change that is still being saved (useDueEditing), so a new
+  // pick is compared with what the user sees. `raw` is the input's own text: it follows
+  // `value`, but also holds an unfinished keyboard edit, which is not saved.
+  const [raw, setRaw] = useState(value);
   const [seen, setSeen] = useState(value);
   if (value !== seen) {
     setSeen(value);
-    setDraft(value);
+    setRaw(value);
   }
-  const change = (next: string) => {
-    const time = normalizeTime(next);
-    setDraft(time);
-    if (time !== value) onChange(time);
+  const pick = (next: string) => {
+    setRaw(next);
+    if (next !== value) onChange(next);
   };
 
   return (
@@ -37,9 +37,13 @@ export function TimeField({
         {t.todo.dueTime}
         <input
           type="time"
-          value={draft}
+          value={raw}
           disabled={disabled}
-          onChange={(e) => change(e.target.value)}
+          onChange={(e) => {
+            setRaw(e.target.value);
+            const time = timeFromInput(e.target.value, e.target.validity.badInput);
+            if (time !== undefined && time !== value) onChange(time);
+          }}
         />
       </label>
       {!disabled && (
@@ -48,19 +52,19 @@ export function TimeField({
             <button
               key={p.value}
               type="button"
-              className={`chip${draft === p.value ? ' is-selected' : ''}`}
-              aria-pressed={draft === p.value}
-              onClick={() => change(p.value)}
+              className={`chip${value === p.value ? ' is-selected' : ''}`}
+              aria-pressed={value === p.value}
+              onClick={() => pick(p.value)}
             >
               {p.label} <span className="hint">{p.value}</span>
             </button>
           ))}
-          {draft !== '' && (
+          {value !== '' && (
             <button
               type="button"
               className="link"
               aria-label={t.todo.timeClear}
-              onClick={() => change('')}
+              onClick={() => pick('')}
             >
               {t.todo.timeClearShort}
             </button>

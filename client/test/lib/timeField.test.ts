@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TIME_PRESETS, normalizeTime, parseTime } from '../../src/lib/timeField';
+import { TIME_PRESETS, normalizeTime, parseTime, timeFromInput } from '../../src/lib/timeField';
 
 describe('time field helpers (due time control)', () => {
   it('splits a stored time and handles "no time"', () => {
@@ -19,5 +19,13 @@ describe('time field helpers (due time control)', () => {
   it('suggests morning, midday, afternoon and evening', () => {
     expect(TIME_PRESETS.map((p) => p.label)).toEqual(['Morning', 'Midday', 'Afternoon', 'Evening']);
     for (const p of TIME_PRESETS) expect(parseTime(p.value), p.label).not.toBeNull();
+  });
+
+  it('an unfinished keyboard edit is ignored; only a real clear removes the time', () => {
+    // the browser reports '' with badInput while a segment is empty
+    expect(timeFromInput('', true)).toBeUndefined();
+    expect(timeFromInput('', false)).toBe('');
+    expect(timeFromInput('14:30', false)).toBe('14:30');
+    expect(timeFromInput('00:00', false)).toBe('');
   });
 });

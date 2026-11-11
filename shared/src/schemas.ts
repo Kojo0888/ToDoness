@@ -32,16 +32,29 @@ export type RemindBefore = z.infer<typeof remindBeforeSchema>;
 export const REMIND_ORDER: readonly RemindBefore[] = remindBeforeSchema.options;
 
 /**
- * A task's reminders as a unique list in REMIND_ORDER. Older app versions (and older stored
- * rows) have `null` or a single value: they are read as `[]` / `[value]` (docs/ui-refresh).
+ * The one rule for reading reminders from older app versions and older stored rows:
+ * `null`/missing is `[]`, a single value is `[value]`. Values are not checked here.
  */
+export function legacyRemindList(v: unknown): unknown[] {
+  return v == null ? [] : Array.isArray(v) ? v : [v];
+}
+
+/** A task's reminders as a unique list in REMIND_ORDER; unknown values are dropped. */
 export function normalizeRemindBefore(v: unknown): RemindBefore[] {
-  const given = v == null ? [] : Array.isArray(v) ? v : [v];
+  const given = legacyRemindList(v);
   return REMIND_ORDER.filter((r) => given.includes(r));
 }
 
+/**
+ * The single value an app from before several reminders (v1) understands: the earliest
+ * chosen reminder, or null. Used when such an app pulls changes.
+ */
+export function toLegacyRemindBefore(list: readonly RemindBefore[]): RemindBefore | null {
+  return REMIND_ORDER.find((r) => list.includes(r)) ?? null;
+}
+
 const remindListSchema = z.preprocess(
-  (v) => (v === null ? [] : typeof v === 'string' ? [v] : v),
+  legacyRemindList,
   z.array(remindBeforeSchema).max(10).transform(normalizeRemindBefore),
 );
 export const prioritySchema = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
