@@ -25,7 +25,7 @@ import {
 import { nextHlc as nextHlcOf } from './clock';
 import type { TodonessDB } from './db';
 import { keyForPosition } from './order';
-import { moduleOf } from './queries';
+import { moduleOf, noteListKey } from './queries';
 import type { RecoverySnapshot, RestoreMode } from './recovery';
 
 export type RepoErrorCode = 'invalid' | 'not_found' | 'inbox_protected';
@@ -176,11 +176,10 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
 
   /** Live notes of a note list (`null` = My notes, also by its id), in key order. */
   async function notesOfList(listId: string | null): Promise<Note[]> {
-    const myNotes = (await db.lists.toArray()).find(
-      (l) => l.deletedAt === null && l.isInbox && moduleOf(l) === 'notes',
-    )?.id;
-    const key = (n: Note) => (n.listId == null || n.listId === myNotes ? null : n.listId);
-    const own = listId === myNotes ? null : listId;
+    const lists = await db.lists.toArray();
+    const key = noteListKey(lists);
+    const myNotes = lists.find((l) => l.deletedAt === null && l.isInbox && moduleOf(l) === 'notes');
+    const own = listId === myNotes?.id ? null : listId;
     return (await db.notes.orderBy('orderKey').toArray()).filter(
       (n) => n.deletedAt === null && key(n) === own,
     );

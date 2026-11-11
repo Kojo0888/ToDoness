@@ -5,39 +5,14 @@ import { useTheme, type Theme } from '../../app/hooks';
 import { useEffect, useState } from 'react';
 import { disablePush, enablePush, pushState, type PushState } from '../../services/push';
 import { notificationSupport, requestNotificationPermission } from '../../services/reminders';
+import { browserStorage } from '../../lib/modules';
+import { localNotificationsOn, setLocalNotifications } from '../../lib/notifyPref';
+import { SettingRow } from '../common/SettingRow';
 import { ChangePassword } from './ChangePassword';
 import { NtfySettings } from './NtfySettings';
 
 export function Settings({ user }: { user: StoredUser }) {
   const [theme, setTheme] = useTheme();
-  const [support, setSupport] = useState(() => notificationSupport());
-  const [push, setPush] = useState<PushState | undefined>(undefined);
-  const [pushFailed, setPushFailed] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    void pushState().then((s) => !cancelled && setPush(s));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  async function turnOn() {
-    setBusy(true);
-    setPushFailed(false);
-    const state = await enablePush();
-    setPush(state);
-    setSupport(notificationSupport());
-    setPushFailed(state === 'off');
-    setBusy(false);
-  }
-
-  async function turnOff() {
-    setBusy(true);
-    setPush(await disablePush());
-    setBusy(false);
-  }
   return (
     <section className="page">
       <h2>{t.settings.title}</h2>
@@ -58,45 +33,91 @@ export function Settings({ user }: { user: StoredUser }) {
           ))}
         </select>
       </label>
-      <section className="card notifications" aria-label={t.settings.notifications.title}>
-        <h3>{t.settings.notifications.title}</h3>
-        <p>{t.settings.notifications.status[support]}</p>
-        {support === 'default' && (
-          <button
-            type="button"
-            onClick={() => void requestNotificationPermission().then(setSupport)}
-          >
-            {t.settings.notifications.enable}
-          </button>
-        )}
-        <p className="hint">{t.settings.notifications.hint}</p>
-      </section>
-      <section className="card notifications" aria-label={t.settings.push.title}>
-        <h3>{t.settings.push.title}</h3>
-        <p>{t.settings.push.text}</p>
-        {push !== undefined && <p role="status">{t.settings.push.status[push]}</p>}
-        {push === 'off' && (
-          <button type="button" disabled={busy} onClick={() => void turnOn()}>
-            {t.settings.push.enable}
-          </button>
-        )}
-        {push === 'on' && (
-          <button type="button" disabled={busy} onClick={() => void turnOff()}>
-            {t.settings.push.disable}
-          </button>
-        )}
-        {pushFailed && (
-          <p className="error" role="alert">
-            {t.settings.push.failed}
-          </p>
-        )}
-        <p className="hint">{t.settings.push.hint}</p>
-      </section>
+      {/* Every notification channel is one row with the same switch (docs/note-lists FR-119). */}
+      <LocalNotificationsRow />
+      <PushRow />
       <NtfySettings />
       <ChangePassword />
       <button type="button" onClick={() => void session.logout()}>
         {t.settings.logout}
       </button>
     </section>
+  );
+}
+
+/** In-app messages and system notifications from the open app (FR-120). */
+function LocalNotificationsRow() {
+  const [on, setOn] = useState(() => localNotificationsOn(browserStorage()));
+  const [support, setSupport] = useState(() => notificationSupport());
+  const s = t.settings.notifications;
+
+  async function change(next: boolean) {
+    setLocalNotifications(browserStorage(), next);
+    setOn(next);
+    // Turning on is a click: the moment the browser allows asking for permission.
+    if (next && support === 'default') setSupport(await requestNotificationPermission());
+  }
+
+  const status = !on
+    ? s.off
+    : support === 'granted' || support === 'default'
+      ? s.status[support]
+      : `${s.status[support]} ${s.onInAppOnly}`;
+
+  return (
+    <SettingRow
+      title={s.title}
+      info={s.text}
+      checked={on}
+      onChange={(v) => void change(v)}
+      status={status}
+    >
+      {on && support === 'default' && (
+        <button type="button" onClick={() => void requestNotificationPermission().then(setSupport)}>
+          {s.enable}
+        </button>
+      )}
+    </SettingRow>
+  );
+}
+
+/** Web push for this device (FR-121). */
+function PushRow() {
+  const [push, setPush] = useState<PushState | undefined>(undefined);
+  const [failed, setFailed] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void pushState().then((s) => !cancelled && setPush(s));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function change(on: boolean) {
+    setBusy(true);
+    setFailed(false);
+    if (on) {
+      const state = await enablePush();
+      setPush(state);
+      setFailed(state === 'off');
+    } else {
+      setPush(await disablePush());
+    }
+    setBusy(false);
+  }
+
+  const s = t.settings.push;
+  return (
+    <SettingRow
+      title={s.title}
+      info={s.text}
+      checked={push === 'on'}
+      disabled={busy || (push !== 'on' && push !== 'off')}
+      onChange={(v) => void change(v)}
+      status={failed ? s.failed : push !== undefined ? s.status[push] : undefined}
+      statusKind={failed ? 'error' : 'info'}
+    />
   );
 }

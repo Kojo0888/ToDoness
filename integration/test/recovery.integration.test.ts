@@ -64,7 +64,7 @@ describe('recovery after the server lost its database', () => {
     await b.sync();
     expect(await b.snapshot()).toEqual(await a.snapshot());
 
-    const lists = (await b.db.lists.toArray()).filter((l) => !l.deletedAt);
+    const lists = (await b.db.lists.toArray()).filter((l) => l.module !== 'notes' && !l.deletedAt);
     expect(lists.map((l) => l.name).sort()).toEqual(['Inbox', 'Work']);
     expect(lists.find((l) => l.name === 'Work')!.isPublic).toBe(true);
     expect(await b.titles(await b.inboxId())).toEqual(['Buy milk']); // in the NEW Inbox
@@ -104,7 +104,7 @@ describe('recovery after the server lost its database', () => {
     expect((await c.db.lists.get(phoneList.id))!.deletedAt).not.toBeNull();
     expect(
       (await c.db.lists.toArray())
-        .filter((l) => !l.deletedAt)
+        .filter((l) => !l.deletedAt && l.module !== 'notes')
         .map((l) => l.name)
         .sort(),
     ).toEqual(['Inbox', 'Work']);
@@ -139,7 +139,9 @@ describe('recovery after the server lost its database', () => {
     await b.login('ann@corp.test');
     await b.sync();
     expect((await b.db.todos.toArray()).length).toBe(0);
-    expect((await b.db.lists.toArray()).map((l) => l.name)).toEqual(['Inbox']);
+    expect(
+      (await b.db.lists.toArray()).filter((l) => l.module !== 'notes').map((l) => l.name),
+    ).toEqual(['Inbox']);
     expect(await a.db.getMeta(RECOVERY_KEY)).toBeUndefined();
   });
 

@@ -100,8 +100,14 @@ export function Shell({ user }: { user: StoredUser }) {
               <Route path="/notes/public">
                 <PublicNotesPage />
               </Route>
+              <Route path="/notes/manage">
+                <ManageLists module="notes" />
+              </Route>
+              <Route path="/notes/l/:listId">
+                {(p) => <NotesPage key={p.listId} listId={p.listId} />}
+              </Route>
               <Route path="/notes">
-                <NotesPage />
+                <NotesPage key="mine" />
               </Route>
               <Route path="/tasks">
                 <Home />

@@ -6,14 +6,12 @@ import type { PublicOp, TodonessDB } from './db';
 /** A stored list's module; rows written before note lists have none (task lists). */
 export const moduleOf = (l: Pick<List, 'module'>): ListModule => l.module ?? 'tasks';
 
-async function liveLists(db: TodonessDB, module: ListModule): Promise<List[]> {
-  const all = await db.lists.orderBy('orderKey').toArray();
-  return all.filter((l) => l.deletedAt === null && moduleOf(l) === module);
-}
+const liveOf = (all: List[], module: ListModule) =>
+  all.filter((l) => l.deletedAt === null && moduleOf(l) === module);
 
 /** The task lists, Inbox first (it has the lowest key). */
-export function getLists(db: TodonessDB): Promise<List[]> {
-  return liveLists(db, 'tasks');
+export async function getLists(db: TodonessDB): Promise<List[]> {
+  return liveOf(await db.lists.orderBy('orderKey').toArray(), 'tasks');
 }
 
 /**
@@ -21,7 +19,7 @@ export function getLists(db: TodonessDB): Promise<List[]> {
  * (the server creates it at the first sync); callers show its default name then.
  */
 export async function getNoteLists(db: TodonessDB): Promise<List[]> {
-  const lists = await liveLists(db, 'notes');
+  const lists = liveOf(await db.lists.orderBy('orderKey').toArray(), 'notes');
   return [...lists.filter((l) => l.isInbox), ...lists.filter((l) => !l.isInbox)];
 }
 
@@ -37,9 +35,13 @@ export async function countOpenTodosByList(db: TodonessDB): Promise<Map<string, 
 
 /** Number of live notes in each note list (`null` = My notes). */
 export async function countNotesByList(db: TodonessDB): Promise<Map<string | null, number>> {
-  const key = await noteListKey(db);
+  // Both tables in one await: live queries lose track of reads after nested awaits.
+  const [lists, notes] = await Promise.all([db.lists.toArray(), db.notes.toArray()]);
+  const key = noteListKey(lists);
   const counts = new Map<string | null, number>();
-  for (const n of await getNotes(db)) counts.set(key(n), (counts.get(key(n)) ?? 0) + 1);
+  for (const n of notes) {
+    if (n.deletedAt === null) counts.set(key(n), (counts.get(key(n)) ?? 0) + 1);
+  }
   return counts;
 }
 
@@ -47,8 +49,10 @@ export async function countNotesByList(db: TodonessDB): Promise<Map<string | nul
  * The list of a note, with "My notes" as `null`: this app writes `null` for it, but a note
  * may also name the list's id (both mean the same, decision L2).
  */
-async function noteListKey(db: TodonessDB): Promise<(n: Note) => string | null> {
-  const myNotes = (await liveLists(db, 'notes')).find((l) => l.isInbox)?.id;
+export function noteListKey(lists: readonly List[]): (n: Note) => string | null {
+  const myNotes = lists.find(
+    (l) => l.deletedAt === null && l.isInbox && moduleOf(l) === 'notes',
+  )?.id;
   return (n) => (n.listId == null || n.listId === myNotes ? null : n.listId);
 }
 
@@ -104,8 +108,12 @@ export async function getNotes(db: TodonessDB): Promise<Note[]> {
 
 /** Live notes of one note list (`null` = My notes), newest first. */
 export async function getNotesOfList(db: TodonessDB, listId: string | null): Promise<Note[]> {
-  const key = await noteListKey(db);
-  return (await getNotes(db)).filter((n) => key(n) === listId);
+  const [lists, notes] = await Promise.all([
+    db.lists.toArray(),
+    db.notes.orderBy('orderKey').toArray(),
+  ]);
+  const key = noteListKey(lists);
+  return notes.filter((n) => n.deletedAt === null && key(n) === listId);
 }
 
 export async function getNoteById(db: TodonessDB, id: string): Promise<Note | undefined> {

@@ -42,7 +42,9 @@ describe('v1: public lists across users', () => {
 
     // Bob's own sync never contains Ann's list.
     await bob.sync();
-    expect((await bob.db.lists.toArray()).map((l) => l.name)).toEqual(['Inbox']);
+    expect(
+      (await bob.db.lists.toArray()).filter((l) => l.module !== 'notes').map((l) => l.name),
+    ).toEqual(['Inbox']);
     expect(inbox).not.toBe(await bob.inboxId());
 
     await ann.repo.setListPublic(list.id, false);

@@ -85,7 +85,13 @@ describe('module switch (FR-83 – FR-87)', () => {
       .getByRole('navigation')
       .getByRole('link', { name: /My notes/ })
       .waitFor();
-    expect(await page.getByPlaceholder('New list name').count()).toBe(0);
+    // …and not the task lists.
+    expect(
+      await page
+        .getByRole('navigation')
+        .getByRole('link', { name: /^Inbox/ })
+        .count(),
+    ).toBe(0);
 
     // Reopening the app at the start address shows Notes.
     await page.goto('/');
@@ -291,7 +297,7 @@ describe('public lists and notes offline (FR-106 – FR-111)', () => {
     await modules(ann.page).getByRole('link', { name: 'Tasks' }).click();
     await ann.page
       .getByRole('navigation')
-      .getByRole('link', { name: 'Recipes', exact: true })
+      .getByRole('link', { name: /^Recipes \d+$/ }) // the name and its open-task count
       .click();
     await syncNow(ann.page);
     await ann.page.getByRole('link', { name: 'Bread offline' }).waitFor({ timeout: 20_000 });
@@ -335,7 +341,7 @@ describe('public lists and notes offline (FR-106 – FR-111)', () => {
     await modules(ann.page).getByRole('link', { name: 'Tasks' }).click();
     await ann.page
       .getByRole('navigation')
-      .getByRole('link', { name: 'Recipes', exact: true })
+      .getByRole('link', { name: /^Recipes \d+$/ }) // the name and its open-task count
       .click();
     const toggle = ann.page.getByRole('switch', { name: /Public list/ });
     await toggle.click();

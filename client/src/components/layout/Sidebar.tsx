@@ -3,8 +3,8 @@ import { useState, type FormEvent } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Link, useLocation } from 'wouter';
 import { listDropId } from '../../lib/dnd';
-import { MANAGE_LISTS_PATH } from '../../lib/listManage';
-import { getLists, getNotes } from '../../data/queries';
+import { MANAGE_LISTS_PATH, MANAGE_NOTE_LISTS_PATH, noteListPath } from '../../lib/listManage';
+import { countNotesByList, countOpenTodosByList, getLists, getNoteLists } from '../../data/queries';
 import { useModule } from '../../app/hooks';
 import { usePublicLists, usePublicNotes } from '../../app/publicHooks';
 import { db, repo } from '../../app/container';
@@ -61,6 +61,7 @@ function TasksNav({
 }) {
   const [, navigate] = useLocation();
   const lists = useLiveQuery(() => getLists(db), [], []);
+  const counts = useLiveQuery(() => countOpenTodosByList(db), [], new Map<string, number>());
   const [name, setName] = useState('');
   const { lists: publicLists, failed: publicFailed } = usePublicLists();
 
@@ -82,6 +83,7 @@ function TasksNav({
             key={l.id}
             id={l.id}
             name={l.name}
+            count={counts.get(l.id) ?? 0}
             active={active(`/l/${l.id}`)}
             onNavigate={onNavigate}
           />
@@ -141,40 +143,67 @@ function TasksNav({
   );
 }
 
-/** The Notes module: my notes and other users' public notes, with counts. */
+/** The Notes module: the note lists (My notes first) and other users' public notes, with
+ *  counts; manage and add note lists (docs/note-lists FR-125, FR-126). */
 function NotesNav({ location, onNavigate }: { location: string; onNavigate: () => void }) {
-  const mine = useLiveQuery(async () => (await getNotes(db)).length, [], 0);
+  const [, navigate] = useLocation();
+  const lists = useLiveQuery(() => getNoteLists(db), [], []);
+  const counts = useLiveQuery(() => countNotesByList(db), [], new Map<string | null, number>());
   // The public notes page refreshes them itself; here only the copy is read then.
   const shared = usePublicNotes({ refresh: location !== '/notes/public' });
+  const [name, setName] = useState('');
 
-  const link = (href: string, label: string, count: number | undefined, tooltip?: string) => {
-    const isActive = location === href || location === `${href}/`;
-    return (
-      <li>
-        <Link
-          href={href}
-          className={isActive ? 'active' : ''}
-          aria-current={isActive ? 'page' : undefined}
-          onClick={onNavigate}
-          title={tooltip}
-        >
-          {label}
-          {count !== undefined && <span className="nav-count">{count}</span>}
-          {tooltip && (
-            <span className="nav-info" aria-hidden="true">
-              ⓘ
-            </span>
-          )}
-        </Link>
-      </li>
-    );
-  };
+  const myNotes = lists.find((l) => l.isInbox);
+  const others = lists.filter((l) => !l.isInbox);
+  const isActive = (href: string) => location === href || location === `${href}/`;
+
+  async function addList(e: FormEvent) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setName('');
+    const list = await repo.createList(trimmed, 'notes');
+    navigate(noteListPath(list.id));
+    onNavigate();
+  }
+
+  const link = (
+    key: string,
+    href: string,
+    label: string,
+    count: number | undefined,
+    tooltip?: string,
+  ) => (
+    <li key={key}>
+      <Link
+        href={href}
+        className={isActive(href) ? 'active' : ''}
+        aria-current={isActive(href) ? 'page' : undefined}
+        onClick={onNavigate}
+        title={tooltip}
+      >
+        <span className="nav-name">{label}</span>
+        {count !== undefined && (
+          <span className="nav-count" title={t.common.notesCount(count)}>
+            {count}
+          </span>
+        )}
+        {tooltip && (
+          <span className="nav-info" aria-hidden="true">
+            ⓘ
+          </span>
+        )}
+      </Link>
+    </li>
+  );
 
   return (
     <>
       <ul className="nav-lists" aria-label={t.modules.notes}>
-        {link('/notes', t.notes.myNotes, mine)}
+        {link('mine', '/notes', myNotes?.name ?? t.notes.myNotes, counts.get(null) ?? 0)}
+        {others.map((l) => link(l.id, noteListPath(l.id), l.name, counts.get(l.id) ?? 0))}
         {link(
+          'public',
           '/notes/public',
           t.notes.publicNotes,
           shared.value?.length,
@@ -182,6 +211,30 @@ function NotesNav({ location, onNavigate }: { location: string; onNavigate: () =
           shared.value === null && shared.failed ? t.notes.publicNeedsConnection : undefined,
         )}
       </ul>
+
+      <Link
+        href={MANAGE_NOTE_LISTS_PATH}
+        onClick={onNavigate}
+        className={`btn btn-block manage-lists-link${isActive(MANAGE_NOTE_LISTS_PATH) ? ' active' : ''}`}
+        aria-current={isActive(MANAGE_NOTE_LISTS_PATH) ? 'page' : undefined}
+      >
+        <span aria-hidden="true" className="btn-icon">
+          ☰
+        </span>
+        {t.notes.manageLists}
+      </Link>
+
+      <form onSubmit={addList} className="new-list">
+        <input
+          type="text"
+          aria-label={t.notes.newList}
+          placeholder={t.notes.newList}
+          value={name}
+          maxLength={200}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <button type="submit">{t.notes.addList}</button>
+      </form>
     </>
   );
 }
@@ -190,11 +243,14 @@ function NotesNav({ location, onNavigate }: { location: string; onNavigate: () =
 function ListLink({
   id,
   name,
+  count,
   active,
   onNavigate,
 }: {
   id: string;
   name: string;
+  /** Open tasks (FR-132), shown like the note counts. */
+  count: number;
   active: boolean;
   onNavigate: () => void;
 }) {
@@ -207,7 +263,10 @@ function ListLink({
         aria-current={active ? 'page' : undefined}
         onClick={onNavigate}
       >
-        {name}
+        <span className="nav-name">{name}</span>
+        <span className="nav-count" title={t.common.openTasks(count)}>
+          {count}
+        </span>
       </Link>
     </li>
   );

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { InfoTip } from '../common/InfoTip';
 import type { PublicNote } from '@todoness/shared';
 import { useOnline } from '../../app/hooks';
 import { usePublicNotes } from '../../app/publicHooks';
@@ -32,8 +33,11 @@ export function PublicNotesPage() {
       <header className="list-head">
         <h2 id="public-notes-title">{t.notes.publicPage.title}</h2>
         <span className="badge">{t.publicPage.editable}</span>
+        <InfoTip
+          text={t.notes.publicPage.intro}
+          label={t.common.moreInfo(t.notes.publicPage.title)}
+        />
       </header>
-      <p className="hint">{t.notes.publicPage.intro}</p>
 
       {value === undefined || (value === null && !failed) ? (
         <p className="empty">{t.loading}</p>

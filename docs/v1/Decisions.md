@@ -135,3 +135,14 @@
     overwrite would remove. A new account is empty, so there both choices give the same result;
     the question is asked anyway because another device may have added data meanwhile.
 
+
+## Note lists and unified settings (docs/note-lists)
+
+- Notes are grouped in **note lists**, stored as `lists` with `module = 'notes'`; a note's
+  `listId` is `null` for the default list "My notes" (created by the server, renameable, not
+  deletable). Older apps do not see note lists (pull without `lists=modules`). See
+  [`../note-lists/PRD.md`](../note-lists/PRD.md) decisions L1 – L4.
+- "Notifications on this device" can be switched off; it is a device setting, since a page
+  cannot revoke a browser permission (decision S1).
+- UI rule: descriptions go behind an "i" info button; sub-pages use an app bar with a round
+  back button (decision U1).
