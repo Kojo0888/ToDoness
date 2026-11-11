@@ -111,8 +111,6 @@ export const t = {
 
   manage: {
     title: 'Manage lists',
-    intro:
-      'Drag a list by its handle to reorder it. Use ⋯ to rename or delete it. The Inbox cannot be changed.',
     empty: 'You have no lists besides the Inbox yet.',
     back: 'Back to tasks',
     drag: (name: string) => `Drag to reorder list: ${name}`,
@@ -220,15 +218,12 @@ export const t = {
     title: 'Title',
     notes: 'Notes',
     dueDate: 'Due date',
-    dueTime: 'Due time (optional)',
-    timeHour: 'Hour',
-    timeMinute: 'Minute',
+    dueTime: 'Time (optional)',
     timeClear: 'Clear time',
     timeClearShort: 'Clear',
-    timePresets: 'Common times',
+    timePresets: 'Suggested times',
     remind: 'Remind me',
     reminders: {
-      none: 'No reminder',
       week: '1 week before',
       day: '1 day before',
       hour: '1 hour before',

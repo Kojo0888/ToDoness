@@ -172,6 +172,23 @@ describe('tasks and lists', () => {
     expect(await page.getByRole('button', { name: /^Drag to reorder list/ }).count()).toBe(0);
   });
 
+  it('Manage lists is a modern button; its screen has no help paragraph and a modern back button', async () => {
+    const page = await newPage(await newDevice(browser, app));
+    await signUp(page, uniqueEmail());
+    const open = page.getByRole('link', { name: 'Manage lists' });
+    expect(await open.getAttribute('class')).toMatch(/\bbtn\b/);
+    const box = (await open.boundingBox())!;
+    expect(box.height).toBeGreaterThanOrEqual(36); // a real target, not a text link
+    await open.click();
+    await page.getByRole('heading', { level: 2, name: 'Manage lists' }).waitFor();
+    expect(await open.getAttribute('aria-current')).toBe('page');
+    expect(await page.getByText(/Drag a list by its handle/).count()).toBe(0);
+    const back = page.getByRole('link', { name: 'Back to tasks' });
+    expect(await back.getAttribute('class')).toMatch(/\bbtn-back\b/);
+    await back.click();
+    await page.getByRole('heading', { level: 2, name: 'Inbox' }).waitFor();
+  });
+
   it('the ⋯ menu works with the keyboard and a click outside closes it', async () => {
     const page = await newPage(await newDevice(browser, app));
     await signUp(page, uniqueEmail());

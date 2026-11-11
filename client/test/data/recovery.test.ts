@@ -20,7 +20,7 @@ async function oldDevice() {
     dueAt: T0 + 86_400_000,
     priority: 2,
   });
-  await repo.updateTodo(b.id, { remindBefore: 'day' });
+  await repo.updateTodo(b.id, { remindBefore: ['day'] });
   const c = await repo.createTodo({ listId: work.id, title: 'Done task' });
   await repo.setDone(c.id, true);
   const gone = await repo.createTodo({ listId: work.id, title: 'Deleted task' });
@@ -61,7 +61,7 @@ describe('takeSnapshot', () => {
     expect(snap.todos.find((t) => t.id === b.id)).toMatchObject({
       dueAt: T0 + 86_400_000,
       priority: 2,
-      remindBefore: 'day',
+      remindBefore: ['day'],
     });
   });
 
@@ -104,7 +104,7 @@ describe('restoreSnapshot', () => {
     expect(open[0]).toMatchObject({
       dueAt: T0 + 86_400_000,
       priority: 2,
-      remindBefore: 'day',
+      remindBefore: ['day'],
       orderKey: old.b.orderKey,
     });
     expect((await getDoneTodos(fresh.db, work.id)).map((t) => t.title)).toEqual(['Done task']);

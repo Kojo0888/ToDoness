@@ -101,10 +101,14 @@ export function ManageLists() {
   return (
     <section className="manage-lists" aria-label={t.manage.title}>
       <header className="list-head">
+        <Link href="/tasks" className="btn btn-back">
+          <span aria-hidden="true" className="btn-icon">
+            ←
+          </span>
+          {t.manage.back}
+        </Link>
         <h2>{t.manage.title}</h2>
-        <Link href="/tasks">{t.manage.back}</Link>
       </header>
-      <p className="hint">{t.manage.intro}</p>
       {reorderFailed && (
         <p className="error" role="alert">
           {t.manage.reorderFailed}

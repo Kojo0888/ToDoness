@@ -95,7 +95,7 @@ and makes tasks richer:
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| FR-42 | The task detail has a **"Remind me"** field: *No reminder / 1 week before / 1 day before / 1 hour before*. **[Decision D2: one choice per task.]** | Must |
+| FR-42 | The task detail has a **"Remind me"** field: *No reminder / 1 week before / 1 day before / 1 hour before*. **[Decision D2: one choice per task.]** *Superseded by FR-112 ([`../ui-refresh/PRD.md`](../ui-refresh/PRD.md)): any combination, chosen with toggle chips.* | Must |
 | FR-43 | The due date can now carry an optional **time**. No time means the start of the day (00:00 local time), as before. The reminder is counted back from the due date and time. | Must |
 | FR-44 | A reminder is only active for an **open** task with a due date. Completing, deleting or removing the due date or reminder cancels it. Changing the due date or the reminder makes it fire again. | Must |
 | FR-45 | When the time has come, the app shows a **system notification** (title: the task, text: when it is due) and an in-app message. A reminder fires **once per device** per due date + choice. | Must |
@@ -193,7 +193,7 @@ attachments (which only live on the server) is still on that device.
 | # | Topic | Decision |
 |---|-------|----------|
 | D1 | How do others get and edit public lists? | Read on demand through the API, edited online through a restricted push endpoint that applies the same merge rules and writes the change into the **owner's** change feed. Copying public lists into every user's local database (so everyone could edit offline) would make the sync model (per-user change feed) much heavier. |
-| D2 | One reminder or several? | One choice per task. Simple to understand and to merge between devices. Several reminders can be added later (the field would become a list). |
+| D2 | One reminder or several? | One choice per task. Simple to understand and to merge between devices. Several reminders can be added later (the field would become a list). **Superseded:** done in [`../ui-refresh/PRD.md`](../ui-refresh/PRD.md) (FR-112 – FR-115). |
 | D3 | Offline attachments? | No. Files up to 100 MB do not fit the "small queue of tiny changes" offline model (browser storage quota, retries). Attach, list and download need a connection. |
 | D4 | Due time | Added as an optional time next to the date. Overdue highlighting still works by day (a task due today at 09:00 is not marked overdue until tomorrow). |
 | D5 | Reminders while the app is closed | **Web Push** (section 4.7). The server sends the push; delivery goes through the browser vendor's push service (Google, Mozilla, Apple), so the server needs outbound HTTPS access to it. Without push, the app still catches up at the next start (FR-46). |

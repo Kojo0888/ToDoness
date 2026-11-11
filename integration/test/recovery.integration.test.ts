@@ -17,7 +17,7 @@ async function oldAccount() {
   await a.repo.setListPublic(work.id, true);
   await a.repo.createTodo({ listId: inbox, title: 'Buy milk', notes: 'two litres' });
   const due = await a.repo.createTodo({ listId: work.id, title: 'Report', dueAt: T0 + 86_400_000 });
-  await a.repo.updateTodo(due.id, { remindBefore: 'day', priority: 3 });
+  await a.repo.updateTodo(due.id, { remindBefore: ['day', 'hour'], priority: 3 });
   const done = await a.repo.createTodo({ listId: work.id, title: 'Old news' });
   await a.repo.setDone(done.id, true);
   expect(await a.sync()).toEqual({ ok: true });
@@ -71,7 +71,11 @@ describe('recovery after the server lost its database', () => {
     const work = lists.find((l) => l.name === 'Work')!;
     expect(await b.titles(work.id)).toEqual(['Report']);
     const report = (await b.db.todos.toArray()).find((t) => t.title === 'Report')!;
-    expect(report).toMatchObject({ remindBefore: 'day', priority: 3, dueAt: T0 + 86_400_000 });
+    expect(report).toMatchObject({
+      remindBefore: ['day', 'hour'],
+      priority: 3,
+      dueAt: T0 + 86_400_000,
+    });
     const old = (await b.db.todos.toArray()).find((t) => t.title === 'Old news')!;
     expect(old.done).toBe(true);
   });

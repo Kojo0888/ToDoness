@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --external:better-sqlite3 --external:@node-rs/argon2 --banner:js=\"import{createRequire}from'node:module';const require=createRequire(import.meta.url);\" --outfile=dist/index.js && node scripts/postbuild.mjs",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node22 --format=esm --external:better-sqlite3 --external:@node-rs/argon2 --banner:js=\"import{createRequire}from'node:module';const require=createRequire(import.meta.url);\" --outfile=dist/index.js --log-level=warning && node scripts/postbuild.mjs",
     "start": "node dist/index.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

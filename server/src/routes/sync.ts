@@ -1,7 +1,12 @@
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { pushEnvelopeSchema, type PullResponse } from '@todoness/shared';
+import {
+  normalizeRemindBefore,
+  pushEnvelopeSchema,
+  toLegacyRemindBefore,
+  type PullResponse,
+} from '@todoness/shared';
 import { requireAuth } from '../auth/middleware';
 import { applyPush } from '../sync/apply-ops';
 import type { AppEnv } from '../http/types';
@@ -37,6 +42,10 @@ export function syncRoutes({ db, now }: { db: Database.Database; now: () => numb
       return c.json({ error: 'invalid_request' }, 400);
     }
     const limit = Math.min(limitRaw, PULL_MAX);
+    // Apps from before several reminders per task check `remindBefore` as one value or null
+    // and reject the whole answer otherwise, so they only get the earliest reminder.
+    // The current app asks for lists (`reminders=list`). docs/ui-refresh, FR-115.
+    const remindersAsList = c.req.query('reminders') === 'list';
 
     const rows = db
       .prepare(
@@ -63,7 +72,7 @@ export function syncRoutes({ db, now }: { db: Database.Database; now: () => numb
         entity: r.entity,
         entityId: r.entity_id,
         type: r.op_type,
-        patch: JSON.parse(r.patch),
+        patch: remindersAsList ? JSON.parse(r.patch) : legacyPatch(r.entity, JSON.parse(r.patch)),
         hlc: r.hlc,
       })),
       nextSeq: page.at(-1)?.server_seq ?? since,
@@ -73,4 +82,13 @@ export function syncRoutes({ db, now }: { db: Database.Database; now: () => numb
   });
 
   return app;
+}
+
+/** A pulled patch in the v1 format: `remindBefore` as one value or null. */
+function legacyPatch(entity: string, patch: Record<string, unknown>): Record<string, unknown> {
+  if (entity !== 'todo' || !('remindBefore' in patch)) return patch;
+  return {
+    ...patch,
+    remindBefore: toLegacyRemindBefore(normalizeRemindBefore(patch.remindBefore)),
+  };
 }

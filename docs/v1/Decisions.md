@@ -79,8 +79,10 @@
 14. **Phone layout:** a sticky top bar replaces the floating menu button that covered controls;
     on every screen the sidebar is as tall as the viewport, so Settings and Admin never scroll
     away with a long list (the lists scroll inside it).
-15. **Due time control:** an hour list and a minute list (the phones' own pickers, 5-minute steps,
-    an off-grid minute is kept) plus quick choices, instead of `<input type="time">`.
+15. **Due time control:** the device's own `<input type="time">` (a clock on phones) sits in the
+    same row as the date; once a date is set, four suggested times (morning 09:00, midday 12:00,
+    afternoon 15:00, evening 18:00) appear under the row. This replaces the earlier hour/minute
+    dropdowns, which were a dropdown on phones.
 16. **File pickers on phones (an interpretation to confirm on a device):** an input that accepts
     "anything" makes Android list its recorders, so the browser asks for camera and microphone
     access. On touch screens there are now two buttons: photos/videos (`image/*,video/*`) and

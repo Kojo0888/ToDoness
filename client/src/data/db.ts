@@ -1,6 +1,12 @@
 /** The browser's local database (docs/mvp/DBModel.md section 4). */
 import Dexie, { type Table } from 'dexie';
-import type { List, Note, OutboxOp, Todo } from '@todoness/shared';
+import {
+  normalizeRemindBefore,
+  type List,
+  type Note,
+  type OutboxOp,
+  type Todo,
+} from '@todoness/shared';
 
 export interface MetaRow {
   key: string;
@@ -101,6 +107,15 @@ export class TodonessDB extends Dexie {
     this.version(3).stores({ notes: 'id, orderKey' });
     // Other users' public lists and notes offline: a copy of the server's answers and a queue.
     this.version(4).stores({ publicOutbox: 'opId, hlc, targetId', publicCache: 'key' });
+    // Several reminders per task (docs/ui-refresh): `remindBefore` becomes a list.
+    this.version(5).upgrade(async (tx) => {
+      await tx
+        .table('todos')
+        .toCollection()
+        .modify((t) => {
+          t.remindBefore = normalizeRemindBefore(t.remindBefore);
+        });
+    });
   }
 
   async getMeta<T>(key: string): Promise<T | undefined> {

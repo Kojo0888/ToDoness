@@ -117,8 +117,12 @@ function TasksNav({
       <Link
         href={MANAGE_LISTS_PATH}
         onClick={onNavigate}
-        className={`manage-lists-link${active(MANAGE_LISTS_PATH) ? ' active' : ''}`}
+        className={`btn btn-block manage-lists-link${active(MANAGE_LISTS_PATH) ? ' active' : ''}`}
+        aria-current={active(MANAGE_LISTS_PATH) ? 'page' : undefined}
       >
+        <span aria-hidden="true" className="btn-icon">
+          ☰
+        </span>
         {t.nav.manageLists}
       </Link>
 

@@ -54,7 +54,7 @@ describe('applyOp – create', () => {
       completedAt: null,
       dueAt: null,
       priority: 0,
-      remindBefore: null,
+      remindBefore: [],
       orderKey: 'a0',
       fieldHlc: { listId: hlc(T0), title: hlc(T0), orderKey: hlc(T0) },
       createdAt: T0,
@@ -279,7 +279,7 @@ describe('applyOp – convergence', () => {
 describe('v1 fields', () => {
   it('a new todo starts without a reminder, a new list starts private', () => {
     const todo = run([createTodo()]);
-    expect(todo.remindBefore).toBeNull();
+    expect(todo.remindBefore).toEqual([]);
 
     const r = applyOp<List>(undefined, {
       entity: 'list',

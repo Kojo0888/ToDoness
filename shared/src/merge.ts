@@ -36,7 +36,7 @@ const TODO_DEFAULTS = {
   completedAt: null,
   dueAt: null,
   priority: 0,
-  remindBefore: null,
+  remindBefore: [] as Todo['remindBefore'],
   deletedAt: null,
 } as const satisfies Partial<Todo>;
 

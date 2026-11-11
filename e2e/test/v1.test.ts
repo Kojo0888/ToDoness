@@ -397,6 +397,15 @@ describe('v1: who is online (FR-56 – FR-58)', () => {
   }, 60_000);
 });
 
+const REMINDER_LABEL = { week: '1 week before', day: '1 day before', hour: '1 hour before' };
+/** The "Remind me" chips: several can be on at once (docs/ui-refresh, FR-112). */
+const reminderChip = (page: Page, choice: keyof typeof REMINDER_LABEL) =>
+  page
+    .getByRole('group', { name: 'Remind me' })
+    .getByRole('button', { name: REMINDER_LABEL[choice], exact: true });
+const toggleReminder = (page: Page, choice: keyof typeof REMINDER_LABEL) =>
+  reminderChip(page, choice).click();
+
 describe('v1: reminders (FR-42 – FR-47)', () => {
   /**
    * Headless Chromium always reports `denied`, even when the permission is granted, so
@@ -417,18 +426,9 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
   const shown = (page: Page) =>
     page.evaluate(() => (window as unknown as { __shown: string[] }).__shown);
 
-  /** The time control has an hour and a minute list; the minute list has steps of 5. */
+  /** The time control is the device's own clock input. */
   async function pickTime(page: Page, time: string) {
-    const [h, m] = time.split(':') as [string, string];
-    await page.getByRole('combobox', { name: 'Hour' }).selectOption(h);
-    const minute = page.getByRole('combobox', { name: 'Minute' });
-    // not every minute is a choice: use the exact one if offered, else the closest earlier step
-    const offered = await minute
-      .locator('option')
-      .evaluateAll((o) => o.map((x) => (x as HTMLOptionElement).value));
-    await minute.selectOption(
-      offered.includes(m) ? m : String(Math.floor(Number(m) / 5) * 5).padStart(2, '0'),
-    );
+    await page.getByLabel('Time (optional)').fill(time);
   }
 
   /** Local `YYYY-MM-DD` and `HH:MM` for a moment `minutes` from now. */
@@ -455,9 +455,9 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
     await addTask(page, 'Dentist');
     await openTask(page, 'Dentist');
 
-    expect(await page.getByLabel('Remind me').isDisabled()).toBe(true); // needs a due date first
+    expect(await reminderChip(page, 'hour').isDisabled()).toBe(true); // needs a due date first
     await setDue(page, 40); // due in 40 minutes: a 1-hour reminder is already due
-    await page.getByLabel('Remind me').selectOption('hour');
+    await toggleReminder(page, 'hour');
 
     const message = page.getByRole('region', { name: 'Reminders' });
     await message.getByText('Reminder: Dentist').waitFor();
@@ -487,14 +487,14 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
     await addTask(page, 'Far away');
     await openTask(page, 'Far away');
     await setDue(page, 3 * 24 * 60); // in 3 days
-    await page.getByLabel('Remind me').selectOption('hour');
+    await toggleReminder(page, 'hour');
     await page.waitForTimeout(1500);
     expect(await page.getByRole('region', { name: 'Reminders' }).count()).toBe(0);
 
     await addTask(page, 'Done already');
     await openTask(page, 'Done already');
     await setDue(page, 30);
-    await page.getByLabel('Remind me').selectOption('hour');
+    await toggleReminder(page, 'hour');
     await page
       .getByRole('region', { name: 'Reminders' })
       .getByText('Reminder: Done already')
@@ -508,14 +508,38 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
     await addTask(page, 'Later');
     await openTask(page, 'Later');
     await setDue(page, 5 * 24 * 60);
-    await page.getByLabel('Remind me').selectOption('day');
+    await toggleReminder(page, 'day');
     await page.getByLabel('Due date').fill('');
-    await page.waitForFunction(
-      () =>
-        (document.querySelector('select[aria-describedby="remind-hint"]') as HTMLSelectElement)
-          .disabled,
-    );
-    expect(await page.getByLabel('Remind me').inputValue()).toBe('');
+    await expect.poll(() => reminderChip(page, 'day').isDisabled()).toBe(true);
+    expect(await reminderChip(page, 'day').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('several reminders can be chosen at once and are kept (FR-112)', async () => {
+    const page = await newPage(await newDevice(browser, app));
+    await recordNotifications(page);
+    await signUp(page, uniqueEmail('multi'));
+    await addTask(page, 'Several');
+    await openTask(page, 'Several');
+    await setDue(page, 10 * 24 * 60);
+    // two quick taps: both count
+    await toggleReminder(page, 'week');
+    await toggleReminder(page, 'hour');
+    await expect.poll(() => reminderChip(page, 'week').getAttribute('aria-pressed')).toBe('true');
+    expect(await reminderChip(page, 'day').getAttribute('aria-pressed')).toBe('false');
+    expect(await reminderChip(page, 'hour').getAttribute('aria-pressed')).toBe('true');
+    expect(await page.locator('select[aria-describedby="remind-hint"]').count()).toBe(0);
+
+    await waitSaved(page); // both changes stored and sent before the reload
+    await page.reload();
+    await task(page, 'Several').waitFor();
+    await openTask(page, 'Several');
+    await expect.poll(() => reminderChip(page, 'week').getAttribute('aria-pressed')).toBe('true');
+    expect(await reminderChip(page, 'hour').getAttribute('aria-pressed')).toBe('true');
+
+    // turning one off keeps the other
+    await toggleReminder(page, 'week');
+    await expect.poll(() => reminderChip(page, 'week').getAttribute('aria-pressed')).toBe('false');
+    expect(await reminderChip(page, 'hour').getAttribute('aria-pressed')).toBe('true');
   });
 
   it('reminders still appear inside the app without notification permission', async () => {
@@ -524,7 +548,7 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
     await addTask(page, 'No permission');
     await openTask(page, 'No permission');
     await setDue(page, 20);
-    await page.getByLabel('Remind me').selectOption('hour');
+    await toggleReminder(page, 'hour');
     await page
       .getByRole('region', { name: 'Reminders' })
       .getByText('Reminder: No permission')
@@ -843,49 +867,104 @@ describe('update 3: toggle, sticky Settings/Admin, sync diagnostics', () => {
 });
 
 describe('update 4: time control and phone file pickers', () => {
-  it('the due time is chosen with hour and minute lists, quick choices, and can be cleared', async () => {
+  it('the due time uses a clock input next to the date, with four suggested times', async () => {
     const { ann } = await getPair();
     const page = ann.page;
     await page.getByRole('navigation').getByRole('link', { name: 'Inbox' }).click();
     await addTask(page, 'Time control');
     await openTask(page, 'Time control');
 
-    const group = page.getByRole('group', { name: 'Due time (optional)' });
-    expect(await page.locator('input[type="time"]').count()).toBe(0); // the old control is gone
-    expect(await group.getByRole('combobox', { name: 'Hour' }).isDisabled()).toBe(true); // needs a date first
+    const time = page.getByLabel('Time (optional)');
+    const suggestions = page.getByRole('group', { name: 'Suggested times' });
+    expect(await time.getAttribute('type')).toBe('time');
+    expect(await time.isDisabled()).toBe(true); // needs a date first
+    expect(await suggestions.count()).toBe(0);
 
     await page.getByLabel('Due date').fill('2031-06-10');
-    // a quick choice
-    await group.getByRole('button', { name: /Morning/ }).click();
-    await expect.poll(() => group.getByRole('combobox', { name: 'Hour' }).inputValue()).toBe('09');
-    expect(await group.getByRole('combobox', { name: 'Minute' }).inputValue()).toBe('00');
-    expect(await group.getByRole('button', { name: /Morning/ }).getAttribute('aria-pressed')).toBe(
-      'true',
-    );
+    // same row: date and time side by side
+    const d = await page.getByLabel('Due date').boundingBox();
+    const tm = await time.boundingBox();
+    expect(Math.abs(d!.y - tm!.y)).toBeLessThan(4);
+    expect(
+      await suggestions.getByRole('button', { name: /Morning|Midday|Afternoon|Evening/ }).count(),
+    ).toBe(4);
+
+    await suggestions.getByRole('button', { name: /Morning/ }).click();
+    await expect.poll(() => time.inputValue()).toBe('09:00');
+    expect(
+      await suggestions.getByRole('button', { name: /Morning/ }).getAttribute('aria-pressed'),
+    ).toBe('true');
     await page
       .locator('.todos .todo', { hasText: 'Time control' })
       .getByText(/09:00|9:00/)
       .waitFor();
 
-    // hour and minute lists
-    await group.getByRole('combobox', { name: 'Hour' }).selectOption('17');
-    await group.getByRole('combobox', { name: 'Minute' }).selectOption('45');
+    await time.fill('17:45');
     await page
       .locator('.todos .todo', { hasText: 'Time control' })
       .getByText(/5:45|17:45/)
       .waitFor();
-    // reload: the time is kept
     await page.reload();
     await task(page, 'Time control').waitFor();
     await openTask(page, 'Time control');
-    await expect.poll(() => page.getByRole('combobox', { name: 'Hour' }).inputValue()).toBe('17');
-    expect(await page.getByRole('combobox', { name: 'Minute' }).inputValue()).toBe('45');
+    await expect.poll(() => page.getByLabel('Time (optional)').inputValue()).toBe('17:45');
 
     // clearing the time keeps the date
     await page.getByRole('button', { name: 'Clear time' }).click();
-    await expect.poll(() => page.getByRole('combobox', { name: 'Hour' }).inputValue()).toBe('');
+    await expect.poll(() => page.getByLabel('Time (optional)').inputValue()).toBe('');
     expect(await page.getByLabel('Due date').inputValue()).toBe('2031-06-10');
-    expect(await page.getByRole('combobox', { name: 'Minute' }).isDisabled()).toBe(true);
+  });
+
+  it('due, reminder and button controls follow UI_GUIDELINES.md on a phone', async () => {
+    const context = await newDevice(
+      browser,
+      app,
+      { width: 390, height: 780 },
+      { isMobile: true, hasTouch: true },
+    );
+    const page = await newPage(context);
+    // log in the shared user: sign-ups are limited per hour, and this file has many already
+    const { ann } = await getPair();
+    await logIn(page, ann.email);
+    await addTask(page, 'Touch rules');
+    await page.getByRole('link', { name: 'Touch rules' }).click();
+    await page.getByRole('complementary', { name: 'Task details' }).waitFor();
+    await page.getByLabel('Due date').fill('2031-06-10');
+
+    const presets = page.getByRole('group', { name: 'Suggested times' }).getByRole('button');
+    await presets.first().waitFor();
+    const reminders = page.getByRole('group', { name: 'Remind me' }).getByRole('button');
+    for (const chips of [presets, reminders]) {
+      const boxes = await chips.evaluateAll((els) =>
+        els.map((e) => {
+          const r = e.getBoundingClientRect();
+          return { x: r.x, y: r.y, right: r.right, height: r.height };
+        }),
+      );
+      for (const b of boxes) expect(b.height).toBeGreaterThanOrEqual(44);
+      for (let i = 1; i < boxes.length; i++) {
+        if (Math.abs(boxes[i]!.y - boxes[i - 1]!.y) < 1) {
+          expect(boxes[i]!.x - boxes[i - 1]!.right).toBeGreaterThanOrEqual(8); // same line
+        }
+      }
+    }
+
+    // the "Remind me" heading looks like the other field labels
+    const label = await page
+      .locator('#remind-label')
+      .evaluate((e) => [getComputedStyle(e).display, getComputedStyle(e).fontWeight]);
+    expect(label).toEqual(['block', '600']);
+
+    // buttons: 12 px radius on phones, no hard-coded shadow on hover
+    await page.getByRole('button', { name: 'Menu' }).click();
+    const manage = page.getByRole('link', { name: 'Manage lists' });
+    await manage.hover();
+    expect(
+      await manage.evaluate((e) => [
+        getComputedStyle(e).borderRadius,
+        getComputedStyle(e).boxShadow,
+      ]),
+    ).toEqual(['12px', 'none']);
   });
 
   it('a phone gets separate pickers for photos/videos and documents, never "any file" or audio', async () => {

@@ -1,12 +1,13 @@
-import { useState, type ChangeEvent } from 'react';
+import { useState } from 'react';
 import { useLocation } from 'wouter';
 import type { PublicTodo } from '@todoness/shared';
-import { fromDateTimeInput, toDateInput, toTimeInput } from '../../lib/dates';
+import { toDateInput, toTimeInput } from '../../lib/dates';
 import type { EditResult } from '../../services/publicEdit';
 import { publicEditor } from '../../app/container';
 import { t } from '../../app/strings';
 import { AttachmentsSection } from '../lists/Attachments';
 import { TimeField } from '../common/TimeField';
+import { useDueEditing } from '../common/useDueEditing';
 
 /** Edit one task of a public list; every change is saved at once (FR-33). */
 export function PublicTaskDetail({
@@ -40,16 +41,9 @@ export function PublicTaskDetail({
       await act(publicEditor.updateTodo(listId, todo.id, { title: trimmed }));
   }
 
-  function changeDate(e: ChangeEvent<HTMLInputElement>) {
-    const dueAt = fromDateTimeInput(e.target.value, toTimeInput(todo.dueAt));
-    void act(publicEditor.updateTodo(listId, todo.id, { dueAt }));
-  }
-
-  function changeTime(time: string) {
-    if (todo.dueAt === null) return;
-    const dueAt = fromDateTimeInput(toDateInput(todo.dueAt), time);
-    if (dueAt !== null) void act(publicEditor.updateTodo(listId, todo.id, { dueAt }));
-  }
+  const due = useDueEditing(todo.dueAt, (dueAt) =>
+    act(publicEditor.updateTodo(listId, todo.id, { dueAt })),
+  );
 
   return (
     <aside className="detail" aria-label={t.todo.detail}>
@@ -98,15 +92,15 @@ export function PublicTaskDetail({
           {t.todo.dueDate}
           <input
             type="date"
-            value={toDateInput(todo.dueAt)}
+            value={toDateInput(due.dueAt)}
             disabled={disabled}
-            onChange={changeDate}
+            onChange={(e) => void due.changeDate(e.target.value)}
           />
         </label>
         <TimeField
-          value={toTimeInput(todo.dueAt)}
-          disabled={disabled || todo.dueAt === null}
-          onChange={changeTime}
+          value={toTimeInput(due.dueAt)}
+          disabled={disabled || due.dueAt === null}
+          onChange={(v) => void due.changeTime(v)}
         />
       </div>
 

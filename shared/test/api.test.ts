@@ -128,7 +128,7 @@ describe('reminder helpers and pushSubscriptionSchema', () => {
     const { REMIND_MS, timeUntil, reminderKey } = await import('../src/reminders');
     expect(REMIND_MS).toEqual({ week: 604_800_000, day: 86_400_000, hour: 3_600_000 });
     expect(timeUntil(3_600_000)).toBe('in 1 hour');
-    expect(reminderKey({ id: 'a', dueAt: 5, remindBefore: 'day' })).toBe('a:5:day');
+    expect(reminderKey({ id: 'a', dueAt: 5 }, 'day')).toBe('a:5:day');
   });
 
   it('accepts what the browser produces and rejects the rest', async () => {

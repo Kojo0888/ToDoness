@@ -52,24 +52,32 @@ export async function sweepReminders(deps: {
   db.prepare('DELETE FROM sent_reminders WHERE due_at < ?').run(now - FORGET_AFTER_MS);
 
   // Only users with a device or topic: a reminder is not used up while nobody could receive it.
+  // One row per task and chosen reminder whose time has passed; per task only the latest of
+  // those counts (rn = 1, the shortest offset), so passed reminders never arrive as a burst
+  // (FR-114). Then the "already sent" check runs for that one choice.
   const due = db
     .prepare(
-      `SELECT t.id, t.user_id, t.list_id, t.title, t.due_at, t.remind_before
-         FROM todos t
-        WHERE t.deleted_at IS NULL AND t.done = 0
-          AND t.due_at IS NOT NULL AND t.remind_before IS NOT NULL
-          AND t.due_at > @now
-          AND t.due_at - CASE t.remind_before
-                WHEN 'week' THEN ${REMIND_MS.week}
-                WHEN 'day' THEN ${REMIND_MS.day}
-                ELSE ${REMIND_MS.hour} END <= @now
+      `WITH choices (rb, ms) AS (
+              VALUES ('week', ${REMIND_MS.week}), ('day', ${REMIND_MS.day}), ('hour', ${REMIND_MS.hour})),
+            passed AS (
+              SELECT t.id, t.user_id, t.list_id, t.title, t.due_at, c.rb AS remind_before,
+                     ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY c.ms) AS rn
+                FROM todos t
+                JOIN choices c ON instr(',' || t.reminders || ',', ',' || c.rb || ',') > 0
+               WHERE t.deleted_at IS NULL AND t.done = 0
+                 AND t.due_at IS NOT NULL AND t.reminders <> ''
+                 AND t.due_at > @now
+                 AND t.due_at - c.ms <= @now)
+       SELECT p.id, p.user_id, p.list_id, p.title, p.due_at, p.remind_before
+         FROM passed p
+        WHERE p.rn = 1
           AND NOT EXISTS (SELECT 1 FROM sent_reminders s
-                           WHERE s.todo_id = t.id AND s.due_at = t.due_at
-                             AND s.remind_before = t.remind_before)
-          AND (EXISTS (SELECT 1 FROM push_subscriptions p WHERE p.user_id = t.user_id)${
-            sendNtfy ? ' OR EXISTS (SELECT 1 FROM ntfy_topics n WHERE n.user_id = t.user_id)' : ''
+                           WHERE s.todo_id = p.id AND s.due_at = p.due_at
+                             AND s.remind_before = p.remind_before)
+          AND (EXISTS (SELECT 1 FROM push_subscriptions x WHERE x.user_id = p.user_id)${
+            sendNtfy ? ' OR EXISTS (SELECT 1 FROM ntfy_topics n WHERE n.user_id = p.user_id)' : ''
           })
-        ORDER BY t.due_at`,
+        ORDER BY p.due_at`,
     )
     .all({ now }) as Due[];
 
@@ -93,7 +101,7 @@ export async function sweepReminders(deps: {
     const payload: PushPayload = {
       title: t.title,
       body: `Due ${timeUntil(t.due_at - now)}`,
-      tag: reminderKey({ id: t.id, dueAt: t.due_at, remindBefore: t.remind_before }),
+      tag: reminderKey({ id: t.id, dueAt: t.due_at }, t.remind_before),
       url: `/l/${t.list_id}/t/${t.id}`,
     };
 

@@ -28,6 +28,35 @@ const fieldHlcSchema = z.record(z.string(), hlcSchema);
 const orderKeySchema = z.string().min(1).max(ORDER_KEY_MAX);
 export const remindBeforeSchema = z.enum(['week', 'day', 'hour']);
 export type RemindBefore = z.infer<typeof remindBeforeSchema>;
+/** The order reminders are kept and shown in: earliest first. */
+export const REMIND_ORDER: readonly RemindBefore[] = remindBeforeSchema.options;
+
+/**
+ * The one rule for reading reminders from older app versions and older stored rows:
+ * `null`/missing is `[]`, a single value is `[value]`. Values are not checked here.
+ */
+export function legacyRemindList(v: unknown): unknown[] {
+  return v == null ? [] : Array.isArray(v) ? v : [v];
+}
+
+/** A task's reminders as a unique list in REMIND_ORDER; unknown values are dropped. */
+export function normalizeRemindBefore(v: unknown): RemindBefore[] {
+  const given = legacyRemindList(v);
+  return REMIND_ORDER.filter((r) => given.includes(r));
+}
+
+/**
+ * The single value an app from before several reminders (v1) understands: the earliest
+ * chosen reminder, or null. Used when such an app pulls changes.
+ */
+export function toLegacyRemindBefore(list: readonly RemindBefore[]): RemindBefore | null {
+  return REMIND_ORDER.find((r) => list.includes(r)) ?? null;
+}
+
+const remindListSchema = z.preprocess(
+  legacyRemindList,
+  z.array(remindBeforeSchema).max(10).transform(normalizeRemindBefore),
+);
 export const prioritySchema = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]);
 
 const todoFields = {
@@ -38,7 +67,7 @@ const todoFields = {
   completedAt: nullableEpochMs,
   dueAt: nullableEpochMs,
   priority: prioritySchema,
-  remindBefore: remindBeforeSchema.nullable(),
+  remindBefore: remindListSchema,
   orderKey: orderKeySchema,
 };
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { newId } from '../src/id';
 import {
   listSchema,
+  normalizeRemindBefore,
   pullResponseSchema,
   pushRequestSchema,
   pushResponseSchema,
@@ -216,7 +217,7 @@ describe('todoSchema / listSchema', () => {
       completedAt: null,
       dueAt: null,
       priority: 0,
-      remindBefore: null,
+      remindBefore: [],
       orderKey: 'a0',
       fieldHlc: { title: HLC },
       createdAt: now,
@@ -255,21 +256,46 @@ describe('v1 fields', () => {
     expect(update({ isPublic: 1 }).success).toBe(false);
   });
 
-  it('todos: remindBefore accepts week, day, hour and null only', () => {
+  it('todos: remindBefore is a list of week, day, hour (several at once)', () => {
     const update = (patch: Record<string, unknown>) =>
       syncOpSchema.safeParse(op({ type: 'update', patch }));
-    for (const v of ['week', 'day', 'hour', null]) {
+    for (const v of [[], ['week'], ['day', 'hour'], ['week', 'day', 'hour']]) {
       expect(update({ remindBefore: v }).success, String(v)).toBe(true);
     }
-    for (const v of ['month', '', 7, true]) {
+    for (const v of ['month', '', 7, true, ['month'], [7]]) {
       expect(update({ remindBefore: v }).success, String(v)).toBe(false);
     }
+  });
+
+  it('todos: remindBefore from older app versions (null or one value) is read as a list', () => {
+    const parse = (v: unknown) => {
+      const r = syncOpSchema.parse(op({ type: 'update', patch: { remindBefore: v } }));
+      return (r.patch as { remindBefore: unknown }).remindBefore;
+    };
+    expect(parse(null)).toEqual([]);
+    expect(parse('day')).toEqual(['day']);
+    // unique, in a fixed order
+    expect(parse(['hour', 'week', 'hour'])).toEqual(['week', 'hour']);
+    expect(normalizeRemindBefore(undefined)).toEqual([]);
+    expect(normalizeRemindBefore('week')).toEqual(['week']);
+    expect(normalizeRemindBefore(['hour', 'day'])).toEqual(['day', 'hour']);
+  });
+
+  it('todos: a patch without remindBefore does not gain one (it would clear reminders)', () => {
+    const parsed = syncOpSchema.parse(op({ type: 'update', patch: { title: 'x' } }));
+    expect(parsed.patch).toEqual({ title: 'x' });
   });
 
   it('todos: remindBefore can be set on create', () => {
     const o = op({
       type: 'create',
-      patch: { listId: newId(), title: 'x', orderKey: 'a0', dueAt: 1, remindBefore: 'day' },
+      patch: {
+        listId: newId(),
+        title: 'x',
+        orderKey: 'a0',
+        dueAt: 1,
+        remindBefore: ['day', 'hour'],
+      },
     });
     expect(syncOpSchema.safeParse(o).success).toBe(true);
   });
@@ -297,7 +323,7 @@ describe('v1 fields', () => {
         dueAt: null,
         priority: 0,
         orderKey: 'a0',
-        remindBefore: null,
+        remindBefore: [],
       }).success,
     ).toBe(true);
   });
@@ -318,7 +344,7 @@ describe('v1 fields', () => {
           entity: 'todo',
           entityId: newId(),
           type: 'update',
-          patch: { remindBefore: 'hour' },
+          patch: { remindBefore: ['hour'] },
           hlc: HLC,
         },
       ],

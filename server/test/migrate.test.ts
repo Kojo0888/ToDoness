@@ -171,6 +171,21 @@ describe('migration 002 (v1)', () => {
     db.exec("UPDATE todos SET remind_before = 'day' WHERE id = 't1'");
   });
 
+  it('migration 006 copies a single v1 reminder into the reminders list', () => {
+    const db = new Database(':memory:');
+    migrate(db, upTo(5));
+    db.exec(`INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
+      INSERT INTO lists (id, user_id, name, order_key, created_at, updated_at) VALUES ('l1','u1','L','a0',1,1);
+      INSERT INTO todos (id, user_id, list_id, title, order_key, created_at, updated_at, remind_before)
+        VALUES ('t1','u1','l1','A','a0',1,1,'day'), ('t2','u1','l1','B','a1',1,1,NULL);`);
+    migrate(db, MIGRATIONS_DIR);
+    const rows = db.prepare('SELECT id, reminders FROM todos ORDER BY id').all();
+    expect(rows).toEqual([
+      { id: 't1', reminders: 'day' },
+      { id: 't2', reminders: '' },
+    ]);
+  });
+
   it('removes attachment rows with their task owner (cascade)', () => {
     const db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
