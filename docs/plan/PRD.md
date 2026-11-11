@@ -50,7 +50,7 @@ Plans are ordinary synced data: they work offline and appear on all devices of t
 - Other kinds of links than end → start (start → start, end → end, start → end), and lag
   or lead time on a link **[Answered]**.
 - Skipping weekends or holidays: every calendar day counts.
-- Reordering the rows by hand (a new activity goes to the bottom; the order key is stored,
+- Reordering the activity rows by hand (a new activity goes to the bottom; the order key is stored,
   so this can come later), grouping, milestones, zoom levels (week / month columns).
 - Public (shared) plans, links between activities and tasks, reminders for activities.
 - Printing or exporting a plan.
@@ -80,7 +80,7 @@ Priority: **Must** = part of this version, **Should** = included unless it endan
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | FR-119 | The module switch shows **Tasks, Notes, Plan** (in this order), in the sidebar on a computer and in the top bar on a phone. The rules of FR-83 – FR-87 apply to Plan too (always one tap away, the app reopens in the module used last).                      | Must     |
 | FR-120 | In the Plan module the sidebar lists the user's plans (oldest first, new ones at the bottom) and, below them, a **new plan** field with an **Add plan** button, working like "new list": typing a name and pressing Enter creates the plan and opens it.     | Must     |
-| FR-121 | A plan has a **name** (1 – 200 characters). It can be **renamed** and **deleted** from its page. Deleting asks for confirmation and deletes the plan's activities too.                                                                                       | Must     |
+| FR-121 | A plan has a **name** (1 – 200 characters). Plans are **renamed, reordered (drag and drop) and deleted** on a **Manage plans** page, reached from a button under the plans in the sidebar; it works like *Manage lists* (a ⋯ menu per row). Deleting asks for confirmation and deletes the plan's activities too. *(Update 1: before, Rename and Delete were buttons on the plan page.)* | Must |
 | FR-122 | Opening the Plan module shows the plan opened last in this visit, else the first plan; with no plan at all it shows an empty state that points to the "new plan" field. A plan that does not exist (any more) leads back there.                              | Must     |
 
 ### 4.2 Activities and the timeline
@@ -102,12 +102,12 @@ Priority: **Must** = part of this version, **Should** = included unless it endan
 
 | ID     | Requirement                                                                                                                                                                                                                                                                        | Priority |
 | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| FR-133 | Every block has a **link point** at its end and one at its start. Dragging from the end point of activity A onto activity B (or from the start point of B onto A) creates the dependency **A → B**. The same works without dragging: click one point, then the other activity.      | Must     |
+| FR-133 | A dependency is made by **dragging an end of a block onto another block**: the end of A dropped on B, or the beginning of B dropped on A, creates **A → B**. As long as the pointer stays in the block's own row the drag changes the duration (end) or the start day (beginning), as in FR-127 / FR-128; over a block of another row it shows a line to that block and releasing links them. There are no separate link points. The edit bar has a **Starts after** field that adds a dependency without dragging (keyboard, phone). *(Update 1: before, each block had a link point at each end.)* **[Decision P10]** | Must |
 | FR-134 | A dependency A → B means: **B starts after A has ended** (B's start day ≥ the day after A's end day). Only end → start links exist **[Answered]**. An activity can have several predecessors and several successors.                                                               | Must     |
-| FR-135 | Every dependency is drawn as an **arrow** from the end of A to the start of B.                                                                                                                                                                                                     | Must     |
+| FR-135 | Every dependency is drawn as a line with an arrow head that **enters B from above (or below) at its start**. When B starts the day after A ends, it is one **straight vertical line** from the end of A to the start of B. Otherwise it leaves the end of A sideways, along A's row, and turns down (or up) at B's start: through the upper right corner, not along B's row. *(Update 1.)* | Must |
 | FR-136 | **Automatic shift [Answered]:** whenever a change would break a dependency (A is moved or made longer, a link is created, B is dragged too early), B is moved to the first allowed day, keeping its duration, and so on down the chain. Activities are never pulled earlier by it.  | Must     |
 | FR-137 | A link that would close a **loop** (B already leads to A), a link of an activity to itself, and a duplicate are refused; a loop shows a short message.                                                                                                                             | Must     |
-| FR-138 | A dependency is removed by selecting its arrow (click, or keyboard focus + Enter / Delete), with **Undo**. Removing it moves nothing.                                                                                                                                              | Must     |
+| FR-138 | A dependency is removed by selecting its arrow (click, or keyboard focus + Enter / Delete). Removing it moves nothing, and **Undo last change** (FR-147) brings it back. | Must |
 | FR-139 | If two devices changed a plan at the same time and the merged result breaks a dependency, the arrow is shown as **conflicting** (warning colour) until the next change to that plan, which repairs it by the rule of FR-136. **[Decision P7]**                                      | Should   |
 
 ### 4.4 Where the name is shown
@@ -131,6 +131,12 @@ Priority: **Must** = part of this version, **Should** = included unless it endan
 | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | FR-145 | All controls follow [`UI_GUIDELINES.md`](../../UI_GUIDELINES.md): chips for the name switch, native date inputs, buttons for actions, 44 px rows and handles on phones, colours only from the theme variables, dark mode.   | Must     |
 | FR-146 | Blocks and arrows are focusable and named for screen readers ("Design, 3 Mar – 5 Mar", "Design → Build, remove link").                                                                                                      | Should   |
+
+### 4.7 Undo (update 1)
+
+| ID     | Requirement | Priority |
+| ------ | ----------- | -------- |
+| FR-147 | Dragging can easily go wrong (a link instead of a longer block, or the other way round). So after **every change made on the timeline** – a move, a new duration, a new or removed dependency, also by keyboard – an **Undo last change** button above the timeline (and Ctrl / ⌘ + Z) puts the plan back exactly as it was before that change, including activities that were pushed by it. One step is kept, per plan page, until the next change or until the page is left. **[Decision P11]** | Must |
 
 ## 5. Data
 
@@ -158,15 +164,17 @@ Activity = { id, planId, name, start, days, dependsOn, orderKey,
 | P7  | **The app never changes data by itself after a sync.** Repairing a broken dependency while applying pulled changes would create new changes on every device at once (they could chase each other). It is shown as a conflict and repaired with the next change the user makes in that plan – on whichever device that happens.                                        |
 | P8  | **The shift only pushes later, never pulls earlier.** Shortening A leaves a gap before B. Closing gaps automatically would move activities the user placed on purpose.                                                                                                                                                                                               |
 | P9  | **Every calendar day counts.** No working-day calendar in this version (non-goal); weekends are only shaded.                                                                                                                                                                                                                                                          |
+| P10 | **No link points; the grips do both jobs.** The rings beside every block took room and attention. The rule "same row = change the block, another block = link" needs no extra control. Its cost, an unintended link or resize, is covered by Undo (P11), and the target block is outlined while a link would be made. |
+| P11 | **Undo restores a snapshot, one step deep.** Before a timeline change the start, duration and links of the plan's activities are remembered; Undo writes back the ones that differ, as ordinary synced changes. One step is what "revert the last drag" needs; a history would have to deal with changes arriving from other devices in between. Deleting an activity keeps its own Undo message. |
 
 ## 7. Acceptance (tested)
 
 1. Tasks | Notes | Plan switch; the app reopens in Plan after it was used last.
-2. A plan is created from the sidebar and opened; renamed; deleted with its activities.
+2. A plan is created from the sidebar and opened; renamed, reordered and deleted on Manage plans.
 3. An activity is added, shown as a block of the right length on the right days.
 4. Dragging the start handle moves it; dragging the end handle changes its end day.
-5. Linking A → B draws an arrow and pushes B after A; lengthening A pushes B (and C behind B).
-6. A loop is refused; an arrow can be removed and restored with Undo.
+5. Dropping the end of A on B draws an arrow and pushes B after A; lengthening A pushes B (and C behind B).
+6. A loop is refused; an arrow can be removed; Undo last change reverts a drag, a link and a removal.
 7. On block / After block / Column changes where names are, and survives a reload.
 8. A plan made offline on one device appears on another after sync.
 9. An old app version still pulls tasks while plans exist, and gets the plans after updating.

@@ -208,3 +208,38 @@ the module; `docs/v1/Decisions.md` gets a pointer to this feature's decisions.
 8. **Integration tests were added** (`integration/test/plans.integration.test.ts`): offline
    plan to a second device, a merge of two devices that breaks a link and its repair with the
    next change (decision P7), and the "old app skipped plans" case of FR-143.
+
+## Update 1 – after the first review
+
+Requested: straight dependency lines that enter a block from above, no link circles (link by
+dragging an end onto another block), an easy undo of the last drag, a Manage plans page like
+Manage lists, a module switch that fits the sidebar, and tidier margins.
+
+| Step | Content                                                                                           | Status |
+| ---- | ------------------------------------------------------------------------------------------------- | ------ |
+| 9    | Arrows: `arrowPath` enters the target from above / below at its start; straight when adjacent     | ☑      |
+| 10   | Linking by dragging a grip onto another block; link points and click – click linking removed      | ☑      |
+| 11   | `Repo.revertActivities`, **Undo last change** button and Ctrl / ⌘ + Z; **Starts after** field     | ☑      |
+| 12   | `Repo.reorderPlan`, `ManageItems` (shared by Manage lists and the new Manage plans), sidebar link | ☑      |
+| 13   | Module switch fits the 16 rem sidebar; spacing of the plan page                                   | ☑      |
+
+- **Arrows** (`lib/timeline.ts`): `arrowPath(from, to)` ends at the top edge of the target
+  block (bottom edge when the target is in a row above), at the target's start. Same
+  position as the source's end → one vertical line from the source block's edge. Target
+  further right → along the source row, then down. Target further left (a broken link) → a
+  short stub, the row border next to the target, then into it. `arrowTip` gives the head.
+- **Linking** (`Timeline.tsx`): a drag that started on a grip looks at what is under the
+  pointer (`elementFromPoint`, `.plan-bar`). Another activity's bar → the preview goes back
+  to the saved block, that bar is outlined, a dashed line follows the pointer, and releasing
+  calls `linkActivities` (end grip: this → other; start grip: other → this). Dragging the
+  block itself only moves it.
+- **Undo** (`PlanPage.tsx`): `change(run)` reads the plan's activities, runs the change and,
+  if anything differs afterwards, keeps the earlier `{ id, start, days, dependsOn }` list.
+  `Repo.revertActivities` writes the differing fields back in one transaction, without the
+  automatic shift (the snapshot is consistent by itself).
+- **Manage plans**: the Manage lists screen became `components/common/ManageItems.tsx`
+  (rows, drag and drop, ⋯ menu, rename in place, delete dialog) with the texts and actions
+  passed in; `ManageLists` and `ManagePlans` are thin wrappers. Address: `/plans/manage`.
+- **Module switch**: three entries needed 267 px in a 223 px slot, which made the sidebar
+  scroll sideways when something in it got focus. The entries are now more compact and may
+  shrink (`min-width: 0`), so the switch is exactly as wide as the other sidebar controls.

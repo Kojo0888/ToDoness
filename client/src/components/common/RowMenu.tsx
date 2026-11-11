@@ -6,15 +6,18 @@ import { t } from '../../app/strings';
 const ACTIONS = ['rename', 'delete'] as const;
 
 /**
- * One "⋯" button per list instead of a row of buttons: it opens a small menu with the
- * actions of the list. Arrow keys, Home, End, Escape and a click outside work as usual.
+ * One "⋯" button per row (a list, a plan) instead of a row of buttons: it opens a small
+ * menu with its actions. Arrow keys, Home, End, Escape and a click outside work as usual.
  */
-export function ListMenu({
+export function RowMenu({
   name,
+  deleteLabel,
   onRename,
   onDelete,
 }: {
   name: string;
+  /** "Delete list", "Delete plan". */
+  deleteLabel: string;
   onRename: () => void;
   onDelete: () => void;
 }) {
@@ -112,7 +115,7 @@ export function ListMenu({
                 className="danger"
                 onClick={choose(onDelete)}
               >
-                {t.list.deleteList}
+                {deleteLabel}
               </button>
             ),
           )}

@@ -328,3 +328,84 @@ describe('plans – pulled changes and clearing', () => {
     expect((await s.acts()).map((x) => x.name)).toEqual(['One', 'Three']);
   });
 });
+
+describe('reorderPlan (Manage plans, FR-121)', () => {
+  it('puts a plan before another one, or at the end, with one order-key update', async () => {
+    const s = await setup();
+    const names = async () => (await getPlans(s.db)).map((p) => p.name);
+    s.now.advance(10);
+    const b = await s.repo.createPlan('B');
+    s.now.advance(10);
+    const c = await s.repo.createPlan('C');
+    expect(await names()).toEqual(['Launch', 'B', 'C']);
+
+    await s.repo.reorderPlan(c.id, s.plan.id);
+    expect(await names()).toEqual(['C', 'Launch', 'B']);
+    await s.repo.reorderPlan(c.id, null);
+    expect(await names()).toEqual(['Launch', 'B', 'C']);
+
+    const queued = (await expectValidOutbox(s.db)).length;
+    await s.repo.reorderPlan(b.id, c.id); // already there
+    expect(await s.outboxSince(queued)).toBe(0);
+    await expect(s.repo.reorderPlan(b.id, newId())).rejects.toMatchObject({ code: 'not_found' });
+  });
+});
+
+describe('revertActivities (Undo last change, FR-147)', () => {
+  const snapshot = async (s: Awaited<ReturnType<typeof setup>>) =>
+    (await s.acts()).map(({ id, start, days, dependsOn }) => ({ id, start, days, dependsOn }));
+
+  it('puts back a drag together with everything it pushed', async () => {
+    const s = await setup();
+    const a = await s.add('A', 0, 2);
+    const b = await s.add('B', 2, 3);
+    const c = await s.add('C', 5, 1);
+    await s.repo.linkActivities(a.id, b.id);
+    await s.repo.linkActivities(b.id, c.id);
+    const before = await snapshot(s);
+    const shapeBefore = await s.shape();
+
+    await s.repo.updateActivity(a.id, { days: 9 });
+    expect(await s.shape()).not.toEqual(shapeBefore);
+    const queued = (await expectValidOutbox(s.db)).length;
+    await s.repo.revertActivities(before);
+    expect(await s.shape()).toEqual(shapeBefore);
+    // Only what differed is written: A's duration and the two pushed starts.
+    expect(await s.outboxSince(queued)).toBe(3);
+  });
+
+  it('takes a new link away again and brings a removed one back, moving nothing else', async () => {
+    const s = await setup();
+    const a = await s.add('A', 0, 5);
+    const b = await s.add('B', 1, 2);
+    const before = await snapshot(s);
+    await s.repo.linkActivities(a.id, b.id); // pushes B
+    await s.repo.revertActivities(before);
+    expect(await s.db.activities.get(b.id)).toMatchObject({
+      dependsOn: [],
+      start: addDays(TODAY, 1),
+    });
+
+    await s.repo.linkActivities(a.id, b.id);
+    const linked = await snapshot(s);
+    await s.repo.unlinkActivities(a.id, b.id);
+    await s.repo.revertActivities(linked);
+    expect((await s.db.activities.get(b.id))?.dependsOn).toEqual([a.id]);
+  });
+
+  it('skips activities that were deleted meanwhile and does nothing when nothing differs', async () => {
+    const s = await setup();
+    const a = await s.add('A', 0, 2);
+    const b = await s.add('B', 4, 2);
+    const before = await snapshot(s);
+    await s.repo.updateActivity(a.id, { days: 3 });
+    await s.repo.deleteActivity(b.id);
+    await s.repo.revertActivities(before);
+    expect((await s.db.activities.get(a.id))?.days).toBe(2);
+    expect((await s.db.activities.get(b.id))?.deletedAt).not.toBeNull();
+
+    const queued = (await expectValidOutbox(s.db)).length;
+    await s.repo.revertActivities(await snapshot(s));
+    expect(await s.outboxSince(queued)).toBe(0);
+  });
+});

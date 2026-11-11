@@ -11,6 +11,7 @@ import { usePublicLists, usePublicNotes } from '../../app/publicHooks';
 import { db, repo } from '../../app/container';
 import type { StoredUser } from '../../services/session';
 import { t } from '../../app/strings';
+import { MANAGE_PLANS_PATH } from '../plan/ManagePlans';
 import { planPath } from '../plan/PlansHome';
 import { ModuleSwitch } from './ModuleSwitch';
 import { SyncBadge } from './SyncBadge';
@@ -231,6 +232,18 @@ function PlanNav({
           );
         })}
       </ul>
+
+      <Link
+        href={MANAGE_PLANS_PATH}
+        onClick={onNavigate}
+        className={`btn btn-block manage-lists-link${active(MANAGE_PLANS_PATH) ? ' active' : ''}`}
+        aria-current={active(MANAGE_PLANS_PATH) ? 'page' : undefined}
+      >
+        <span aria-hidden="true" className="btn-icon">
+          ☰
+        </span>
+        {t.plan.managePlans}
+      </Link>
 
       <form onSubmit={addPlan} className="new-list">
         <input

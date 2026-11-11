@@ -36,6 +36,9 @@ import type { RecoverySnapshot, RestoreMode } from './recovery';
 
 export type RepoErrorCode = 'invalid' | 'not_found' | 'inbox_protected' | 'loop';
 
+/** What a change on the timeline can alter in an activity. */
+export type ActivityState = Pick<Activity, 'id' | 'start' | 'days' | 'dependsOn'>;
+
 /** How long a new activity lasts (docs/plan/PRD.md FR-124). */
 export const NEW_ACTIVITY_DAYS = 3;
 
@@ -96,6 +99,8 @@ export interface Repo {
   /** A new plan with this name, after the existing ones. */
   createPlan(name: string): Promise<Plan>;
   renamePlan(id: string, name: string): Promise<Plan>;
+  /** Puts a plan directly before another one (`null` = at the end), for drag and drop. */
+  reorderPlan(id: string, beforeId: string | null): Promise<Plan>;
   /** Deletes a plan and its activities. */
   deletePlan(id: string): Promise<Plan>;
   /**
@@ -122,6 +127,12 @@ export interface Repo {
   linkActivities(fromId: string, toId: string): Promise<Activity>;
   /** Removes that dependency. Nothing moves. */
   unlinkActivities(fromId: string, toId: string): Promise<Activity>;
+  /**
+   * Undo (docs/plan/PRD.md FR-147): gives the activities the start, duration and links they
+   * had when `before` was taken. Only what differs is written; activities deleted meanwhile
+   * are skipped; nothing is shifted (the earlier state was consistent by itself).
+   */
+  revertActivities(before: readonly ActivityState[]): Promise<void>;
   /**
    * Puts the data of another account (kept aside at sign-up) into this one, as normal queued
    * changes. `append` keeps what is here; `overwrite` deletes the live tasks, lists (never
@@ -429,6 +440,18 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         return commit<Plan>('plan', 'update', id, { name });
       }),
 
+    reorderPlan: (id, beforeId) =>
+      inTx(async () => {
+        const plan = await livePlan(id);
+        const live = (await db.plans.orderBy('orderKey').toArray()).filter(
+          (p) => p.deletedAt === null,
+        );
+        const choice = keyForPosition(live, id, beforeId);
+        if (choice.kind === 'same') return plan;
+        if (choice.kind === 'missing') throw new RepoError('not_found', 'Plan or target not found');
+        return commit<Plan>('plan', 'update', id, { orderKey: choice.key });
+      }),
+
     deletePlan: (id) =>
       inTx(async () => {
         const plan = await db.plans.get(id);
@@ -520,6 +543,21 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         return commit<Activity>('activity', 'update', toId, {
           dependsOn: to.dependsOn.filter((id) => id !== fromId),
         });
+      }),
+
+    revertActivities: (before) =>
+      inTx(async () => {
+        for (const was of before) {
+          const now = await db.activities.get(was.id);
+          if (!now || now.deletedAt !== null) continue;
+          const patch: Record<string, unknown> = {};
+          if (now.start !== was.start) patch.start = was.start;
+          if (now.days !== was.days) patch.days = was.days;
+          if (now.dependsOn.join() !== was.dependsOn.join()) patch.dependsOn = was.dependsOn;
+          if (Object.keys(patch).length > 0) {
+            await commit<Activity>('activity', 'update', was.id, patch);
+          }
+        }
       }),
 
     restoreSnapshot: (snapshot, mode) =>

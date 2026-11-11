@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import { ACTIVITY_DAYS_MAX } from '@todoness/shared';
 import {
   DAY_WIDTH,
+  BLOCK_INSET,
   ROW_HEIGHT,
   arrowPath,
+  arrowTip,
   blockBox,
   dayAtX,
   dragResult,
@@ -83,44 +85,75 @@ describe('dragResult (FR-127, FR-128)', () => {
   });
 });
 
-describe('arrowPath (FR-135)', () => {
-  const y = (row: number) => row * ROW_HEIGHT + ROW_HEIGHT / 2;
-  /** The points of a path made of M / H / V / L commands. */
+describe('arrowPath and arrowTip (FR-135)', () => {
+  const top = (row: number) => row * ROW_HEIGHT + BLOCK_INSET;
+  const bottom = (row: number) => (row + 1) * ROW_HEIGHT - BLOCK_INSET;
+  const middle = (row: number) => row * ROW_HEIGHT + ROW_HEIGHT / 2;
+  /** The points of a path made of M / H / V commands. */
   function points(d: string) {
     const out: [number, number][] = [];
     let x = 0;
-    let yy = 0;
-    for (const [, cmd, args] of d.matchAll(/([MLHV])\s*([-\d.\s,]+)/g)) {
-      const n = args!
-        .trim()
-        .split(/[\s,]+/)
-        .map(Number);
+    let y = 0;
+    for (const [, cmd, args] of d.matchAll(/([MHV])\s*([-\d.\s]+)/g)) {
+      const n = args!.trim().split(/\s+/).map(Number);
       if (cmd === 'H') x = n[0]!;
-      else if (cmd === 'V') yy = n[0]!;
-      else [x, yy] = n as [number, number];
-      out.push([x, yy]);
+      else if (cmd === 'V') y = n[0]!;
+      else [x, y] = n as [number, number];
+      out.push([x, y]);
     }
     return out;
   }
 
-  it('goes from the end of one block to the start of a later one', () => {
-    const p = points(arrowPath({ x: 100, row: 0 }, { x: 200, row: 2 }));
-    expect(p[0]).toEqual([100, y(0)]);
-    expect(p.at(-1)).toEqual([200, y(2)]);
-    // Leaves to the right and arrives from the left, never going backwards.
-    expect(p[1]![0]).toBeGreaterThan(100);
-    expect(p.at(-2)![0]).toBeLessThan(200);
-    for (let i = 1; i < p.length; i++) expect(p[i]![0]).toBeGreaterThanOrEqual(p[i - 1]![0] - 0);
+  it('is one straight vertical line when the next activity starts where this one ends', () => {
+    const down = points(arrowPath({ x: 108, row: 0 }, { x: 108, row: 1 }));
+    expect(down).toEqual([
+      [108, bottom(0)],
+      [108, top(1)],
+    ]);
+    // Also over several rows, and upwards.
+    expect(points(arrowPath({ x: 108, row: 0 }, { x: 108, row: 3 }))).toEqual([
+      [108, bottom(0)],
+      [108, top(3)],
+    ]);
+    expect(points(arrowPath({ x: 108, row: 2 }, { x: 108, row: 0 }))).toEqual([
+      [108, top(2)],
+      [108, bottom(0)],
+    ]);
   });
 
-  it('goes around when the target starts left of the source end', () => {
-    const p = points(arrowPath({ x: 300, row: 1 }, { x: 100, row: 0 }));
-    expect(p[0]).toEqual([300, y(1)]);
-    expect(p.at(-1)).toEqual([100, y(0)]);
+  it('goes along its own row and turns down at the start of a later activity', () => {
+    // Through the upper right corner: sideways first, then down into the block.
+    expect(points(arrowPath({ x: 100, row: 0 }, { x: 280, row: 2 }))).toEqual([
+      [100, middle(0)],
+      [280, middle(0)],
+      [280, top(2)],
+    ]);
+    expect(points(arrowPath({ x: 100, row: 3 }, { x: 280, row: 1 }))).toEqual([
+      [100, middle(3)],
+      [280, middle(3)],
+      [280, bottom(1)],
+    ]);
+  });
+
+  it('goes around when the target starts before the source ends (a broken link)', () => {
+    const p = points(arrowPath({ x: 300, row: 0 }, { x: 100, row: 2 }));
+    expect(p[0]).toEqual([300, middle(0)]);
     expect(p[1]![0]).toBeGreaterThan(300); // leaves to the right
-    expect(p.at(-2)![0]).toBeLessThan(100); // arrives from the left
-    // Passes between the two rows, not through the blocks.
-    expect(p.some(([, py]) => py === ROW_HEIGHT)).toBe(true);
+    expect(p.at(-1)).toEqual([100, top(2)]);
+    expect(p.at(-2)).toEqual([100, 2 * ROW_HEIGHT]); // comes in along the row border
+  });
+
+  it('the head sits on the edge of the target block and points into it', () => {
+    expect(arrowTip({ x: 100, row: 0 }, { x: 280, row: 2 })).toEqual({
+      x: 280,
+      y: top(2),
+      down: true,
+    });
+    expect(arrowTip({ x: 100, row: 3 }, { x: 280, row: 1 })).toEqual({
+      x: 280,
+      y: bottom(1),
+      down: false,
+    });
   });
 });
 

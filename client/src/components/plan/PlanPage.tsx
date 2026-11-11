@@ -1,18 +1,30 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useCallback, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Redirect } from 'wouter';
-import { ACTIVITY_NAME_MAX, PLAN_NAME_MAX } from '@todoness/shared';
+import { ACTIVITY_NAME_MAX } from '@todoness/shared';
 import { getActivities, getPlanById } from '../../data/queries';
+import { RepoError, type ActivityState } from '../../data/repo';
 import { browserStorage } from '../../lib/modules';
 import { NAME_MODES, readNameMode, saveNameMode, type NameMode } from '../../lib/planNames';
 import { db, repo } from '../../app/container';
 import { t } from '../../app/strings';
-import { ConfirmDialog } from '../common/ConfirmDialog';
 import { useUndoToast } from '../common/Toast';
 import { ActivityBar } from './ActivityBar';
 import { Timeline } from './Timeline';
 
-/** One plan: its name, a field for new activities and the timeline (docs/plan/PRD.md). */
+const stateOf = ({ id, start, days, dependsOn }: ActivityState): ActivityState => ({
+  id,
+  start,
+  days,
+  dependsOn,
+});
+const sameState = (a: ActivityState[], b: ActivityState[]) =>
+  JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * One plan: its name, a field for new activities and the timeline (docs/plan/PRD.md).
+ * Plans are renamed and deleted on the Manage plans page, as lists are.
+ */
 export function PlanPage({ planId }: { planId: string }) {
   // `undefined` = loading, `null` = no such plan (or it was deleted).
   const plan = useLiveQuery(async () => (await getPlanById(db, planId)) ?? null, [planId]);
@@ -22,9 +34,53 @@ export function PlanPage({ planId }: { planId: string }) {
   const [nameMode, setNameMode] = useState<NameMode>(() => readNameMode(browserStorage()));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [renaming, setRenaming] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
   const [newName, setNewName] = useState('');
+  /** The plan's activities as they were before the last change on the timeline (FR-147). */
+  const [undo, setUndo] = useState<ActivityState[] | null>(null);
+
+  /**
+   * Runs a change of dates or links and remembers what the plan looked like before it, so
+   * "Undo last change" can put exactly that back, including what the change pushed.
+   */
+  const change = useCallback(
+    async <T,>(run: () => Promise<T>): Promise<T | undefined> => {
+      const read = async () => (await getActivities(db, planId)).map(stateOf);
+      const before = await read();
+      setMessage(null);
+      try {
+        const result = await run();
+        if (!sameState(before, await read())) setUndo(before);
+        return result;
+      } catch (err) {
+        setMessage(err instanceof RepoError && err.code === 'loop' ? t.plan.loop : t.plan.failed);
+        return undefined;
+      }
+    },
+    [planId],
+  );
+
+  const undoLast = useCallback(() => {
+    if (!undo) return;
+    setUndo(null);
+    setMessage(null);
+    void repo.revertActivities(undo);
+  }, [undo]);
+
+  // Ctrl / ⌘ + Z, except while typing in a field (there it undoes the typing).
+  useEffect(() => {
+    if (!undo) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'z' || !(e.ctrlKey || e.metaKey) || e.shiftKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
+        return;
+      }
+      e.preventDefault();
+      undoLast();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, undoLast]);
 
   const deleteActivity = useCallback(
     (id: string) => {
@@ -46,13 +102,6 @@ export function PlanPage({ planId }: { planId: string }) {
     setNameMode(mode);
   }
 
-  async function rename(e: FormEvent) {
-    e.preventDefault();
-    const next = renaming?.trim();
-    setRenaming(null);
-    if (next) await repo.renamePlan(planId, next);
-  }
-
   async function addActivity(e: FormEvent) {
     e.preventDefault();
     const trimmed = newName.trim();
@@ -65,37 +114,7 @@ export function PlanPage({ planId }: { planId: string }) {
   return (
     <section className="plan-page" aria-label={plan.name}>
       <header className="list-head">
-        {renaming === null ? (
-          <h2>{plan.name}</h2>
-        ) : (
-          <form onSubmit={rename} className="rename">
-            <input
-              type="text"
-              aria-label={t.plan.nameLabel}
-              value={renaming}
-              maxLength={PLAN_NAME_MAX}
-              autoFocus
-              onChange={(e) => setRenaming(e.target.value)}
-              onKeyDown={(e) => e.key === 'Escape' && setRenaming(null)}
-            />
-            <button type="submit" className="primary">
-              {t.plan.save}
-            </button>
-            <button type="button" onClick={() => setRenaming(null)}>
-              {t.plan.cancel}
-            </button>
-          </form>
-        )}
-        {renaming === null && (
-          <div className="list-actions">
-            <button type="button" onClick={() => setRenaming(plan.name)}>
-              {t.plan.rename}
-            </button>
-            <button type="button" className="danger" onClick={() => setConfirmDelete(true)}>
-              {t.plan.deletePlan}
-            </button>
-          </div>
-        )}
+        <h2>{plan.name}</h2>
       </header>
 
       <div className="plan-tools">
@@ -112,18 +131,26 @@ export function PlanPage({ planId }: { planId: string }) {
             {t.plan.addActivityButton}
           </button>
         </form>
-        <div className="chip-group" role="group" aria-label={t.plan.names}>
-          {NAME_MODES.map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              className={`chip${mode === nameMode ? ' is-selected' : ''}`}
-              aria-pressed={mode === nameMode}
-              onClick={() => chooseNames(mode)}
-            >
-              {t.plan.nameModes[mode]}
-            </button>
-          ))}
+        <div className="plan-view">
+          <button type="button" className="plan-undo" disabled={!undo} onClick={undoLast}>
+            <span aria-hidden="true" className="btn-icon">
+              ↶
+            </span>
+            {t.plan.undo}
+          </button>
+          <div className="chip-group" role="group" aria-label={t.plan.names}>
+            {NAME_MODES.map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={`chip${mode === nameMode ? ' is-selected' : ''}`}
+                aria-pressed={mode === nameMode}
+                onClick={() => chooseNames(mode)}
+              >
+                {t.plan.nameModes[mode]}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -137,6 +164,8 @@ export function PlanPage({ planId }: { planId: string }) {
         <ActivityBar
           key={selected.id}
           activity={selected}
+          others={activities}
+          change={(run) => void change(run)}
           onDelete={() => deleteActivity(selected.id)}
           onClose={() => setSelectedId(null)}
         />
@@ -150,21 +179,8 @@ export function PlanPage({ planId }: { planId: string }) {
         selectedId={selected?.id ?? null}
         onSelect={setSelectedId}
         onDelete={deleteActivity}
-        onMessage={setMessage}
+        change={change}
       />
-
-      <ConfirmDialog
-        open={confirmDelete}
-        title={t.plan.deletePlanTitle}
-        confirmLabel={t.plan.deletePlan}
-        onCancel={() => setConfirmDelete(false)}
-        onConfirm={() => {
-          setConfirmDelete(false);
-          void repo.deletePlan(planId);
-        }}
-      >
-        <p>{t.plan.deletePlanText(plan.name, activities.length)}</p>
-      </ConfirmDialog>
     </section>
   );
 }

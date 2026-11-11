@@ -74,30 +74,52 @@ export function dragResult(
   return { start: earliest !== null && start < earliest ? earliest : start, days: span.days };
 }
 
-/** How far an arrow runs straight out of a block and into one. */
+/** A block leaves this much of its row free above and below (`.plan-block` in styles.css). */
+export const BLOCK_INSET = 7;
+
+/** How far an arrow runs out of a block before it turns, when it has to go around. */
 const STUB = 12;
 
-/** A point on the grid's rows: a horizontal position in the middle of a row. */
+/**
+ * An end of a block on the grid's rows: the horizontal position of the end of the source
+ * activity (`from`) or of the start of the target (`to`), and the row.
+ */
 export interface Anchor {
   x: number;
   row: number;
 }
 
 const middle = (row: number) => row * ROW_HEIGHT + ROW_HEIGHT / 2;
+const topOf = (row: number) => row * ROW_HEIGHT + BLOCK_INSET;
+const bottomOf = (row: number) => (row + 1) * ROW_HEIGHT - BLOCK_INSET;
 
 /**
- * The line of a dependency, from the end of one block (`from`) to the start of another
- * (`to`): it leaves to the right and arrives from the left. When the target does not start
- * far enough to the right, it goes around between the rows instead of through the blocks.
+ * Where the arrow head of a dependency sits: on the top edge of the target block at its
+ * start, pointing down; on the bottom edge, pointing up, when the target is in a row above.
+ */
+export function arrowTip(from: Anchor, to: Anchor): { x: number; y: number; down: boolean } {
+  const down = to.row >= from.row;
+  return { x: to.x, y: down ? topOf(to.row) : bottomOf(to.row), down };
+}
+
+/**
+ * The line of a dependency (docs/plan/PRD.md FR-135), from the end of one block to the
+ * start of another, which it enters from above (or below):
+ *  - the target starts exactly where the source ends: one straight vertical line;
+ *  - it starts further right: along the source's row, then down at the target's start
+ *    (through the upper right corner, so the line never runs along the target's row);
+ *  - it starts further left (a broken link): out of the source, along the row border next
+ *    to the target, then into it.
  */
 export function arrowPath(from: Anchor, to: Anchor): string {
-  const y1 = middle(from.row);
-  const y2 = middle(to.row);
-  const out = from.x + STUB;
-  if (to.x - from.x >= 2 * STUB) return `M ${from.x} ${y1} H ${out} V ${y2} H ${to.x}`;
-  // The row border next to the source, on the side of the target (below when in one row).
-  const between = to.row < from.row ? from.row * ROW_HEIGHT : (from.row + 1) * ROW_HEIGHT;
-  return `M ${from.x} ${y1} H ${out} V ${between} H ${to.x - STUB} V ${y2} H ${to.x}`;
+  const tip = arrowTip(from, to);
+  if (to.x === from.x) {
+    return `M ${from.x} ${tip.down ? bottomOf(from.row) : topOf(from.row)} V ${tip.y}`;
+  }
+  const y = middle(from.row);
+  if (to.x > from.x) return `M ${from.x} ${y} H ${to.x} V ${tip.y}`;
+  const border = tip.down ? to.row * ROW_HEIGHT : (to.row + 1) * ROW_HEIGHT;
+  return `M ${from.x} ${y} H ${from.x + STUB} V ${border} H ${to.x} V ${tip.y}`;
 }
 
 /** The months of the range, for the header: where each starts and how many days it shows. */

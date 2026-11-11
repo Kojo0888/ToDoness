@@ -1086,18 +1086,27 @@ h2.nav-heading {
 }
 
 .module-switch a {
+  /* Three modules share the width of the sidebar: entries may shrink, never widen it. */
   flex: 1 1 0;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
+  gap: 0.3rem;
   min-height: 2.25rem;
-  padding: 0.3rem 0.6rem;
+  padding: 0.3rem 0.25rem;
+  font-size: 0.9rem;
   border-radius: 7px;
   color: inherit;
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
+}
+
+.module-switch svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
 }
 
 .module-switch a:hover {
@@ -1558,6 +1567,23 @@ h2.nav-heading {
   max-width: 32rem;
 }
 
+/* Undo last change and the name position, on the right. */
+.plan-view {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.plan-undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.25rem;
+  padding: 0.3rem 0.8rem;
+  white-space: nowrap;
+}
+
 .plan-message {
   margin: 0 0 0.75rem;
   border-color: var(--warn);
@@ -1586,18 +1612,33 @@ h2.nav-heading {
 }
 
 .plan-field {
-  flex: 0 1 10.5rem;
+  flex: 0 1 9.5rem;
+  min-width: 0; /* a date field's own width must not push the buttons to a new line */
   margin: 0;
   font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.plan-field .hint {
+  font-weight: 400;
 }
 
 .plan-field-name {
-  flex: 1 1 14rem;
+  flex: 1 1 7rem;
 }
 
-.plan-duration {
-  align-self: center;
-  white-space: nowrap;
+/* One height for text, date and select fields and the buttons, so the row lines up. */
+.plan-activity-bar input,
+.plan-activity-bar select,
+.plan-activity-bar button {
+  height: 2.5rem;
+  font-size: 1rem;
+}
+
+.plan-activity-bar select {
+  display: block;
+  margin-top: 0.25rem;
+  font-weight: 400;
 }
 
 .plan-bar-actions {
@@ -1818,8 +1859,7 @@ h2.nav-heading {
   height: var(--plan-row);
 }
 
-.plan-bar.is-dragged,
-.plan-bar.is-link-source {
+.plan-bar.is-dragged {
   z-index: 2;
 }
 
@@ -1853,10 +1893,6 @@ h2.nav-heading {
   opacity: 0.85;
 }
 
-.plan-timeline.is-linking .plan-block {
-  cursor: crosshair;
-}
-
 .plan-block-name,
 .plan-after-name {
   overflow: hidden;
@@ -1867,7 +1903,7 @@ h2.nav-heading {
 
 .plan-after-name {
   position: absolute;
-  left: calc(100% + 26px);
+  left: calc(100% + 8px);
   top: 0;
   max-width: 16rem;
   line-height: var(--plan-row);
@@ -1908,51 +1944,10 @@ h2.nav-heading {
   opacity: 0.7;
 }
 
-/* Link points: a ring outside each end of the block (FR-133). */
-.plan-link {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 22px;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  cursor: crosshair;
-  touch-action: none;
-  opacity: 0.45;
-}
-
-.plan-link-in {
-  left: -22px;
-}
-
-.plan-link-out {
-  right: -22px;
-}
-
-.plan-link::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 12px;
-  height: 12px;
-  margin: -6px 0 0 -6px;
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  background: var(--bg);
-}
-
-.plan-bar:hover .plan-link,
-.plan-bar:focus-within .plan-link,
-.plan-timeline.is-linking .plan-link,
-.plan-link[aria-pressed='true'] {
-  opacity: 1;
-}
-
-.plan-link[aria-pressed='true']::after {
-  background: var(--accent);
+/* The block an end is being dropped on: releasing links the two (FR-133). */
+.plan-bar.is-link-target .plan-block {
+  outline: 3px dashed var(--fg);
+  outline-offset: 2px;
 }
 
 @media (max-width: 760px) {
@@ -1966,7 +1961,7 @@ h2.nav-heading {
   .plan-first button,
   .plan-add button,
   .plan-activity-bar button,
-  .plan-page .list-actions button {
+  .plan-undo {
     min-height: 44px;
   }
 
@@ -1976,6 +1971,12 @@ h2.nav-heading {
 
   .plan-bar-actions {
     margin-left: 0;
+  }
+
+  .plan-activity-bar input,
+  .plan-activity-bar select,
+  .plan-activity-bar button {
+    height: 44px;
   }
 
   /* Start and End share a line; the name gets its own. */
@@ -1989,7 +1990,7 @@ h2.nav-heading {
 
   /*
    * Exception to the 44 px rule (UI_GUIDELINES.md, docs/plan decision P5): a day is 36 px
-   * wide, so grips and link points are 44 px high but narrower. The edit bar that opens
+   * wide, so the grips are 44 px high but narrower. The edit bar that opens
    * when a block is tapped has full-size controls for the same changes.
    */
   .plan-handle {
@@ -1998,10 +1999,5 @@ h2.nav-heading {
 
   .plan-handle::after {
     left: 6px;
-  }
-
-  /* Touch has no hover: the link points are always fully shown. */
-  .plan-link {
-    opacity: 1;
   }
 }

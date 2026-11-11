@@ -79,6 +79,19 @@ async function addPlan(page: Page, name: string) {
   await heading(page, name).waitFor();
 }
 
+const endGrip = (page: Page, name: string) =>
+  page.getByRole('button', { name: `Change the end of ${name}` });
+const startGrip = (page: Page, name: string) => page.getByRole('button', { name: `Move ${name}` });
+const arrow = (page: Page, from: string, to: string) =>
+  page.getByRole('button', { name: `${from} → ${to}, remove link` });
+const undo = (page: Page) => page.getByRole('button', { name: 'Undo last change' });
+
+/** Drops the end of `from` on the block of `to`: `from → to` (FR-133). */
+async function link(page: Page, from: string, to: string) {
+  await drag(page, endGrip(page, from), { onto: block(page, to) });
+  await arrow(page, from, to).waitFor({ state: 'attached' });
+}
+
 async function addActivity(page: Page, name: string) {
   const input = page.getByLabel('Add an activity');
   await input.fill(name);
@@ -138,23 +151,69 @@ describe('the Plan module and plans (FR-119 – FR-122)', () => {
     ).resolves.toBe('page');
   });
 
-  it('renames a plan, and deletes it after a confirmation', async () => {
-    const { page } = await withPlan('rename');
+  it('Manage plans renames, reorders and deletes plans (FR-121)', async () => {
+    const { page } = await withPlan('manage');
     await addActivity(page, 'Design');
-    await page.getByRole('button', { name: 'Rename' }).click();
+    await addPlan(page, 'Second');
+    const nav = page.getByRole('list', { name: 'Plans' });
+    await page.getByRole('link', { name: 'Manage plans' }).click();
+    await heading(page, 'Manage plans').waitFor();
+    const rows = () => page.locator('.manage-row .manage-name').allTextContents();
+    expect(await rows()).toEqual(['Launch', 'Second']);
+
+    await page.getByRole('button', { name: 'Actions: Launch' }).click();
+    await page.getByRole('menuitem', { name: 'Rename' }).click();
     const name = page.getByLabel('Plan name', { exact: true });
     await name.fill('Launch 2');
     await name.press('Enter');
-    await heading(page, 'Launch 2').waitFor();
-    await page
-      .getByRole('list', { name: 'Plans' })
-      .getByRole('link', { name: 'Launch 2' })
-      .waitFor();
+    await nav.getByRole('link', { name: 'Launch 2' }).waitFor();
 
-    await page.getByRole('button', { name: 'Delete plan' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Delete plan' }).click();
-    await page.getByText('No plans yet').waitFor();
-    expect(await page.getByRole('list', { name: 'Plans' }).getByRole('link').count()).toBe(0);
+    // Keyboard drag: Second above Launch 2.
+    const handle = page.getByRole('button', { name: 'Drag to reorder plan: Second' });
+    await handle.focus();
+    for (const key of ['Space', 'ArrowUp', 'Space']) {
+      await page.keyboard.press(key);
+      await page.waitForTimeout(150); // the drag library moves the row in steps
+    }
+    await page.waitForFunction(
+      () =>
+        [...document.querySelectorAll('.manage-row .manage-name')]
+          .map((e) => e.textContent)
+          .join() === 'Second,Launch 2',
+    );
+    expect(await nav.getByRole('link').allTextContents()).toEqual(['Second', 'Launch 2']);
+
+    await page.getByRole('button', { name: 'Actions: Launch 2' }).click();
+    await page.getByRole('menuitem', { name: 'Delete plan' }).click();
+    await page.getByRole('dialog').getByText('1 activity').waitFor();
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.manage-row').length === 1);
+    expect(await nav.getByRole('link').allTextContents()).toEqual(['Second']);
+
+    await page.getByRole('link', { name: 'Back to plans' }).click();
+    await heading(page, 'Second').waitFor();
+    // The plan page itself has no rename or delete buttons any more.
+    expect(await page.getByRole('button', { name: 'Delete plan' }).count()).toBe(0);
+  });
+
+  it('the module switch is as wide as the other sidebar controls (it does not stretch the panel)', async () => {
+    const { page } = await withPlan('width');
+    const sizes = await page.evaluate(() => {
+      const sw = document.querySelector('.sidebar .module-switch') as HTMLElement;
+      const form = document.querySelector('.sidebar .new-list') as HTMLElement;
+      const side = document.querySelector('.sidebar') as HTMLElement;
+      return {
+        fits: sw.scrollWidth <= sw.clientWidth,
+        sw: [sw.getBoundingClientRect().left, sw.getBoundingClientRect().right],
+        form: [form.getBoundingClientRect().left, form.getBoundingClientRect().right],
+        sideScroll: side.scrollLeft,
+        sideFits: side.scrollWidth <= side.clientWidth,
+      };
+    });
+    expect(sizes.fits).toBe(true);
+    expect(sizes.sideFits).toBe(true);
+    expect(sizes.sideScroll).toBe(0);
+    expect(sizes.sw).toEqual(sizes.form);
   });
 
   it('shows the switch with Plan on a phone', async () => {
@@ -170,9 +229,7 @@ describe('the Plan module and plans (FR-119 – FR-122)', () => {
     await addActivity(page, 'Pack');
     const box = (await block(page, 'Pack').boundingBox())!;
     expect(box.height).toBeGreaterThanOrEqual(30);
-    const handle = (await page
-      .getByRole('button', { name: 'Change the end of Pack' })
-      .boundingBox())!;
+    const handle = (await endGrip(page, 'Pack').boundingBox())!;
     expect(handle.height).toBeGreaterThanOrEqual(44);
   });
 });
@@ -195,19 +252,19 @@ describe('activities on the timeline (FR-123 – FR-131)', () => {
     const { page, t0 } = await withPlan('drag');
     await addActivity(page, 'Design');
 
-    await drag(page, page.getByRole('button', { name: 'Change the end of Design' }), {
+    await drag(page, endGrip(page, 'Design'), {
       dx: 2 * DAY,
     });
     await waitDays(page, 'Design', t0, plus(t0, 4));
 
-    await drag(page, page.getByRole('button', { name: 'Move Design' }), { dx: 3 * DAY });
+    await drag(page, startGrip(page, 'Design'), { dx: 3 * DAY });
     await waitDays(page, 'Design', plus(t0, 3), plus(t0, 7));
 
     await drag(page, block(page, 'Design'), { dx: -1 * DAY });
     await waitDays(page, 'Design', plus(t0, 2), plus(t0, 6));
 
     // The end never goes before the start.
-    await drag(page, page.getByRole('button', { name: 'Change the end of Design' }), {
+    await drag(page, endGrip(page, 'Design'), {
       dx: -9 * DAY,
     });
     await waitDays(page, 'Design', plus(t0, 2), plus(t0, 2));
@@ -238,7 +295,7 @@ describe('activities on the timeline (FR-123 – FR-131)', () => {
     await bar.getByLabel('Activity name').press('Enter');
     await block(page, 'Sketch').waitFor();
 
-    await bar.getByLabel('Start').fill(plus(t0, 5));
+    await bar.getByLabel('Start', { exact: true }).fill(plus(t0, 5));
     await waitDays(page, 'Sketch', plus(t0, 5), plus(t0, 7));
     await bar.getByLabel('End').fill(plus(t0, 5));
     await waitDays(page, 'Sketch', plus(t0, 5), plus(t0, 5));
@@ -251,42 +308,35 @@ describe('activities on the timeline (FR-123 – FR-131)', () => {
 
     await bar.getByRole('button', { name: 'Delete activity' }).click();
     await block(page, 'Sketch').waitFor({ state: 'detached' });
-    await page.getByRole('button', { name: 'Undo' }).click();
+    await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await waitDays(page, 'Sketch', plus(t0, 6), plus(t0, 7));
   });
 });
 
-describe('dependencies (FR-133 – FR-138)', () => {
-  it('links by dragging, draws an arrow and pushes dependent activities', async () => {
+describe('dependencies (FR-133 – FR-138) and undo (FR-147)', () => {
+  it('dropping an end on another block links them, draws an arrow and pushes', async () => {
     const { page, t0 } = await withPlan('link');
     await addActivity(page, 'Design'); // 0 – 2
     await addActivity(page, 'Build'); // 3 – 5
     await addActivity(page, 'Test'); // 6 – 8
+    expect(await page.locator('.plan-link').count()).toBe(0); // no link circles
     // Put Build on top of Design in time, then link: it is pushed behind Design.
     await drag(page, block(page, 'Build'), { dx: -2 * DAY });
     await waitDays(page, 'Build', plus(t0, 1), plus(t0, 3));
 
-    await drag(page, page.getByRole('button', { name: 'Link from the end of Design' }), {
-      onto: block(page, 'Build'),
-    });
-    await arrows(page).first().waitFor({ state: 'attached' });
+    await link(page, 'Design', 'Build');
     expect(await arrows(page).count()).toBe(1);
-    await page.getByRole('button', { name: 'Design → Build, remove link' }).waitFor({
-      state: 'attached',
-    });
     await waitDays(page, 'Build', plus(t0, 3), plus(t0, 5));
+    // Linking did not change Design itself.
+    expect(await days(page, 'Design')).toEqual([t0, plus(t0, 2)]);
 
-    // Click – click: Build → Test.
-    await page.getByRole('button', { name: 'Link from the end of Build' }).click();
-    await block(page, 'Test').click();
-    await page.getByRole('button', { name: 'Build → Test, remove link' }).waitFor({
-      state: 'attached',
-    });
+    // The beginning of Test dropped on Build: Build → Test.
+    await drag(page, startGrip(page, 'Test'), { onto: block(page, 'Build') });
+    await arrow(page, 'Build', 'Test').waitFor({ state: 'attached' });
+    expect(await days(page, 'Test')).toEqual([plus(t0, 6), plus(t0, 8)]);
 
     // Design gets 4 days longer: Build and Test move with it.
-    await drag(page, page.getByRole('button', { name: 'Change the end of Design' }), {
-      dx: 4 * DAY,
-    });
+    await drag(page, endGrip(page, 'Design'), { dx: 4 * DAY });
     await waitDays(page, 'Design', t0, plus(t0, 6));
     await waitDays(page, 'Build', plus(t0, 7), plus(t0, 9));
     await waitDays(page, 'Test', plus(t0, 10), plus(t0, 12));
@@ -297,25 +347,81 @@ describe('dependencies (FR-133 – FR-138)', () => {
     expect(await days(page, 'Test')).toEqual([plus(t0, 10), plus(t0, 12)]);
   });
 
-  it('refuses a loop; removes an arrow and brings it back with Undo', async () => {
-    const { page } = await withPlan('loop');
+  it('an activity that follows directly is joined by one straight vertical line', async () => {
+    const { page } = await withPlan('straight');
     await addActivity(page, 'Design');
     await addActivity(page, 'Build');
-    await page.getByRole('button', { name: 'Link from the end of Design' }).click();
-    await block(page, 'Build').click();
-    await arrows(page).first().waitFor({ state: 'attached' });
+    await addActivity(page, 'Test');
+    await link(page, 'Design', 'Build');
+    const line = (from: string, to: string) =>
+      arrow(page, from, to).locator('.plan-arrow-line').getAttribute('d');
+    expect(await line('Design', 'Build')).toMatch(/^M [\d.]+ [\d.]+ V [\d.]+$/);
 
-    await page.getByRole('button', { name: 'Link from the end of Build' }).click();
-    await block(page, 'Design').click();
-    await page.getByRole('alert').filter({ hasText: 'loop' }).waitFor();
+    // With a gap it runs along its own row, then straight down into the start of the block.
+    await drag(page, block(page, 'Test'), { dx: 3 * DAY });
+    await link(page, 'Design', 'Test');
+    expect(await line('Design', 'Test')).toMatch(/^M [\d.]+ [\d.]+ H [\d.]+ V [\d.]+$/);
+    const d = (await block(page, 'Design').boundingBox())!;
+    const t = (await block(page, 'Test').boundingBox())!;
+    const box = (await arrow(page, 'Design', 'Test').locator('.plan-arrow-line').boundingBox())!;
+    expect(Math.abs(box.x - (d.x + d.width))).toBeLessThanOrEqual(2);
+    expect(Math.abs(box.x + box.width - t.x)).toBeLessThanOrEqual(2);
+    expect(box.y + box.height).toBeLessThanOrEqual(t.y + 2);
+  });
+
+  it('Undo last change reverts a drag with what it pushed, a link and a removed link', async () => {
+    const { page, t0 } = await withPlan('undo');
+    await addActivity(page, 'Design'); // 0 – 2
+    await addActivity(page, 'Build'); // 3 – 5
+    await expect(undo(page).isDisabled()).resolves.toBe(true);
+
+    await link(page, 'Design', 'Build');
+    await drag(page, endGrip(page, 'Design'), { dx: 3 * DAY });
+    await waitDays(page, 'Build', plus(t0, 6), plus(t0, 8));
+    await undo(page).click();
+    await waitDays(page, 'Design', t0, plus(t0, 2));
+    await waitDays(page, 'Build', plus(t0, 3), plus(t0, 5));
+    await expect(undo(page).isDisabled()).resolves.toBe(true); // one step
     expect(await arrows(page).count()).toBe(1);
 
-    const arrow = page.getByRole('button', { name: 'Design → Build, remove link' });
-    await arrow.focus();
+    // A removed link comes back (keyboard: focus the arrow, Enter; then Ctrl+Z).
+    await arrow(page, 'Design', 'Build').focus();
     await page.keyboard.press('Enter');
     await arrows(page).first().waitFor({ state: 'detached' });
-    await page.getByRole('button', { name: 'Undo' }).click();
-    await arrows(page).first().waitFor({ state: 'attached' });
+    await block(page, 'Design').focus();
+    await page.keyboard.press('Control+z');
+    await arrow(page, 'Design', 'Build').waitFor({ state: 'attached' });
+
+    // A link made by mistake goes away again, and what it pushed goes back.
+    await addActivity(page, 'Test'); // 6 – 8
+    await drag(page, block(page, 'Test'), { dx: -4 * DAY });
+    await waitDays(page, 'Test', plus(t0, 2), plus(t0, 4));
+    await link(page, 'Build', 'Test');
+    await waitDays(page, 'Test', plus(t0, 6), plus(t0, 8));
+    await undo(page).click();
+    await arrow(page, 'Build', 'Test').waitFor({ state: 'detached' });
+    await waitDays(page, 'Test', plus(t0, 2), plus(t0, 4));
+  });
+
+  it('refuses a loop; the edit bar links without dragging', async () => {
+    const { page, t0 } = await withPlan('loop');
+    await addActivity(page, 'Design');
+    await addActivity(page, 'Build');
+    await addActivity(page, 'Test');
+    await link(page, 'Design', 'Build');
+
+    await drag(page, endGrip(page, 'Build'), { onto: block(page, 'Design') });
+    await page.getByRole('alert').filter({ hasText: 'loop' }).waitFor();
+    expect(await arrows(page).count()).toBe(1);
+    expect(await days(page, 'Build')).toEqual([plus(t0, 3), plus(t0, 5)]);
+
+    await block(page, 'Test').click();
+    const after = page.getByRole('group', { name: 'Selected activity' }).getByLabel('Starts after');
+    await after.selectOption({ label: 'Build' });
+    await arrow(page, 'Build', 'Test').waitFor({ state: 'attached' });
+    // Activities that would close a loop, or are linked already, are not offered.
+    await block(page, 'Design').click();
+    expect(await after.locator('option').allTextContents()).toEqual(['Add…']);
   });
 });
 
@@ -361,9 +467,7 @@ describe('offline and sync (FR-142)', () => {
     await addPlan(page, 'Offline plan');
     await addActivity(page, 'Design');
     await addActivity(page, 'Build');
-    await page.getByRole('button', { name: 'Link from the end of Design' }).click();
-    await block(page, 'Build').click();
-    await arrows(page).first().waitFor({ state: 'attached' });
+    await link(page, 'Design', 'Build');
     const design = await days(page, 'Design');
 
     await context.setOffline(false);
@@ -379,7 +483,7 @@ describe('offline and sync (FR-142)', () => {
     expect(await arrows(phone).count()).toBe(1);
 
     // And a change travels back.
-    await drag(phone, phone.getByRole('button', { name: 'Change the end of Design' }), {
+    await drag(phone, endGrip(phone, 'Design'), {
       dx: 2 * DAY,
     });
     await waitSaved(phone);

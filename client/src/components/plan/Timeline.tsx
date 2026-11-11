@@ -10,13 +10,13 @@ import {
   schedulePlan,
   type Activity,
 } from '@todoness/shared';
-import { RepoError } from '../../data/repo';
 import { formatDay, formatMonth, weekdayOf } from '../../lib/dates';
 import type { NameMode } from '../../lib/planNames';
 import {
   DAY_WIDTH,
   ROW_HEIGHT,
   arrowPath,
+  arrowTip,
   blockBox,
   dragResult,
   monthSpans,
@@ -26,7 +26,6 @@ import {
 } from '../../lib/timeline';
 import { repo } from '../../app/container';
 import { t } from '../../app/strings';
-import { useUndoToast } from '../common/Toast';
 
 interface Props {
   activities: Activity[];
@@ -34,56 +33,47 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onDelete: (id: string) => void;
-  /** A short message for the user (a refused link), or `null` to take it away. */
-  onMessage: (message: string | null) => void;
+  /**
+   * Runs a change of dates or links so that it can be undone (PlanPage). Resolves to the
+   * result, or to `undefined` when it was refused (the page then shows why).
+   */
+  change: <T>(run: () => Promise<T>) => Promise<T | undefined>;
 }
 
 /** A block being dragged: what it was, and what it would become if released now. */
 interface Drag {
   id: string;
   kind: DragKind;
+  /** Grabbed by one of its ends (not the block itself): it can also be dropped on a block. */
+  grip: 'start' | 'end' | null;
   startX: number;
   origin: Span;
   /** The first day the predecessors allow (moves only). */
   earliest: string | null;
   preview: Span;
   moved: boolean;
+  /** The activity whose block the end is over: releasing links the two (FR-133). */
+  linkTo: string | null;
+  /** Where the pointer is on the rows, for the line to it while linking. */
+  pointer: { x: number; y: number } | null;
   /** Released: the preview stays until the saved activity shows up, so nothing jumps back. */
   settling: boolean;
 }
 
-/** A link being made, from the end (`out`) or the start (`in`) of an activity. */
-interface Linking {
-  id: string;
-  side: 'out' | 'in';
-  /** Where the pointer is on the rows while dragging; `null` when armed by a click. */
-  pointer: { x: number; y: number } | null;
-}
-
 const sameSpan = (a: Span, b: Span) => a.start === b.start && a.days === b.days;
-/** A press only becomes a link drag after this many pixels, so a click stays a click. */
-const LINK_DRAG_PX = 5;
 
 /**
  * The timeline of a plan (docs/plan/PRD.md FR-125 – FR-139): a day grid, one row and one
  * block per activity, arrows for dependencies. Blocks are dragged with pointer events
  * (mouse and touch alike); the geometry is in lib/timeline.ts.
+ *
+ * An end of a block does two things, by where it is dragged: along its own row it changes
+ * the activity (start or duration), onto the block of another row it links the two.
  */
-export function Timeline({
-  activities,
-  nameMode,
-  selectedId,
-  onSelect,
-  onDelete,
-  onMessage,
-}: Props) {
-  const toast = useUndoToast();
+export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete, change }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
-  const [linking, setLinking] = useState<Linking | null>(null);
-  /** The press that may become a link drag. */
-  const linkPress = useRef<{ id: string; side: 'out' | 'in'; x: number; y: number } | null>(null);
   /** A drag just ended on this element: the click that follows it is not a click. */
   const suppressClick = useRef(false);
   /** Escape was pressed while the pointer was down: releasing it must not count as a click. */
@@ -96,7 +86,7 @@ export function Timeline({
 
   // What is drawn: the dragged block where it would land, and what it would push (FR-136).
   let shown = activities;
-  if (drag) {
+  if (drag && !drag.linkTo) {
     shown = activities.map((a) => (a.id === drag.id ? { ...a, ...drag.preview } : a));
     const pushed = schedulePlan(shown);
     if (pushed.size > 0) {
@@ -119,24 +109,20 @@ export function Timeline({
     if (added !== 0 && scroller.current) scroller.current.scrollLeft += added * DAY_WIDTH;
   }, [range.first]);
 
-  // Escape cancels a drag or a link in the making (FR-129).
-  const busy = drag !== null || linking !== null;
+  // Escape cancels a drag (FR-129).
+  const busy = drag !== null;
   useEffect(() => {
     if (!busy) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (pointerDown.current) cancelled.current = true;
-      linkPress.current = null;
       setDrag((d) => (d?.settling ? d : null));
-      setLinking(null);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [busy]);
 
   const nameOf = (id: string) => activities.find((a) => a.id === id)?.name ?? '';
-  const failed = (err: unknown) =>
-    onMessage(err instanceof RepoError && err.code === 'loop' ? t.plan.loop : t.plan.failed);
 
   /** The click that follows a drag on the same element is swallowed. */
   function afterDrag() {
@@ -153,61 +139,83 @@ export function Timeline({
     return true;
   }
 
-  // ---- dragging a block (FR-127 – FR-129) ----------------------------------
+  // ---- dragging a block or one of its ends (FR-127 – FR-129, FR-133) --------
 
-  function startDrag(e: React.PointerEvent<HTMLElement>, a: Activity, kind: DragKind) {
-    if (e.button !== 0 || linking || drag) return;
+  function startDrag(e: React.PointerEvent<HTMLElement>, a: Activity, grip: Drag['grip']) {
+    if (e.button !== 0 || drag) return;
     e.currentTarget.setPointerCapture(e.pointerId);
     pointerDown.current = true;
     cancelled.current = false;
+    const kind: DragKind = grip === 'end' ? 'resize' : 'move';
     const origin = { start: a.start, days: a.days };
     setDrag({
       id: a.id,
       kind,
+      grip,
       startX: e.clientX,
       origin,
       earliest: kind === 'move' ? earliestStart(activities, a.id) : null,
       preview: origin,
       moved: false,
+      linkTo: null,
+      pointer: null,
       settling: false,
     });
   }
 
+  /** The other activity whose block is under the pointer, if any. */
+  function blockUnder(e: React.PointerEvent, ownId: string): string | null {
+    const id = document
+      .elementFromPoint(e.clientX, e.clientY)
+      ?.closest('.plan-bar')
+      ?.getAttribute('data-activity-id');
+    return id && id !== ownId ? id : null;
+  }
+
   function moveDrag(e: React.PointerEvent) {
     if (!drag || drag.settling) return;
+    // An end over the block of another row: a link, and the block itself stays as it is.
+    const linkTo = drag.grip ? blockUnder(e, drag.id) : null;
+    if (linkTo && rowsRef.current) {
+      const box = rowsRef.current.getBoundingClientRect();
+      const pointer = { x: e.clientX - box.left, y: e.clientY - box.top };
+      return setDrag({ ...drag, linkTo, pointer, preview: drag.origin, moved: true });
+    }
     const delta = Math.round((e.clientX - drag.startX) / DAY_WIDTH);
     const preview = dragResult(drag.kind, drag.origin, delta, drag.earliest);
-    if (!sameSpan(preview, drag.preview)) setDrag({ ...drag, preview, moved: true });
+    if (drag.linkTo || !sameSpan(preview, drag.preview)) {
+      setDrag({ ...drag, linkTo: null, pointer: null, preview, moved: true });
+    }
   }
 
   function endDrag() {
     if (released() || !drag || drag.settling) return;
     if (drag.moved) afterDrag();
-    if (sameSpan(drag.preview, drag.origin)) return setDrag(null);
-    const { id, kind, preview, origin } = drag;
+    const { id, kind, grip, preview, origin, linkTo } = drag;
+    if (linkTo) {
+      setDrag(null);
+      // The end of this one on that one: this → that. Its beginning: that → this.
+      const [from, to] = grip === 'end' ? [id, linkTo] : [linkTo, id];
+      return void change(() => repo.linkActivities(from, to));
+    }
+    if (sameSpan(preview, origin)) return setDrag(null);
     setDrag({ ...drag, settling: true });
-    onMessage(null);
-    repo
-      .updateActivity(id, kind === 'move' ? { start: preview.start } : { days: preview.days })
-      .then(
-        (saved) =>
-          // Saved somewhere else than shown (or not at all): show that.
-          setDrag((d) =>
-            d?.id !== id || !d.settling
-              ? d
-              : sameSpan(saved, origin)
-                ? null
-                : { ...d, preview: saved },
-          ),
-        (err) => {
-          setDrag(null);
-          failed(err);
-        },
-      );
+    void change(() =>
+      repo.updateActivity(id, kind === 'move' ? { start: preview.start } : { days: preview.days }),
+    ).then((saved) =>
+      // Refused, or saved somewhere else than shown: show what is stored.
+      setDrag((d) =>
+        d?.id !== id || !d.settling
+          ? d
+          : !saved || sameSpan(saved, origin)
+            ? null
+            : { ...d, preview: saved },
+      ),
+    );
   }
 
-  const dragHandlers = (a: Activity, kind: DragKind) => ({
-    onPointerDown: (e: React.PointerEvent<HTMLElement>) => startDrag(e, a, kind),
+  const dragHandlers = (a: Activity, grip: Drag['grip']) => ({
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => startDrag(e, a, grip),
     onPointerMove: moveDrag,
     onPointerUp: endDrag,
     onPointerCancel: () => {
@@ -216,72 +224,9 @@ export function Timeline({
     },
   });
 
-  // ---- linking (FR-133) ----------------------------------------------------
-
-  function connect(source: { id: string; side: 'out' | 'in' }, otherId: string) {
-    if (source.id === otherId) return;
-    const [from, to] = source.side === 'out' ? [source.id, otherId] : [otherId, source.id];
-    onMessage(null);
-    repo.linkActivities(from, to).catch(failed);
-  }
-
-  const linkHandlers = (a: Activity, side: 'out' | 'in') => ({
-    onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
-      if (e.button !== 0 || drag) return;
-      e.currentTarget.setPointerCapture(e.pointerId);
-      pointerDown.current = true;
-      cancelled.current = false;
-      linkPress.current = { id: a.id, side, x: e.clientX, y: e.clientY };
-    },
-    onPointerMove: (e: React.PointerEvent) => {
-      const press = linkPress.current;
-      if (!press || !rowsRef.current) return;
-      const far = Math.hypot(e.clientX - press.x, e.clientY - press.y) >= LINK_DRAG_PX;
-      if (!linking?.pointer && !far) return;
-      const box = rowsRef.current.getBoundingClientRect();
-      setLinking({
-        id: press.id,
-        side: press.side,
-        pointer: { x: e.clientX - box.left, y: e.clientY - box.top },
-      });
-    },
-    onPointerUp: (e: React.PointerEvent) => {
-      const press = linkPress.current;
-      linkPress.current = null;
-      if (released() || !press || !linking?.pointer) return; // a click: `onClick` arms the point
-      afterDrag();
-      setLinking(null);
-      const target = document
-        .elementFromPoint(e.clientX, e.clientY)
-        ?.closest('[data-activity-id]')
-        ?.getAttribute('data-activity-id');
-      if (target) connect(press, target);
-    },
-    onPointerCancel: () => {
-      released();
-      linkPress.current = null;
-      setLinking(null);
-    },
-    // Click – click (also the keyboard way): this point, then the other activity.
-    onClick: () => {
-      if (suppressClick.current) return;
-      if (!linking) {
-        onMessage(null);
-        setLinking({ id: a.id, side, pointer: null });
-      } else {
-        connect(linking, a.id);
-        setLinking(null);
-      }
-    },
-  });
-
-  /** A click on an activity: finishes a link when one is being made, else selects. */
   function choose(id: string) {
     if (suppressClick.current) return;
-    if (linking) {
-      connect(linking, id);
-      setLinking(null);
-    } else onSelect(selectedId === id ? null : id);
+    onSelect(selectedId === id ? null : id);
   }
 
   function onBlockKey(e: React.KeyboardEvent, a: Activity) {
@@ -291,21 +236,15 @@ export function Timeline({
       const patch = e.shiftKey
         ? { days: Math.max(1, a.days + step) }
         : { start: addDays(a.start, step) };
-      void repo.updateActivity(a.id, patch).catch(failed);
+      void change(() => repo.updateActivity(a.id, patch));
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       onDelete(a.id);
     }
   }
 
-  function removeLink(from: string, to: string) {
-    void repo
-      .unlinkActivities(from, to)
-      .then(
-        () => toast(t.plan.linkRemoved, () => void repo.linkActivities(from, to).catch(failed)),
-        failed,
-      );
-  }
+  const removeLink = (from: string, to: string) =>
+    void change(() => repo.unlinkActivities(from, to));
 
   // ---- what to draw --------------------------------------------------------
 
@@ -315,21 +254,21 @@ export function Timeline({
   const arrows = liveLinks(shown).map((l) => {
     const from = boxOf.get(l.from)!;
     const to = boxOf.get(l.to)!;
-    const head = { x: to.left, y: rowOf.get(l.to)! * ROW_HEIGHT + ROW_HEIGHT / 2 };
+    const source = { x: from.left + from.width, row: rowOf.get(l.from)! };
+    const target = { x: to.left, row: rowOf.get(l.to)! };
+    const tip = arrowTip(source, target);
     return {
       ...l,
       key: `${l.from}>${l.to}`,
-      head,
-      d: arrowPath(
-        { x: from.left + from.width, row: rowOf.get(l.from)! },
-        { x: to.left, row: rowOf.get(l.to)! },
-      ),
+      d: arrowPath(source, target),
+      // A small triangle on the edge of the target block, pointing into it.
+      head: `M ${tip.x} ${tip.y} l -5 ${tip.down ? -8 : 8} h 10 z`,
     };
   });
 
   const days = Array.from({ length: range.days }, (_, i) => addDays(range.first, i));
   const todayIndex = daysBetween(range.first, today);
-  const linkSource = linking ? boxOf.get(linking.id) : undefined;
+  const dragBox = drag ? boxOf.get(drag.id) : undefined;
 
   return (
     <>
@@ -337,7 +276,7 @@ export function Timeline({
         {t.plan.blockHelp}
       </span>
       <div
-        className={`plan-timeline${linking ? ' is-linking' : ''}${drag ? ' is-dragging' : ''}`}
+        className={`plan-timeline${drag?.linkTo ? ' is-linking' : ''}${drag ? ' is-dragging' : ''}`}
         data-names={nameMode}
         ref={scroller}
         role="group"
@@ -391,9 +330,8 @@ export function Timeline({
               ref={rowsRef}
               style={{ height: rowsHeight }}
               onClick={(e) => {
-                // A click on the empty grid lets go of what was selected or being linked.
+                // A click on the empty grid lets go of what was selected.
                 if (e.target !== e.currentTarget || suppressClick.current) return;
-                setLinking(null);
                 onSelect(null);
               }}
             >
@@ -422,19 +360,16 @@ export function Timeline({
                   >
                     <path className="plan-arrow-hit" d={arrow.d} />
                     <path className="plan-arrow-line" d={arrow.d} />
-                    <path
-                      className="plan-arrow-head"
-                      d={`M ${arrow.head.x} ${arrow.head.y} l -8 -4.5 v 9 z`}
-                    />
+                    <path className="plan-arrow-head" d={arrow.head} />
                   </g>
                 ))}
-                {linking?.pointer && linkSource && (
+                {drag?.linkTo && drag.pointer && dragBox && (
                   <line
                     className="plan-rubber"
-                    x1={linkSource.left + (linking.side === 'out' ? linkSource.width : 0)}
-                    y1={rowOf.get(linking.id)! * ROW_HEIGHT + ROW_HEIGHT / 2}
-                    x2={linking.pointer.x}
-                    y2={linking.pointer.y}
+                    x1={dragBox.left + (drag.grip === 'end' ? dragBox.width : 0)}
+                    y1={rowOf.get(drag.id)! * ROW_HEIGHT + ROW_HEIGHT / 2}
+                    x2={drag.pointer.x}
+                    y2={drag.pointer.y}
                   />
                 )}
               </svg>
@@ -451,7 +386,7 @@ export function Timeline({
                   'plan-bar',
                   a.id === selectedId && 'is-selected',
                   a.id === drag?.id && 'is-dragged',
-                  a.id === linking?.id && 'is-link-source',
+                  a.id === drag?.linkTo && 'is-link-target',
                 ];
                 return (
                   <div
@@ -460,13 +395,6 @@ export function Timeline({
                     style={style}
                     data-activity-id={a.id}
                   >
-                    <button
-                      type="button"
-                      className="plan-link plan-link-in"
-                      aria-label={t.plan.linkIn(a.name)}
-                      aria-pressed={linking?.id === a.id && linking.side === 'in'}
-                      {...linkHandlers(a, 'in')}
-                    />
                     <button
                       type="button"
                       className="plan-block"
@@ -478,32 +406,27 @@ export function Timeline({
                       title={`${a.name}: ${formatDay(a.start)} – ${formatDay(end)}`}
                       onClick={() => choose(a.id)}
                       onKeyDown={(e) => onBlockKey(e, a)}
-                      {...dragHandlers(a, 'move')}
+                      {...dragHandlers(a, null)}
                     >
                       {nameMode === 'on' && <span className="plan-block-name">{a.name}</span>}
                     </button>
-                    {/* Drag grips: mouse and touch only. The keyboard uses the block itself
-                        (arrow keys) and the edit bar, so they are not tab stops. */}
+                    {/* The two ends: dragged along the row they move the activity or change
+                        its duration, dropped on another block they link the two. Mouse and
+                        touch only: the keyboard uses the block itself (arrow keys) and the
+                        edit bar, so they are not tab stops. */}
                     <button
                       type="button"
                       tabIndex={-1}
                       className="plan-handle plan-handle-start"
                       aria-label={t.plan.moveHandle(a.name)}
-                      {...dragHandlers(a, 'move')}
+                      {...dragHandlers(a, 'start')}
                     />
                     <button
                       type="button"
                       tabIndex={-1}
                       className="plan-handle plan-handle-end"
                       aria-label={t.plan.endHandle(a.name)}
-                      {...dragHandlers(a, 'resize')}
-                    />
-                    <button
-                      type="button"
-                      className="plan-link plan-link-out"
-                      aria-label={t.plan.linkOut(a.name)}
-                      aria-pressed={linking?.id === a.id && linking.side === 'out'}
-                      {...linkHandlers(a, 'out')}
+                      {...dragHandlers(a, 'end')}
                     />
                     {nameMode === 'after' && <span className="plan-after-name">{a.name}</span>}
                   </div>
@@ -515,7 +438,11 @@ export function Timeline({
       </div>
       {/* Below the chart, so that it cannot move the blocks while one is being linked. */}
       <p className="hint plan-linking" role="status">
-        {linking ? t.plan.linking(nameOf(linking.id)) : ''}
+        {drag?.linkTo
+          ? drag.grip === 'end'
+            ? t.plan.linking(nameOf(drag.id), nameOf(drag.linkTo))
+            : t.plan.linking(nameOf(drag.linkTo), nameOf(drag.id))
+          : ''}
       </p>
     </>
   );
