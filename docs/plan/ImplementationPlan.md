@@ -243,3 +243,19 @@ Manage lists, a module switch that fits the sidebar, and tidier margins.
 - **Module switch**: three entries needed 267 px in a 223 px slot, which made the sidebar
   scroll sideways when something in it got focus. The entries are now more compact and may
   shrink (`min-width: 0`), so the switch is exactly as wide as the other sidebar controls.
+
+## Update 2 – review of PR 17
+
+Nine review comments; each fix has unit tests (named below), two also a browser test.
+
+| # | Finding | Fix | Tests |
+| - | ------- | --- | ----- |
+| 1 | A rename rescheduled the plan (moving other activities, with no undo point) | `updateActivity` only calls `reschedule` when the start or the duration changed | `plans.test.ts` "renaming an activity moves nothing"; integration "changes made offline on two devices merge" |
+| 2 | Undo replayed a snapshot of the whole plan and could overwrite newer edits, also synced ones | The undo point is a diff (`lib/planUndo.ts`: per activity and field, before and after). `revertActivities` restores a field only while it still has the "after" value | `planUndo.test.ts`; `plans.test.ts` "leaves alone what was changed again since", "does not put back a field…"; `plan-changes.test.ts` |
+| 3 | Overlapping changes saved the wrong undo point | `services/planChanges.ts` runs changes through `lib/serial.ts`, one at a time. Keyboard moves are worked out from the stored activity (`updateActivity` accepts a function), so repeats add up | `serial.test.ts`; `plan-changes.test.ts` "two changes started at once"; `plans.test.ts` "quick repeats add up"; browser test |
+| 4 | Link limit unchecked; dead ids filled `dependsOn` | `linkActivities` drops ids of deleted or unknown activities when the list is full, and refuses a really full list with the new error `limit` (own message). Ids are **not** removed when an activity is deleted: Undo of the delete must bring its links back (FR-131) | `plans.test.ts` "dead ids do not use up the link limit" |
+| 5 | Shift + ArrowRight had no upper limit | `nudge` in `lib/timeline.ts` clamps to 1 – `ACTIVITY_DAYS_MAX` | `timeline.test.ts` "nudge" |
+| 6 | The timeline could stay stuck in a drag | `onLostPointerCapture` (and pointercancel) abandon the drag | browser test "a drag whose pointer capture is lost" |
+| 7 | Rename, delete and add had no error handling | All three go through `planChanges.run`, which turns a failure into a message | `plan-changes.test.ts` "turns failures into an error to show" |
+| 8 | A stored link that `liveLinks` ignores could not be re-added | "Already linked" goes by `liveLinks`; such a request is refused as a loop instead of silently doing nothing. `unlinkActivities` also removes the plan's ignored links (`ignoredLinks`), so removing an arrow cannot make a hidden one appear. The "Starts after" list uses `linkCandidates` | `plan.test.ts` (shared) "linkCandidates", "ignoredLinks"; `plans.test.ts` "a stored link that does not count" |
+| 9 | Performance while dragging | `liveLinks` is computed once per saved state (`useMemo`) and passed to `schedulePlan` / `brokenLinks` / `earliestStart`; `linkCandidates` walks the links once; weekends are one CSS background (`weekShift`); the day header is a memoised component | `plan.test.ts` (shared) "links computed once"; `timeline.test.ts` "weekShift" |

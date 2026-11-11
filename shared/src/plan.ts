@@ -188,9 +188,7 @@ export function earliestStart(
   links: readonly Link[] = liveLinks(activities),
 ): string | null {
   const free = freeAfter(activities);
-  const ends = links
-    .filter((l) => l.to === id)
-    .map((l) => free.get(l.from)!);
+  const ends = links.filter((l) => l.to === id).map((l) => free.get(l.from)!);
   return ends.length === 0 ? null : dayOf(Math.max(...ends));
 }
 
