@@ -157,7 +157,7 @@ and makes tasks richer:
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| FR-74 | Whether the app is **online** is decided by the app, not by the browser's `navigator.onLine` flag (which can say "offline" while everything works, and whose `online` event may never come). The app always tries to sync; a request that works, or an answer to a **connection check every 3 seconds** (`GET /api/health`, 2 s time limit), means online; no answer means offline. The browser's `offline` event still shows Offline at once, and a check runs immediately to correct a false alarm. | Must |
+| FR-74 | Whether the app is **online** is decided by the app, not by the browser's `navigator.onLine` flag (which can say "offline" while everything works, and whose `online` event may never come). The app always tries to sync; a request that works, or an answer to a **connection check every 5 seconds** (`GET /api/health`, 2 s time limit), means online; no answer means offline. The browser's `offline` event still shows Offline at once, and a check runs immediately to correct a false alarm. | Must |
 | FR-75 | Everything that needs a connection (the Offline badge, attachments, change password, public lists and their editing, the admin screen) follows this state, so a wrong browser flag no longer disables features. The first check that gets an answer after an outage starts a sync at once. | Must |
 | FR-76 | In the admin diagnostics the browser's flag ("Browser says"), the app's finding ("App found") and the last check (result, time, how long ago) are shown side by side; the **Close log** button stays visible while the log is scrolled. | Must |
 
