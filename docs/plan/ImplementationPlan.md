@@ -13,13 +13,13 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 
 | Step | Content                                                                                             | Status |
 | ---- | --------------------------------------------------------------------------------------------------- | ------ |
-| 1    | Shared: days, `plan` and `activity` entities (schemas, operations, merge defaults), scheduling rules | ☐      |
-| 2    | Server: migration 007, rows, push / pull of plans and activities, pull for older apps               | ☐      |
-| 3    | Client data: Dexie version 6, repo operations with the automatic shift, queries, pulled changes     | ☐      |
-| 4    | Recovery: plans and activities in the snapshot and the restore                                      | ☐      |
-| 5    | Client lib: timeline geometry (range, day ↔ pixel, arrow paths), name position setting, module      | ☐      |
-| 6    | UI: module switch, sidebar, plan page, timeline, drag, links, edit bar, texts, styles               | ☐      |
-| 7    | Browser (e2e) tests, README, decisions                                                              | ☐      |
+| 1    | Shared: days, `plan` and `activity` entities (schemas, operations, merge defaults), scheduling rules | ☑      |
+| 2    | Server: migration 007, rows, push / pull of plans and activities, pull for older apps               | ☑      |
+| 3    | Client data: Dexie version 6, repo operations with the automatic shift, queries, pulled changes     | ☑      |
+| 4    | Recovery: plans and activities in the snapshot and the restore                                      | ☑      |
+| 5    | Client lib: timeline geometry (range, day ↔ pixel, arrow paths), name position setting, module      | ☑      |
+| 6    | UI: module switch, sidebar, plan page, timeline, drag, links, edit bar, texts, styles               | ☑      |
+| 7    | Browser (e2e) tests, README, decisions                                                              | ☑      |
 
 ---
 
@@ -183,4 +183,28 @@ the module; `docs/v1/Decisions.md` gets a pointer to this feature's decisions.
 
 ## Changed on the way
 
-_(filled in during implementation)_
+1. **Earliest start is checked before the change, not repaired after it.** `updateActivity`
+   first limits a new start to the first day the predecessors allow (`earliestStart`) and then
+   saves, so dragging a successor too early queues one change instead of two (the wrong start
+   and its repair). `reschedule` still runs afterwards for the activities behind it.
+2. **The preview of a drag shows the push.** While a block is dragged, `schedulePlan` runs on
+   the previewed plan, so the activities that would be pushed already move with it. The grid's
+   range follows the saved days only, so it cannot shift under the pointer; when days are
+   added on the left after a drop, the scroll position is corrected by the same amount.
+3. **The linking hint sits below the chart.** A first version showed it above; the line that
+   appeared moved the chart down under the pointer in the middle of a link drag, so the drop
+   hit the wrong row (found by the browser test).
+4. **A loop is reported in a message line, not in the Undo toast** (the toast always carries
+   an Undo button, and there is nothing to undo).
+5. **Grips are not tab stops.** The two drag grips are buttons for mouse and touch only
+   (`tabIndex = -1`); the keyboard moves and resizes with the arrow keys on the block (FR-132)
+   or uses the edit bar. Link points and arrows are tab stops.
+6. **Phones:** a day stays 36 px wide, so grips and link points are 44 px high but narrower
+   than 44 px. This exception to `UI_GUIDELINES.md` is noted next to the styles; the edit bar
+   has full-size controls for the same changes. With three modules the top bar's switch shows
+   names without icons on a phone.
+7. **Recovery counts.** `restoreSnapshot` and the recovery offer also count plans; the popup
+   only names them when there are some (as for notes).
+8. **Integration tests were added** (`integration/test/plans.integration.test.ts`): offline
+   plan to a second device, a merge of two devices that breaks a link and its repair with the
+   next change (decision P7), and the "old app skipped plans" case of FR-143.

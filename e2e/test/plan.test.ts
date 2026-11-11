@@ -142,7 +142,7 @@ describe('the Plan module and plans (FR-119 – FR-122)', () => {
     const { page } = await withPlan('rename');
     await addActivity(page, 'Design');
     await page.getByRole('button', { name: 'Rename' }).click();
-    const name = page.getByLabel('Plan name');
+    const name = page.getByLabel('Plan name', { exact: true });
     await name.fill('Launch 2');
     await name.press('Enter');
     await heading(page, 'Launch 2').waitFor();
@@ -249,7 +249,6 @@ describe('activities on the timeline (FR-123 – FR-131)', () => {
     await page.keyboard.press('Shift+ArrowRight');
     await waitDays(page, 'Sketch', plus(t0, 6), plus(t0, 7));
 
-    await block(page, 'Sketch').click();
     await bar.getByRole('button', { name: 'Delete activity' }).click();
     await block(page, 'Sketch').waitFor({ state: 'detached' });
     await page.getByRole('button', { name: 'Undo' }).click();

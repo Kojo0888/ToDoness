@@ -8,10 +8,12 @@ const ICONS: Record<ModuleId, string> = {
   tasks: 'M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM8 12l3 3 5-6',
   // A page with lines.
   notes: 'M6 3h9l4 4v14H6zM15 3v4h4M9 11h7M9 15h7',
+  // Three bars of a timeline, each starting later.
+  plan: 'M4 6h8M9 12h8M13 18h7',
 };
 
 /**
- * Tasks | Notes (docs/notes/PRD.md FR-83). Shown at the top of the sidebar on a computer
+ * Tasks | Notes | Plan (docs/notes/PRD.md FR-83, docs/plan/PRD.md FR-119). Shown at the top of the sidebar on a computer
  * and in the top bar on a phone (CSS picks one). A labelled group of links, so it is one
  * tap away and works with the keyboard; more modules only add entries to `MODULES`.
  */

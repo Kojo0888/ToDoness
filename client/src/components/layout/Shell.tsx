@@ -11,6 +11,8 @@ import { DragAndDrop } from '../common/DragAndDrop';
 import { ListPage } from '../lists/ListPage';
 import { NotesPage } from '../notes/NotesPage';
 import { PublicNotesPage } from '../notes/PublicNotesPage';
+import { PlanPage } from '../plan/PlanPage';
+import { PlansHome } from '../plan/PlansHome';
 import { PublicListPage } from '../public/PublicListPage';
 import { Reminders } from '../account/Reminders';
 import { RecoveryDialog } from '../account/RecoveryDialog';
@@ -102,6 +104,12 @@ export function Shell({ user }: { user: StoredUser }) {
               </Route>
               <Route path="/notes">
                 <NotesPage />
+              </Route>
+              <Route path="/plan/:planId">
+                {(p) => <PlanPage key={p.planId} planId={p.planId} />}
+              </Route>
+              <Route path="/plans">
+                <PlansHome />
               </Route>
               <Route path="/tasks">
                 <Home />

@@ -5,6 +5,7 @@ import {
   normalizeRemindBefore,
   pushEnvelopeSchema,
   toLegacyRemindBefore,
+  type Entity,
   type PullResponse,
 } from '@todoness/shared';
 import { requireAuth } from '../auth/middleware';
@@ -46,6 +47,11 @@ export function syncRoutes({ db, now }: { db: Database.Database; now: () => numb
     // and reject the whole answer otherwise, so they only get the earliest reminder.
     // The current app asks for lists (`reminders=list`). docs/ui-refresh, FR-115.
     const remindersAsList = c.req.query('reminders') === 'list';
+    // Apps from before the Plan module refuse an answer with an entity they do not know, so
+    // plans and activities are only sent to apps that ask for them (`plans=1`). The cursor
+    // still moves past them; such an app reads everything again once it is updated
+    // (client/src/data/db.ts, version 6). docs/plan/PRD.md FR-143.
+    const withPlans = c.req.query('plans') === '1';
 
     const rows = db
       .prepare(
@@ -57,7 +63,7 @@ export function syncRoutes({ db, now }: { db: Database.Database; now: () => numb
       )
       .all(c.get('user').id, since, limit + 1) as {
       server_seq: number;
-      entity: 'todo' | 'list' | 'note';
+      entity: Entity;
       entity_id: string;
       op_type: 'create' | 'update' | 'delete' | 'restore';
       patch: string;
@@ -67,14 +73,16 @@ export function syncRoutes({ db, now }: { db: Database.Database; now: () => numb
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
     const body = {
-      changes: page.map((r) => ({
-        serverSeq: r.server_seq,
-        entity: r.entity,
-        entityId: r.entity_id,
-        type: r.op_type,
-        patch: remindersAsList ? JSON.parse(r.patch) : legacyPatch(r.entity, JSON.parse(r.patch)),
-        hlc: r.hlc,
-      })),
+      changes: page
+        .filter((r) => withPlans || (r.entity !== 'plan' && r.entity !== 'activity'))
+        .map((r) => ({
+          serverSeq: r.server_seq,
+          entity: r.entity,
+          entityId: r.entity_id,
+          type: r.op_type,
+          patch: remindersAsList ? JSON.parse(r.patch) : legacyPatch(r.entity, JSON.parse(r.patch)),
+          hlc: r.hlc,
+        })),
       nextSeq: page.at(-1)?.server_seq ?? since,
       hasMore,
     } as PullResponse;

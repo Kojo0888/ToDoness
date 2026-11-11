@@ -131,7 +131,7 @@ describe('activities – repo', () => {
     await s.repo.restoreActivity(a.id);
     await s.repo.restoreActivity(a.id);
     expect((await s.acts()).map((x) => x.name)).toEqual(['Design']);
-    const ops = await expectValidOutbox(s.db);
+    const ops = (await expectValidOutbox(s.db)).sort((x, y) => (x.hlc < y.hlc ? -1 : 1));
     expect(ops.filter((o) => o.entity === 'activity').map((o) => o.type)).toEqual([
       'create',
       'delete',

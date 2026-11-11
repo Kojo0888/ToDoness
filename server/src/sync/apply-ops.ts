@@ -8,16 +8,36 @@ import type Database from 'better-sqlite3';
 import {
   applyOp,
   syncOpSchema,
+  type Activity,
   type List,
   type Note,
+  type Plan,
   type PushResponse,
   type SyncOp,
   type Todo,
 } from '@todoness/shared';
-import { getList, getNote, getTodo, listOwner, saveList, saveNote, saveTodo } from './rows';
+import {
+  getActivity,
+  getList,
+  getNote,
+  getPlan,
+  getTodo,
+  listOwner,
+  planOwner,
+  saveActivity,
+  saveList,
+  saveNote,
+  savePlan,
+  saveTodo,
+} from './rows';
 
 export type RejectReason =
-  'invalid_operation' | 'not_found' | 'list_not_found' | 'inbox_protected' | 'forbidden';
+  | 'invalid_operation'
+  | 'not_found'
+  | 'list_not_found'
+  | 'plan_not_found'
+  | 'inbox_protected'
+  | 'forbidden';
 
 /**
  * Editing somebody else's public data: the rows stay owned by the owner (`userId`), but the
@@ -128,6 +148,58 @@ export function applyPush(
     return { ok: true };
   }
 
+  function applyPlan(op: Extract<SyncOp, { entity: 'plan' }>): Outcome {
+    const existing = getPlan(db, op.entityId);
+    if (existing && existing.userId !== userId) return { ok: false, reason: 'not_found' };
+
+    const r = applyOp<Plan>(existing?.row, op);
+    if (!r.ok)
+      return { ok: false, reason: r.reason === 'not_found' ? 'not_found' : 'invalid_operation' };
+    if (r.changed) {
+      savePlan(db, userId, r.row);
+      writeLog(op, r.accepted);
+    }
+    return { ok: true };
+  }
+
+  /**
+   * `dependsOn` is not checked against existing rows: the activities it names may arrive in
+   * a later push, and readers ignore what they cannot use (shared/src/plan.ts, `liveLinks`).
+   */
+  function applyActivity(op: Extract<SyncOp, { entity: 'activity' }>): Outcome {
+    const existing = getActivity(db, op.entityId);
+    if (existing && existing.userId !== userId) return { ok: false, reason: 'not_found' };
+
+    const targetPlan = 'planId' in op.patch ? op.patch.planId : undefined;
+    if (targetPlan !== undefined && planOwner(db, targetPlan) !== userId) {
+      return { ok: false, reason: 'plan_not_found' };
+    }
+
+    const r = applyOp<Activity>(existing?.row, op);
+    if (!r.ok)
+      return { ok: false, reason: r.reason === 'not_found' ? 'not_found' : 'invalid_operation' };
+    if (r.changed) {
+      saveActivity(db, userId, r.row);
+      writeLog(op, r.accepted);
+    }
+    return { ok: true };
+  }
+
+  function apply(op: SyncOp): Outcome {
+    switch (op.entity) {
+      case 'todo':
+        return applyTodo(op);
+      case 'list':
+        return applyList(op);
+      case 'note':
+        return applyNote(op);
+      case 'plan':
+        return applyPlan(op);
+      case 'activity':
+        return applyActivity(op);
+    }
+  }
+
   /** May this operation be sent through the restricted (public) push at all? */
   function allowedInScope(op: SyncOp): boolean {
     if (!scope) return true;
@@ -163,8 +235,7 @@ export function applyPush(
         continue;
       }
 
-      const outcome =
-        op.entity === 'todo' ? applyTodo(op) : op.entity === 'list' ? applyList(op) : applyNote(op);
+      const outcome = apply(op);
       if (outcome.ok) {
         accepted.push(op.opId);
       } else {

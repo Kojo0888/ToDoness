@@ -63,11 +63,15 @@ export function RecoveryDialog() {
         <>
           <h2 id="recovery-title">{t.recovery.title}</h2>
           <p>
-            {offer.accountTodos === 0 && offer.accountLists === 0 && offer.accountNotes === 0
+            {offer.accountTodos === 0 &&
+            offer.accountLists === 0 &&
+            offer.accountNotes === 0 &&
+            offer.accountPlans === 0
               ? t.recovery.emptyAccount(offer.fromEmail, offer)
               : t.recovery.filledAccount(offer.fromEmail, offer, {
                   todos: offer.accountTodos,
                   notes: offer.accountNotes,
+                  plans: offer.accountPlans,
                 })}
           </p>
           <p>

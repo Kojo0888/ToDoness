@@ -10,14 +10,22 @@
 import { generateKeyBetween } from 'fractional-indexing';
 import Dexie from 'dexie';
 import {
+  addDays,
   applyOp,
+  dayNumber,
+  earliestStart,
+  localDay,
   newId,
   normalizeRemindBefore,
+  schedulePlan,
   syncOpSchema,
+  wouldLoop,
+  type Activity,
   type Entity,
   type List,
   type Note,
   type OpType,
+  type Plan,
   type Todo,
   type TodoPatch,
 } from '@todoness/shared';
@@ -26,7 +34,10 @@ import type { TodonessDB } from './db';
 import { keyForPosition } from './order';
 import type { RecoverySnapshot, RestoreMode } from './recovery';
 
-export type RepoErrorCode = 'invalid' | 'not_found' | 'inbox_protected';
+export type RepoErrorCode = 'invalid' | 'not_found' | 'inbox_protected' | 'loop';
+
+/** How long a new activity lasts (docs/plan/PRD.md FR-124). */
+export const NEW_ACTIVITY_DAYS = 3;
 
 export class RepoError extends Error {
   override name = 'RepoError';
@@ -82,6 +93,35 @@ export interface Repo {
    */
   reorderNote(id: string, beforeId: string | null): Promise<Note>;
   restoreNote(id: string): Promise<Note>;
+  /** A new plan with this name, after the existing ones. */
+  createPlan(name: string): Promise<Plan>;
+  renamePlan(id: string, name: string): Promise<Plan>;
+  /** Deletes a plan and its activities. */
+  deletePlan(id: string): Promise<Plan>;
+  /**
+   * A new activity in the bottom row: it starts the day after the latest end in the plan
+   * (today in an empty plan) and lasts `NEW_ACTIVITY_DAYS`.
+   */
+  createActivity(planId: string, name: string): Promise<Activity>;
+  /**
+   * Changes the name, the start day or the duration. A start before the end of a
+   * predecessor becomes the first allowed day, and activities that depend on this one are
+   * pushed later where needed, in the same transaction (docs/plan/PRD.md FR-136).
+   */
+  updateActivity(
+    id: string,
+    patch: { name?: string; start?: string; days?: number },
+  ): Promise<Activity>;
+  deleteActivity(id: string): Promise<Activity>;
+  restoreActivity(id: string): Promise<Activity>;
+  /**
+   * Makes `toId` depend on `fromId` (it starts after `fromId` has ended) and pushes it later
+   * where needed. Returns `toId`'s activity. Errors: `loop` (the link would close a loop, or
+   * both are the same activity), `invalid` (different plans).
+   */
+  linkActivities(fromId: string, toId: string): Promise<Activity>;
+  /** Removes that dependency. Nothing moves. */
+  unlinkActivities(fromId: string, toId: string): Promise<Activity>;
   /**
    * Puts the data of another account (kept aside at sign-up) into this one, as normal queued
    * changes. `append` keeps what is here; `overwrite` deletes the live tasks, lists (never
@@ -91,21 +131,30 @@ export interface Repo {
   restoreSnapshot(
     snapshot: RecoverySnapshot,
     mode: RestoreMode,
-  ): Promise<{ lists: number; todos: number; notes: number }>;
+  ): Promise<{ lists: number; todos: number; notes: number; plans: number }>;
 }
 
 export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): Repo {
   const now = opts.now ?? Date.now;
 
   const inTx = <T>(fn: () => Promise<T>) =>
-    db.transaction('rw', [db.todos, db.lists, db.notes, db.outbox, db.meta], fn);
+    db.transaction(
+      'rw',
+      [db.todos, db.lists, db.notes, db.plans, db.activities, db.outbox, db.meta],
+      fn,
+    );
 
-  type AnyRow = Todo | List | Note;
+  type AnyRow = Todo | List | Note | Plan | Activity;
   const tableOf = <T extends AnyRow>(entity: Entity) =>
-    ({ todo: db.todos, list: db.lists, note: db.notes })[entity] as unknown as Dexie.Table<
-      T,
-      string
-    >;
+    (
+      ({
+        todo: db.todos,
+        list: db.lists,
+        note: db.notes,
+        plan: db.plans,
+        activity: db.activities,
+      }) as const
+    )[entity] as unknown as Dexie.Table<T, string>;
 
   const nextHlc = () => nextHlcOf(db, now);
 
@@ -157,6 +206,35 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
     const n = await db.notes.get(id);
     if (!n || n.deletedAt !== null) throw new RepoError('not_found', 'Note not found');
     return n;
+  }
+
+  async function livePlan(id: string): Promise<Plan> {
+    const p = await db.plans.get(id);
+    if (!p || p.deletedAt !== null) throw new RepoError('not_found', 'Plan not found');
+    return p;
+  }
+
+  async function liveActivity(id: string): Promise<Activity> {
+    const a = await db.activities.get(id);
+    if (!a || a.deletedAt !== null) throw new RepoError('not_found', 'Activity not found');
+    return a;
+  }
+
+  const rowsOfPlan = (planId: string) =>
+    db.activities
+      .where('[planId+orderKey]')
+      .between([planId, Dexie.minKey], [planId, Dexie.maxKey]);
+
+  /** Activities of a plan that are not deleted, in row order. */
+  async function activitiesOfPlan(planId: string): Promise<Activity[]> {
+    return (await rowsOfPlan(planId).toArray()).filter((a) => a.deletedAt === null);
+  }
+
+  /** Pushes activities later until every dependency of the plan holds again (FR-136). */
+  async function reschedule(planId: string): Promise<void> {
+    for (const [id, start] of schedulePlan(await activitiesOfPlan(planId))) {
+      await commit<Activity>('activity', 'update', id, { start });
+    }
   }
 
   /** Todos of a list that are not deleted, in key order. */
@@ -335,6 +413,115 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         return commit<List>('list', 'update', id, { orderKey: choice.key });
       }),
 
+    createPlan: (name) =>
+      inTx(async () => {
+        const last = await db.plans.orderBy('orderKey').last();
+        return commit<Plan>('plan', 'create', newId(now()), {
+          name,
+          orderKey: generateKeyBetween(last?.orderKey ?? null, null),
+        });
+      }),
+
+    renamePlan: (id, name) =>
+      inTx(async () => {
+        const plan = await livePlan(id);
+        if (plan.name === name.trim()) return plan;
+        return commit<Plan>('plan', 'update', id, { name });
+      }),
+
+    deletePlan: (id) =>
+      inTx(async () => {
+        const plan = await db.plans.get(id);
+        if (!plan) throw new RepoError('not_found', 'Plan not found');
+        if (plan.deletedAt !== null) return plan;
+        for (const a of await activitiesOfPlan(id)) {
+          await commit<Activity>('activity', 'delete', a.id, {});
+        }
+        return commit<Plan>('plan', 'delete', id, {});
+      }),
+
+    createActivity: (planId, name) =>
+      inTx(async () => {
+        await livePlan(planId);
+        const live = await activitiesOfPlan(planId);
+        const free = live.map((a) => dayNumber(a.start) + a.days);
+        const today = localDay(now());
+        const last = await rowsOfPlan(planId).last(); // deleted rows keep their place
+        return commit<Activity>('activity', 'create', newId(now()), {
+          planId,
+          name,
+          start: free.length > 0 ? addDays('1970-01-01', Math.max(...free)) : today,
+          days: NEW_ACTIVITY_DAYS,
+          orderKey: generateKeyBetween(last?.orderKey ?? null, null),
+        });
+      }),
+
+    updateActivity: (id, patch) =>
+      inTx(async () => {
+        const activity = await liveActivity(id);
+        const changes: Record<string, unknown> = {};
+        if (patch.name !== undefined && patch.name.trim() !== activity.name) {
+          changes.name = patch.name;
+        }
+        if (patch.days !== undefined && patch.days !== activity.days) changes.days = patch.days;
+        if (patch.start !== undefined) {
+          // Not before its predecessors have ended (days compare as text).
+          const earliest = earliestStart(await activitiesOfPlan(activity.planId), id);
+          const start = earliest !== null && patch.start < earliest ? earliest : patch.start;
+          if (start !== activity.start) changes.start = start;
+        }
+        if (Object.keys(changes).length === 0) return activity;
+        await commit<Activity>('activity', 'update', id, changes);
+        await reschedule(activity.planId);
+        return liveActivity(id);
+      }),
+
+    deleteActivity: (id) =>
+      inTx(async () => {
+        const activity = await db.activities.get(id);
+        if (!activity) throw new RepoError('not_found', 'Activity not found');
+        if (activity.deletedAt !== null) return activity;
+        return commit<Activity>('activity', 'delete', id, {});
+      }),
+
+    restoreActivity: (id) =>
+      inTx(async () => {
+        const activity = await db.activities.get(id);
+        if (!activity) throw new RepoError('not_found', 'Activity not found');
+        if (activity.deletedAt === null) return activity;
+        await commit<Activity>('activity', 'restore', id, {});
+        await reschedule(activity.planId); // its links count again
+        return liveActivity(id);
+      }),
+
+    linkActivities: (fromId, toId) =>
+      inTx(async () => {
+        if (fromId === toId) throw new RepoError('loop', 'An activity cannot depend on itself');
+        const from = await liveActivity(fromId);
+        const to = await liveActivity(toId);
+        if (from.planId !== to.planId) {
+          throw new RepoError('invalid', 'Activities of different plans cannot be linked');
+        }
+        if (to.dependsOn.includes(fromId)) return to;
+        if (wouldLoop(await activitiesOfPlan(to.planId), fromId, toId)) {
+          throw new RepoError('loop', 'The link would close a loop');
+        }
+        await commit<Activity>('activity', 'update', toId, {
+          dependsOn: [...to.dependsOn, fromId],
+        });
+        await reschedule(to.planId);
+        return liveActivity(toId);
+      }),
+
+    unlinkActivities: (fromId, toId) =>
+      inTx(async () => {
+        const to = await liveActivity(toId);
+        if (!to.dependsOn.includes(fromId)) return to;
+        return commit<Activity>('activity', 'update', toId, {
+          dependsOn: to.dependsOn.filter((id) => id !== fromId),
+        });
+      }),
+
     restoreSnapshot: (snapshot, mode) =>
       inTx(async () => {
         const inbox = (await db.lists.toArray()).find((l) => l.isInbox && l.deletedAt === null);
@@ -349,6 +536,12 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
           }
           for (const n of await db.notes.toArray()) {
             if (n.deletedAt === null) await commit<Note>('note', 'delete', n.id, {});
+          }
+          for (const a of await db.activities.toArray()) {
+            if (a.deletedAt === null) await commit<Activity>('activity', 'delete', a.id, {});
+          }
+          for (const p of await db.plans.toArray()) {
+            if (p.deletedAt === null) await commit<Plan>('plan', 'delete', p.id, {});
           }
         }
 
@@ -392,10 +585,27 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
             isPublic: n.isPublic,
           });
         }
+        const plans = snapshot.plans ?? []; // missing in a copy kept before the Plan module
+        const planIds = new Set(plans.map((p) => p.id));
+        for (const p of plans) {
+          await put<Plan>('plan', p.id, { name: p.name, orderKey: p.orderKey });
+        }
+        for (const a of snapshot.activities ?? []) {
+          if (!planIds.has(a.planId)) continue;
+          await put<Activity>('activity', a.id, {
+            planId: a.planId,
+            name: a.name,
+            start: a.start,
+            days: a.days,
+            dependsOn: a.dependsOn,
+            orderKey: a.orderKey,
+          });
+        }
         return {
           lists: snapshot.lists.length,
           todos: snapshot.todos.length,
           notes: notes.length,
+          plans: plans.length,
         };
       }),
 

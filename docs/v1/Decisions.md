@@ -135,3 +135,10 @@
     overwrite would remove. A new account is empty, so there both choices give the same result;
     the question is asked anyway because another device may have added data meanwhile.
 
+
+## Plan module (added later)
+
+24. **The Plan module has its own decision record:** [`../plan/PRD.md`](../plan/PRD.md) section 6
+    (P1 – P9: start + duration instead of start + end, dependencies as a field of the dependent
+    activity, no automatic repair after a sync, …) and the "Changed on the way" section of
+    [`../plan/ImplementationPlan.md`](../plan/ImplementationPlan.md) (older apps and the pull).

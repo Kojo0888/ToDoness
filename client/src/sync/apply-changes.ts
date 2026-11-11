@@ -2,8 +2,10 @@ import {
   HlcClock,
   applyOp,
   newClientId,
+  type Activity,
   type List,
   type Note,
+  type Plan,
   type PullChange,
   type Todo,
 } from '@todoness/shared';
@@ -24,14 +26,24 @@ export async function applyChanges(
   nextSeq: number,
   now: () => number = Date.now,
 ): Promise<number> {
-  const tables = { todo: db.todos, list: db.lists, note: db.notes };
-  return db.transaction('rw', [db.lists, db.todos, db.notes, db.meta], async () => {
+  type Row = Todo | List | Note | Plan | Activity;
+  const tables = {
+    todo: db.todos,
+    list: db.lists,
+    note: db.notes,
+    plan: db.plans,
+    activity: db.activities,
+  };
+  // Pulled changes are stored as they are: a dependency they break is shown, not repaired
+  // here, or every device would answer a sync with changes of its own (docs/plan, P7).
+  const stores = [db.lists, db.todos, db.notes, db.plans, db.activities, db.meta];
+  return db.transaction('rw', stores, async () => {
     let newest: string | undefined;
 
     for (const ch of changes) {
       const table = tables[ch.entity] as unknown as {
-        get(id: string): Promise<Todo | List | Note | undefined>;
-        put(row: Todo | List | Note): Promise<unknown>;
+        get(id: string): Promise<Row | undefined>;
+        put(row: Row): Promise<unknown>;
       };
       const existing = await table.get(ch.entityId);
       const result = applyOp(existing, {

@@ -6,10 +6,15 @@ connection returns.
 
 ## Features
 
-- Two modules, **Tasks** and **Notes**, with a **Tasks | Notes switch** that is always visible
+- Three modules, **Tasks**, **Notes** and **Plan**, with a **module switch** that is always visible
   (top of the sidebar on a computer, top bar on a phone). The app opens in the module you used
   last on that device.
 - Tasks and lists that keep working **offline**; changes sync automatically.
+- **Plan**: several plans, each a **timeline** (Gantt chart) of activities with a name, a
+  start day and an end day. Drag the beginning of a block to move it and its end to change the
+  duration; link the end of one block to the start of another to make a **dependency** (drawn
+  as an arrow) that pushes dependent activities later automatically. Names can be shown on the
+  block, after it, or in a column. Plans work offline and sync like tasks.
 - **Notes**: simple text boxes, newest on top, saved automatically while you type, **reordered
   by drag and drop** and **searchable** (every word, ignoring case and accents). They work
   offline and sync like tasks, can be made **public** (every user can read and edit the text;
@@ -39,6 +44,7 @@ connection returns.
 
 | Folder                       | Contents                                                                                                                                                                                  |
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`docs/plan/`](docs/plan/)   | The Plan module (timeline, dependencies): [PRD with decisions](docs/plan/PRD.md), [implementation plan with design and status](docs/plan/ImplementationPlan.md)                           |
 | [`docs/notes/`](docs/notes/) | The Notes module and module switch: [PRD with decisions](docs/notes/PRD.md), [implementation plan with design and status](docs/notes/ImplementationPlan.md)                               |
 | [`docs/v1/`](docs/v1/)       | Version 1: [PRD](docs/v1/PRD.md), [implementation plan with status](docs/v1/ImplementationPlan.md), [tech stack changes](docs/v1/TechStack.md), [decisions and why](docs/v1/Decisions.md) |
 | [`docs/mvp/`](docs/mvp/)     | The MVP: [PRD](docs/mvp/PRD.md), [tech stack](docs/mvp/TechStack.md), [database model](docs/mvp/DBModel.md), [build plan](docs/mvp/MVPImplementationSteps.md)                             |
@@ -74,11 +80,11 @@ server/src/
 client/src/
   main.tsx     entry point
   app/         App root, the long-lived service container, React hooks, UI strings
-  components/  React components by area: common, layout, lists, notes, public, account
+  components/  React components by area: common, layout, lists, notes, plan, public, account
   services/    browser-side logic without UI: session, push, reminders, public lists, …
   data/        IndexedDB (Dexie) database, repository and queries
   sync/        sync engine, runner, connectivity and diagnostics
-  lib/         small pure helpers (dates, time field, drag-and-drop, the module list)
+  lib/         small pure helpers (dates, time field, drag-and-drop, the module list, timeline geometry)
   sw/          the service worker and its tested logic
 integration/   client sync engine against a real in-process server
 e2e/           browser tests against the built app

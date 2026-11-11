@@ -4,12 +4,14 @@ import { useDroppable } from '@dnd-kit/core';
 import { Link, useLocation } from 'wouter';
 import { listDropId } from '../../lib/dnd';
 import { MANAGE_LISTS_PATH } from '../../lib/listManage';
-import { getLists, getNotes } from '../../data/queries';
+import { PLAN_NAME_MAX } from '@todoness/shared';
+import { getLists, getNotes, getPlans } from '../../data/queries';
 import { useModule } from '../../app/hooks';
 import { usePublicLists, usePublicNotes } from '../../app/publicHooks';
 import { db, repo } from '../../app/container';
 import type { StoredUser } from '../../services/session';
 import { t } from '../../app/strings';
+import { planPath } from '../plan/PlansHome';
 import { ModuleSwitch } from './ModuleSwitch';
 import { SyncBadge } from './SyncBadge';
 
@@ -31,6 +33,8 @@ export function Sidebar({ user, open, onNavigate }: Props) {
       <div className="nav-scroll">
         {current === 'notes' ? (
           <NotesNav location={location} onNavigate={onNavigate} />
+        ) : current === 'plan' ? (
+          <PlanNav active={active} onNavigate={onNavigate} />
         ) : (
           <TasksNav active={active} onNavigate={onNavigate} />
         )}
@@ -182,6 +186,63 @@ function NotesNav({ location, onNavigate }: { location: string; onNavigate: () =
           shared.value === null && shared.failed ? t.notes.publicNeedsConnection : undefined,
         )}
       </ul>
+    </>
+  );
+}
+
+/** The Plan module: the user's plans and a new plan, like lists (docs/plan/PRD.md FR-120). */
+function PlanNav({
+  active,
+  onNavigate,
+}: {
+  active: (href: string) => boolean;
+  onNavigate: () => void;
+}) {
+  const [, navigate] = useLocation();
+  const plans = useLiveQuery(() => getPlans(db), [], []);
+  const [name, setName] = useState('');
+
+  async function addPlan(e: FormEvent) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setName('');
+    const plan = await repo.createPlan(trimmed);
+    navigate(planPath(plan.id));
+    onNavigate();
+  }
+
+  return (
+    <>
+      <ul className="nav-lists" aria-label={t.plan.plans}>
+        {plans.map((p) => {
+          const href = planPath(p.id);
+          return (
+            <li key={p.id}>
+              <Link
+                href={href}
+                className={active(href) ? 'active' : ''}
+                aria-current={active(href) ? 'page' : undefined}
+                onClick={onNavigate}
+              >
+                {p.name}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+
+      <form onSubmit={addPlan} className="new-list">
+        <input
+          type="text"
+          aria-label={t.plan.newPlan}
+          placeholder={t.plan.newPlan}
+          value={name}
+          maxLength={PLAN_NAME_MAX}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <button type="submit">{t.plan.addPlan}</button>
+      </form>
     </>
   );
 }

@@ -1,6 +1,6 @@
 /** Read-only queries the screens use (wrapped in live queries). */
 import Dexie from 'dexie';
-import type { List, Note, OutboxOp, Todo } from '@todoness/shared';
+import type { Activity, List, Note, OutboxOp, Plan, Todo } from '@todoness/shared';
 import type { PublicOp, TodonessDB } from './db';
 
 export async function getLists(db: TodonessDB): Promise<List[]> {
@@ -61,4 +61,24 @@ export async function getNotes(db: TodonessDB): Promise<Note[]> {
 export async function getNoteById(db: TodonessDB, id: string): Promise<Note | undefined> {
   const n = await db.notes.get(id);
   return n && n.deletedAt === null ? n : undefined;
+}
+
+/** Live plans, oldest first (a new plan goes to the end, like a new list). */
+export async function getPlans(db: TodonessDB): Promise<Plan[]> {
+  const all = await db.plans.orderBy('orderKey').toArray();
+  return all.filter((p) => p.deletedAt === null);
+}
+
+export async function getPlanById(db: TodonessDB, id: string): Promise<Plan | undefined> {
+  const p = await db.plans.get(id);
+  return p && p.deletedAt === null ? p : undefined;
+}
+
+/** The live activities of a plan, in row order (a new one goes to the bottom). */
+export async function getActivities(db: TodonessDB, planId: string): Promise<Activity[]> {
+  const rows = await db.activities
+    .where('[planId+orderKey]')
+    .between([planId, Dexie.minKey], [planId, Dexie.maxKey])
+    .toArray();
+  return rows.filter((a) => a.deletedAt === null);
 }

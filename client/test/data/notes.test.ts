@@ -151,7 +151,8 @@ describe('local database version 3', () => {
 
     const db = new TodonessDB(name);
     expect(await db.lists.get('l1')).toMatchObject({ name: 'Inbox' });
-    expect(await db.getMeta('lastServerSeq')).toBe(7);
+    // The upgrade runs on to version 6, which forgets the pull cursor (docs/plan, FR-143).
+    expect(await db.getMeta('lastServerSeq')).toBeUndefined();
     expect(await db.notes.count()).toBe(0);
     db.close();
   });

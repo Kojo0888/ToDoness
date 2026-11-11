@@ -20,14 +20,16 @@ export interface RecoveryOffer {
   todos: number;
   lists: number;
   notes: number;
+  plans: number;
   /** What the new account already holds (all 0 = empty), the Inbox not counted. */
   accountTodos: number;
   accountLists: number;
   accountNotes: number;
+  accountPlans: number;
 }
 
 export type AcceptResult =
-  | { ok: true; lists: number; todos: number; notes: number }
+  | { ok: true; lists: number; todos: number; notes: number; plans: number }
   | { ok: false; error: 'no_offer' | 'no_inbox' };
 
 export interface Recovery {
@@ -65,15 +67,18 @@ export function createRecovery(deps: { db: TodonessDB; repo: Repo }): Recovery {
         (l) => l.deletedAt === null && !l.isInbox,
       ).length;
       const accountNotes = (await db.notes.toArray()).filter((n) => n.deletedAt === null).length;
+      const accountPlans = (await db.plans.toArray()).filter((p) => p.deletedAt === null).length;
       if (answers !== seen) return;
       set({
         fromEmail: snapshot.fromEmail,
         todos: snapshot.todos.length,
         lists: snapshot.lists.length,
         notes: snapshot.notes?.length ?? 0,
+        plans: snapshot.plans?.length ?? 0,
         accountTodos,
         accountLists,
         accountNotes,
+        accountPlans,
       });
     },
 
@@ -91,7 +96,7 @@ export function createRecovery(deps: { db: TodonessDB; repo: Repo }): Recovery {
         set(undefined);
         return { ok: false, error: 'no_offer' };
       }
-      let counts: { lists: number; todos: number; notes: number };
+      let counts: { lists: number; todos: number; notes: number; plans: number };
       try {
         counts = await repo.restoreSnapshot(snapshot, mode);
       } catch (err) {

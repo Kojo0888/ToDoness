@@ -39,9 +39,11 @@ describe('recovery service', () => {
       todos: 2,
       lists: 1,
       notes: 0,
+      plans: 0,
       accountTodos: 0,
       accountLists: 0,
       accountNotes: 0,
+      accountPlans: 0,
     });
   });
 
