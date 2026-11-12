@@ -348,3 +348,36 @@ pull flag), so it follows the full order: PRD → this plan → tests → implem
    place share a user with a neighbouring test.
 5. **Scrolling keeps its place across scales:** the day at the left edge of the view stays
    at the left edge when the scale changes (and, as before, when days are added on the left).
+
+## Update 4 – counts, overdue blocks, hiding done activities
+
+Requirements: [PRD.md section 9](./PRD.md#9-update-4--counts-overdue-blocks-hiding-done-activities)
+(FR-160 – FR-162). No data model, sync or API change; several client modules, so it follows
+PRD → plan → tests → code.
+
+| Step | Content | Status |
+| ---- | ------- | ------ |
+| 20 | Client data: `countActivitiesByPlan(db)` in `data/queries.ts` | ☑ |
+| 21 | Client lib: `isOverdue(span, done, today)` in `lib/timeline.ts`; `lib/planHideDone.ts` device setting (`todoness.plan.hideDone`) | ☑ |
+| 22 | UI: count badge in `PlanNav` (`Sidebar.tsx`); overdue class and name in `Timeline.tsx`; switch in `PlanOptions.tsx`, `hideDone` from `PlanPage.tsx` to `Timeline`; texts and styles | ☑ |
+| 23 | Tests: unit tests for the three helpers, browser test for PRD 9.3 | ☑ |
+
+### Design
+
+- **Count** – one pass over `db.activities`, live rows only, keyed by `planId`, like
+  `countOpenTodosByList`.
+- **Overdue** – `isOverdue(span, done, today)`: `!done && endDay(start, days) < today`. The
+  timeline reads `today` once (as for today's line) and adds `.is-overdue` to the bar.
+- **Hide done** – `Timeline` gets `hideDone`. What would be drawn (`shown`, including the
+  drag preview and what it pushes) is worked out from all activities as before, then done
+  ones are filtered out for rows, blocks and arrows. The grid range follows the visible
+  activities.
+
+### Tests (written before the code)
+
+| Where | What |
+| ----- | ---- |
+| `client/test/data/plans.test.ts` | `countActivitiesByPlan` counts live activities per plan, done included, deleted not |
+| `client/test/lib/timeline.test.ts` | `isOverdue`: ended yesterday, ends today, done |
+| `client/test/lib/planHideDone.test.ts` | the setting: default off, remembered, blocked storage |
+| `e2e/test/plan.test.ts` | PRD 9.3 points 1 – 3 (in the options test, to stay under the sign-up limit) |

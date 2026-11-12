@@ -592,6 +592,44 @@ describe('options and scale (FR-156, FR-157)', () => {
     await page.reload();
     await block(page, 'Design').waitFor();
     await expect(scaleChip(page, 'Years').getAttribute('aria-pressed')).resolves.toBe('true');
+
+    // Update 4 (PRD 9.3) shares this user: sign-ups are limited per hour.
+    await scaleChip(page, 'Days').click();
+    // 1. The sidebar counts the activities of the plan (FR-160).
+    const count = page.getByRole('list', { name: 'Plans' }).locator('.nav-count');
+    await expect(count.textContent()).resolves.toBe('1');
+    await addActivity(page, 'Old');
+    await page.getByRole('list', { name: 'Plans' }).locator('.nav-count', { hasText: '2' }).waitFor();
+
+    // 2. An open activity that ended before today is red (FR-161).
+    expect(await page.locator('.plan-bar.is-overdue').count()).toBe(0);
+    await detailsLink(page, 'Old').click();
+    const view = page.getByRole('region', { name: 'Activity details' });
+    await view.getByLabel('Start', { exact: true }).fill(plus(t0, -10));
+    await page.getByRole('link', { name: 'Back to Launch' }).click();
+    await waitDays(page, 'Old', plus(t0, -10), plus(t0, -8));
+    await page.locator('.plan-bar.is-overdue').waitFor();
+    await expect(block(page, 'Old').getAttribute('aria-label')).resolves.toMatch(/, overdue$/);
+    expect(await page.locator('.plan-bar.is-overdue').count()).toBe(1);
+    // Done, it is no longer overdue.
+    await block(page, 'Old').dblclick();
+    await page.locator('.plan-bar.is-done').waitFor();
+    expect(await page.locator('.plan-bar.is-overdue').count()).toBe(0);
+
+    // 3. The switch in the options hides done activities; it survives a reload (FR-162).
+    const hide = page.getByRole('switch', { name: 'Hide done activities' });
+    await optionsButton(page).click();
+    await hide.click();
+    await block(page, 'Old').waitFor({ state: 'detached' });
+    expect(await page.locator('.plan-side-row').count()).toBe(1);
+    await block(page, 'Design').waitFor();
+    await page.reload();
+    await block(page, 'Design').waitFor();
+    expect(await block(page, 'Old').count()).toBe(0);
+    await optionsButton(page).click();
+    await expect(hide.isChecked()).resolves.toBe(true);
+    await hide.click();
+    await block(page, 'Old').waitFor();
   });
 });
 

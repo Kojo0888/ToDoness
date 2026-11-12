@@ -235,3 +235,33 @@ Requirements in this section replace the ones they name; everything else stays.
 6. Days / Weeks / Months / Years change the column width and header; the choice survives a reload; dragging works on the Weeks scale.
 7. Undo last change is below the timeline.
 8. An app without the `done` flag gets activity changes without `done`.
+
+## 9. Update 4 – counts, overdue blocks, hiding done activities
+
+Requested by the product owner (three points, quoted in short):
+
+1. The list of plans shows a **number** (the sum of its activities), like the task and note lists.
+2. A time block whose **end has passed** is shown in **red**.
+3. A control **hides all done activities** from the timeline.
+
+### 9.1 Requirements
+
+| ID     | Requirement | Priority |
+| ------ | ----------- | -------- |
+| FR-160 | **Count in the plan list.** Every plan in the sidebar shows the number of its live activities (done ones included) at the right, with the same `.nav-count` badge as the task and note lists, and a tooltip "‹n› activities". **[Decision P17]** | Must |
+| FR-161 | **Overdue blocks.** An activity that is **not done** and whose **last day is before today** is drawn in the danger (red) colour, on every scale and in every name mode. Its accessible name ends with ", overdue". A done activity keeps the done look (FR-155), however old. **[Decision P18]** | Must |
+| FR-162 | **Hide done.** The options panel (FR-156) holds a switch **Hide done activities**. When it is on, done activities have no row, no block and no arrows on the timeline; the rows close up. Moving a visible activity still pushes hidden ones that wait for it (FR-136). The choice is a **device setting**, first off. When every activity of a plan is hidden, the plan says so. **[Decision P19]** | Must |
+
+### 9.2 Decisions
+
+| ID  | Decision |
+| --- | -------- |
+| P17 | **All activities are counted**, not only the open ones: the request asks for the sum of the activities, and a plan's done activities are still part of it (the task list counts open tasks because done ones are hidden there by default). |
+| P18 | **"The end has passed" is the end of the last day.** An activity ending today is not overdue yet. Done activities are finished, so they are not overdue. Red uses `--danger`, so it works in both themes. |
+| P19 | **A switch in the options panel**, not a chip above the timeline: it is an on / off setting (UI guidelines: a switch) used less often than the scale. Dependencies of hidden activities are still kept and still scheduled; only their arrows are not drawn, since one end would point at nothing. |
+
+### 9.3 Acceptance (tested)
+
+1. The sidebar shows the number of activities of each plan and follows adds and deletes.
+2. An open activity that ended before today is red with ", overdue" in its name; marked done, it is not.
+3. The switch hides done activities and their rows; the choice survives a reload; turned off, they are back.
