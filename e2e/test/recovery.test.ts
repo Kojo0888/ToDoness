@@ -6,6 +6,7 @@ import type { Browser, Page } from 'playwright';
 import { afterEach, beforeAll, afterAll, describe, expect, it } from 'vitest';
 import {
   addTask,
+  badge,
   freePort,
   launch,
   logIn,
@@ -115,6 +116,10 @@ describe('recovery after the server lost its database (FR-77 – FR-82)', () => 
 
     await page.keyboard.press('Escape');
     await dialog(page).waitFor(); // still there
+
+    // The sync status says so, in its own colour (FR-172).
+    await expect(badge(page).textContent()).resolves.toBe('Data comparison');
+    await expect(badge(page).getAttribute('class')).resolves.toContain('sync-compare');
   });
 
   it('survives a reload: the question comes back', async () => {
@@ -131,6 +136,10 @@ describe('recovery after the server lost its database (FR-77 – FR-82)', () => 
     await signUpAgain(page, email);
     await dialog(page).getByRole('button', { name: 'Keep it empty' }).click();
     await dialog(page).waitFor({ state: 'hidden' });
+    await page.waitForFunction(
+      () =>
+        !document.querySelector('[data-testid="sync-status"]')?.textContent?.includes('comparison'),
+    );
 
     expect(await titlesOnPage(page)).toEqual([]);
     await page.reload();
@@ -210,6 +219,7 @@ describe('recovery after the server lost its database (FR-77 – FR-82)', () => 
     );
     await page.keyboard.press('Escape');
     await dialog(page).waitFor(); // still there (FR-165)
+    await expect(badge(page).textContent()).resolves.toBe('Data comparison');
     return { page, phone };
   }
 

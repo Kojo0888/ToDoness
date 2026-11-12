@@ -9,6 +9,8 @@
   --danger: #b3261e;
   --ok: #1d7a3a;
   --warn: #9a5b00;
+  /* "Data comparison" in the sync status (docs/recovery-upload FR-172). */
+  --compare: #7b2fbf;
   --focus: #2851d6;
   color-scheme: light dark;
   font-family:
@@ -35,6 +37,7 @@
     --danger: #ff8a80;
     --ok: #6fd48c;
     --warn: #f0b15a;
+    --compare: #c9a0ff;
     --focus: #8aa8ff;
   }
 }
@@ -50,6 +53,7 @@
   --danger: #ff8a80;
   --ok: #6fd48c;
   --warn: #f0b15a;
+  --compare: #c9a0ff;
   --focus: #8aa8ff;
   color-scheme: dark;
 }
@@ -370,6 +374,16 @@ h3 {
 
 .sync-warn .sync-dot {
   background: var(--warn);
+}
+
+/* The device's data is compared with the server's (docs/recovery-upload FR-172). */
+.sync-compare {
+  color: var(--compare);
+  font-weight: 600;
+}
+
+.sync-compare .sync-dot {
+  background: var(--compare);
 }
 
 .content {
@@ -890,6 +904,10 @@ h2.nav-heading {
 
 .diag-dot-warn {
   background: var(--warn);
+}
+
+.diag-dot-compare {
+  background: var(--compare);
 }
 
 .diag-dot-busy {

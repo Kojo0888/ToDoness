@@ -424,6 +424,8 @@ export const t = {
     saved: 'All changes saved',
     pending: (n: number) => `${n} change${n === 1 ? '' : 's'} pending`,
     problem: 'Sync problem, retrying',
+    /** docs/recovery-upload FR-172. */
+    comparing: 'Data comparison',
   },
 
   settings: {

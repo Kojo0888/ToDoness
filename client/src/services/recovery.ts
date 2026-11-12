@@ -57,6 +57,11 @@ export interface Recovery {
   /** Reads the kept data; call when the app is ready (and again after a change). */
   load(): Promise<void>;
   getOffer(): RecoveryOffer | undefined;
+  /**
+   * Kept data is being compared with the account's, or waits for an answer: the sync status
+   * shows "Data comparison" (docs/recovery-upload FR-172).
+   */
+  isComparing(): boolean;
   subscribe(listener: () => void): () => void;
   accept(mode: RestoreMode): Promise<AcceptResult>;
   decline(): Promise<void>;
@@ -65,12 +70,22 @@ export interface Recovery {
 export function createRecovery(deps: { db: TodonessDB; repo: Repo }): Recovery {
   const { db, repo } = deps;
   let offer: RecoveryOffer | undefined;
+  let comparing = false;
   /** Raised by every answer, so a `load` that started before it cannot bring the offer back. */
   let answers = 0;
   const listeners = new Set<() => void>();
 
+  /** The offer (and with it the end of the comparison when there is none). */
   function set(next: RecoveryOffer | undefined) {
     offer = next;
+    comparing = next !== undefined;
+    for (const l of listeners) l();
+  }
+
+  /** Kept data was found: the comparison starts (FR-172). */
+  function startComparing() {
+    if (comparing) return;
+    comparing = true;
     for (const l of listeners) l();
   }
 
@@ -83,6 +98,8 @@ export function createRecovery(deps: { db: TodonessDB; repo: Repo }): Recovery {
       const seen = answers;
       const snapshot = await read();
       if (!snapshot) return answers === seen ? set(undefined) : undefined;
+      if (answers !== seen) return;
+      startComparing();
       const accountTodos = (await db.todos.toArray()).filter((t) => t.deletedAt === null).length;
       const accountLists = (await db.lists.toArray()).filter(
         (l) => l.deletedAt === null && !l.isInbox,
@@ -115,6 +132,8 @@ export function createRecovery(deps: { db: TodonessDB; repo: Repo }): Recovery {
     },
 
     getOffer: () => offer,
+
+    isComparing: () => comparing,
 
     subscribe(listener) {
       listeners.add(listener);

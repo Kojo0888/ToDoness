@@ -64,15 +64,15 @@ describe('recovery service', () => {
     expect(again.getOffer()).toBeDefined();
   });
 
-  it('notifies listeners when the offer appears and when it is gone', async () => {
+  it('notifies listeners when the comparison starts, when the offer appears and when it is gone', async () => {
     const { db, repo } = await deviceWithKeptData();
     const recovery = createRecovery({ db, repo });
     let calls = 0;
     recovery.subscribe(() => calls++);
     await recovery.load();
-    expect(calls).toBe(1);
+    expect(calls).toBe(2); // "Data comparison" (FR-172), then the offer
     await recovery.decline();
-    expect(calls).toBe(2);
+    expect(calls).toBe(3);
   });
 
   it('a load that was slow does not bring back an offer that was answered meanwhile', async () => {
@@ -246,5 +246,44 @@ describe('comparing with the account (docs/recovery-upload FR-168 – FR-170)', 
       expect(titles).toEqual(answer === 'device' ? ['one', 'two'] : ['phone task']);
       expect(recovery.getOffer()).toBeUndefined();
     }
+  });
+});
+
+describe('isComparing: the "Data comparison" status (docs/recovery-upload FR-172)', () => {
+  it('is false when nothing was kept aside', async () => {
+    const { db, repo } = await deviceWithKeptData({ snapshot: false });
+    const recovery = createRecovery({ db, repo });
+    await recovery.load();
+    expect(recovery.isComparing()).toBe(false);
+  });
+
+  it('is true while the comparison runs and while the question waits, false after an answer', async () => {
+    for (const answer of ['accept', 'decline'] as const) {
+      const { db, repo } = await deviceWithKeptData();
+      const recovery = createRecovery({ db, repo });
+      const seen: boolean[] = [];
+      recovery.subscribe(() => seen.push(recovery.isComparing()));
+      const loading = recovery.load();
+      expect(recovery.isComparing()).toBe(false); // nothing read yet
+      await loading;
+      expect(seen[0]).toBe(true); // set as soon as kept data is found
+      expect(recovery.isComparing()).toBe(true); // the question waits
+      await recovery.load(); // later syncs keep it, without a flicker to false
+      expect(seen.every(Boolean)).toBe(true);
+      if (answer === 'accept') await recovery.accept('append');
+      else await recovery.decline();
+      expect(recovery.isComparing()).toBe(false);
+    }
+  });
+
+  it('ends when the comparison finds the same data', async () => {
+    const { db, repo, snapshot } = await deviceWithKeptData();
+    await repo.restoreSnapshot(snapshot, 'append');
+    const recovery = createRecovery({ db, repo });
+    const seen: boolean[] = [];
+    recovery.subscribe(() => seen.push(recovery.isComparing()));
+    await recovery.load();
+    expect(seen).toEqual([true, false]);
+    expect(recovery.isComparing()).toBe(false);
   });
 });
