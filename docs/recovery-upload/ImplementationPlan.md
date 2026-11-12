@@ -32,3 +32,30 @@ migration change: client UI, texts and tests only.
   the module the device was last in (here Plan), as it always does.
 - Task notes, notes, note lists, plans and activities already synced and were already part
   of the upload; the new integration tests confirm it, and no sync code had to change.
+
+## Update 1: compare at login (FR-168 – FR-171)
+
+No API, sync or data model change.
+
+1. `client/src/data/recovery.ts`: `sameData(kept, account)` – both are `RecoverySnapshot`s
+   (the account side is `takeSnapshot` of the current database), normalised the way
+   `restoreSnapshot` writes them (Inbox tasks → "inbox", unknown note list → `null`, reminders
+   normalised, missing `done` → `false`), compared by id.
+2. `client/src/services/recovery.ts`: `load()` drops the kept copy when the account is not
+   empty and `sameData` holds (guarded by `answers`, like an answer); otherwise the offer as
+   before. `accept('overwrite')` = *Data on this device is newer*, `decline()` = *Server data
+   is newer*.
+3. `RecoveryDialog.tsx`: the *Which data is newer?* question; the *Overwrite or append?* step
+   and its texts go away. `strings.ts`: new texts, unused ones removed.
+4. Tests: `client/test/data/recovery-compare.test.ts` (`sameData`),
+   `client/test/services/recovery.test.ts` (dropped when the same),
+   `integration/test/recovery.integration.test.ts` (same data from a second device asks
+   nothing; server newer; device newer; a normal re-login asks nothing),
+   `e2e/test/recovery.test.ts` (both answers in the browser).
+
+### Changed on the way (Update 1)
+
+- `recovery.filledAccount` became `recovery.differs`, which also names the account's lists
+  and plans; the *Overwrite or append?* texts were removed with the step.
+- *Server data is newer* was already `decline()` and passed its integration test before any
+  code changed; only the comparison (FR-168) and the dialog were new.

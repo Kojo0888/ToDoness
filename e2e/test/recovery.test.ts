@@ -188,33 +188,34 @@ describe('recovery after the server lost its database (FR-77 – FR-82)', () => 
     await task(page, 'Buy milk').waitFor();
   });
 
-  it('Upload my data, Overwrite: replaces what the account already holds', async () => {
+  /**
+   * The old device signs up again; meanwhile a phone logs in to the new account and adds a
+   * task, so the account holds other data than the device. The popup asks which is newer.
+   */
+  async function differentDataOnServer() {
     const { email, page } = await oldDevice();
     await loseServer();
     await signUpAgain(page, email);
-
-    // Meanwhile another device logs in to the new account and adds a task.
     const phone = await newPage(await newDevice(browser, app!));
     await logIn(phone, email);
     await addTask(phone, 'Phone task');
     await waitSaved(phone);
-    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-    await page.getByRole('heading', { level: 2, name: 'Inbox' }).waitFor();
-
     await page.reload();
     await dialog(page).waitFor();
     // It first shows what is stored locally, then what the first sync brought.
-    await page.getByText('already holds 1 task').waitFor();
-    // Not empty: the other answer does not claim to keep it empty (FR-164).
-    await dialog(page).getByRole('button', { name: "Don't upload" }).waitFor();
+    await page.getByText('Which data is newer?').waitFor();
+    await expect(dialog(page).textContent()).resolves.toContain('The server already holds 1 task');
     await expect(dialog(page).getByRole('button', { name: 'Keep it empty' }).count()).resolves.toBe(
       0,
     );
-    await dialog(page).getByRole('button', { name: 'Upload my data' }).click();
-    await expect(dialog(page).textContent()).resolves.toContain('Overwrite or append?');
-    await dialog(page).getByRole('button', { name: 'Back' }).click();
-    await dialog(page).getByRole('button', { name: 'Upload my data' }).click();
-    await dialog(page).getByRole('button', { name: 'Overwrite' }).click();
+    await page.keyboard.press('Escape');
+    await dialog(page).waitFor(); // still there (FR-165)
+    return { page, phone };
+  }
+
+  it('different data on the server, "Data on this device is newer": replaces it on the server (FR-169)', async () => {
+    const { page, phone } = await differentDataOnServer();
+    await dialog(page).getByRole('button', { name: 'Data on this device is newer' }).click();
     await dialog(page).waitFor({ state: 'hidden' });
     await waitSaved(page);
 
@@ -223,5 +224,17 @@ describe('recovery after the server lost its database (FR-77 – FR-82)', () => 
     await phone.reload();
     await task(phone, 'Buy milk').waitFor();
     expect(await titlesOnPage(phone)).toEqual(['Buy milk']);
+  });
+
+  it('different data on the server, "Server data is newer": keeps the server data (FR-169)', async () => {
+    const { page } = await differentDataOnServer();
+    await dialog(page).getByRole('button', { name: 'Server data is newer' }).click();
+    await dialog(page).waitFor({ state: 'hidden' });
+    await task(page, 'Phone task').waitFor();
+    expect(await titlesOnPage(page)).toEqual(['Phone task']);
+    await expect(page.getByRole('link', { name: 'Work' }).count()).resolves.toBe(0);
+    await page.reload();
+    await task(page, 'Phone task').waitFor();
+    await expect(dialog(page).isVisible()).resolves.toBe(false);
   });
 });

@@ -206,3 +206,45 @@ describe('isAccountEmpty (docs/recovery-upload FR-163, FR-164)', () => {
     expect(isAccountEmpty(recovery.getOffer()!)).toBe(true);
   });
 });
+
+describe('comparing with the account (docs/recovery-upload FR-168 – FR-170)', () => {
+  it('drops the kept data without asking when the account already holds the same', async () => {
+    const { db, repo, snapshot } = await deviceWithKeptData();
+    await repo.restoreSnapshot(snapshot, 'append'); // another device uploaded the same data
+    await db.outbox.clear();
+    const recovery = createRecovery({ db, repo });
+    const seen = vi.fn();
+    recovery.subscribe(seen);
+    await recovery.load();
+    expect(recovery.getOffer()).toBeUndefined();
+    expect(await db.getMeta(RECOVERY_KEY)).toBeUndefined();
+    expect(await db.outbox.count()).toBe(0); // nothing to send: nothing changed
+  });
+
+  it('asks when the account holds something else', async () => {
+    const { db, repo, snapshot, inbox } = await deviceWithKeptData();
+    await repo.restoreSnapshot(snapshot, 'append');
+    await repo.createTodo({ listId: inbox.id, title: 'added on the phone' });
+    const recovery = createRecovery({ db, repo });
+    await recovery.load();
+    expect(recovery.getOffer()).toMatchObject({ todos: 2, accountTodos: 3 });
+    expect(isAccountEmpty(recovery.getOffer()!)).toBe(false);
+  });
+
+  it('device newer (overwrite) leaves exactly the kept data; server newer (decline) leaves the account', async () => {
+    for (const answer of ['device', 'server'] as const) {
+      const { db, repo, inbox } = await deviceWithKeptData();
+      await repo.createTodo({ listId: inbox.id, title: 'phone task' });
+      const recovery = createRecovery({ db, repo });
+      await recovery.load();
+      if (answer === 'device') await recovery.accept('overwrite');
+      else await recovery.decline();
+      const titles = (await db.todos.toArray())
+        .filter((t) => t.deletedAt === null)
+        .map((t) => t.title)
+        .sort();
+      expect(titles).toEqual(answer === 'device' ? ['one', 'two'] : ['phone task']);
+      expect(recovery.getOffer()).toBeUndefined();
+    }
+  });
+});

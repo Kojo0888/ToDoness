@@ -7,10 +7,21 @@
  * asks; `accept` queues the data as normal changes (the usual sync sends them), `decline`
  * throws it away. Until one of them happens the snapshot stays, also across reloads.
  *
+ * An account that already holds exactly the kept data (another device uploaded the same) is
+ * not asked about: the kept data is dropped (docs/recovery-upload FR-168). Otherwise the UI
+ * asks *Upload my data* / *Keep it empty* (empty account) or *Which data is newer?*:
+ * `accept('overwrite')` = the device's, `decline()` = the server's (FR-169).
+ *
  * `accept` restores first and removes the snapshot second. If the app dies in between, the
  * question comes back and restoring again merges (same ids), so nothing is duplicated.
  */
-import { RECOVERY_KEY, type RecoverySnapshot, type RestoreMode } from '../data/recovery';
+import {
+  RECOVERY_KEY,
+  sameData,
+  takeSnapshot,
+  type RecoverySnapshot,
+  type RestoreMode,
+} from '../data/recovery';
 import type { TodonessDB } from '../data/db';
 import { RepoError, type Repo } from '../data/repo';
 
@@ -79,6 +90,17 @@ export function createRecovery(deps: { db: TodonessDB; repo: Repo }): Recovery {
       const accountNotes = (await db.notes.toArray()).filter((n) => n.deletedAt === null).length;
       const accountPlans = (await db.plans.toArray()).filter((p) => p.deletedAt === null).length;
       if (answers !== seen) return;
+      const empty = accountTodos + accountLists + accountNotes + accountPlans === 0;
+      if (!empty) {
+        const account = await takeSnapshot(db, snapshot.fromEmail);
+        if (answers !== seen) return;
+        if (account && sameData(snapshot, account)) {
+          // Nothing to decide: uploading would change nothing (FR-168).
+          answers++;
+          await db.meta.delete(RECOVERY_KEY);
+          return set(undefined);
+        }
+      }
       set({
         fromEmail: snapshot.fromEmail,
         todos: snapshot.todos.length,
