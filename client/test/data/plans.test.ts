@@ -555,7 +555,9 @@ describe('done (docs/plan/PRD.md FR-153)', () => {
     expect(await s.shape()).toEqual(shapeBefore);
     const ops = await expectValidOutbox(s.db);
     expect(ops.length - queued).toBe(1);
-    expect(ops.at(-1)).toMatchObject({ entity: 'activity', type: 'update', patch: { done: true } });
+    expect(ops.filter((o) => o.type === 'update' && 'done' in o.patch)).toMatchObject([
+      { entity: 'activity', entityId: a.id, patch: { done: true } },
+    ]);
     // Unchanged: nothing queued.
     await s.repo.updateActivity(a.id, { done: true });
     expect((await expectValidOutbox(s.db)).length - queued).toBe(1);

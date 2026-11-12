@@ -146,6 +146,17 @@ export class TodonessDB extends Dexie {
       .upgrade(async (tx) => {
         await tx.table('meta').delete('lastServerSeq');
       });
+    // Done activities (docs/plan, Update 3). The server leaves `done` out for apps that do
+    // not ask for it, so the cursor is reset again to read the done states skipped (FR-159).
+    this.version(8).upgrade(async (tx) => {
+      await tx
+        .table('activities')
+        .toCollection()
+        .modify((a) => {
+          a.done ??= false;
+        });
+      await tx.table('meta').delete('lastServerSeq');
+    });
   }
 
   async getMeta<T>(key: string): Promise<T | undefined> {

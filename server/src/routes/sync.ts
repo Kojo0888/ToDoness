@@ -65,6 +65,9 @@ export function syncRoutes({
     // Apps from before note lists (docs/note-lists, decision L4) would take a note list for
     // a task list and reject a note's `listId`. The current app asks with `lists=modules`.
     const knowsModules = c.req.query('lists') === 'modules';
+    // Apps from before done activities (docs/plan/PRD.md FR-159) refuse the unknown field,
+    // so it is left out for them; an update of `done` alone becomes an empty patch.
+    const knowsDone = c.req.query('activities') === 'done';
     const userId = c.get('user').id;
 
     // Accounts from before note lists get "My notes" at their first sync (FR-124).
@@ -111,9 +114,10 @@ export function syncRoutes({
           entity: r.entity,
           entityId: r.entity_id,
           type: r.op_type,
-          patch: ((p: Record<string, unknown>) => (knowsModules ? p : withoutModules(r.entity, p)))(
-            remindersAsList ? JSON.parse(r.patch) : legacyPatch(r.entity, JSON.parse(r.patch)),
-          ),
+          patch: ((p: Record<string, unknown>) => {
+            const q = knowsModules ? p : withoutModules(r.entity, p);
+            return knowsDone ? q : withoutDone(r.entity, q);
+          })(remindersAsList ? JSON.parse(r.patch) : legacyPatch(r.entity, JSON.parse(r.patch))),
           hlc: r.hlc,
         })),
       nextSeq: page.at(-1)?.server_seq ?? since,
@@ -140,5 +144,13 @@ function withoutModules(entity: string, patch: Record<string, unknown>): Record<
   if (field === undefined || !(field in patch)) return patch;
   const rest = { ...patch };
   delete rest[field];
+  return rest;
+}
+
+/** For apps from before done activities: no `done` on activities. */
+function withoutDone(entity: string, patch: Record<string, unknown>): Record<string, unknown> {
+  if (entity !== 'activity' || !('done' in patch)) return patch;
+  const rest = { ...patch };
+  delete rest.done;
   return rest;
 }

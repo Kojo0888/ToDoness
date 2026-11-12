@@ -103,6 +103,7 @@ input[type='text'],
 input[type='email'],
 input[type='password'],
 input[type='search'],
+input[type='number'],
 input[type='date'],
 input[type='time'],
 select,
@@ -1404,6 +1405,7 @@ h2.nav-heading {
   input[type='email'],
   input[type='password'],
   input[type='search'],
+  input[type='number'],
   input[type='date'],
   input[type='time'],
   select,
@@ -1774,7 +1776,7 @@ h2.nav-heading {
   max-width: 32rem;
 }
 
-/* Undo last change and the name position, on the right. */
+/* The scale and the options, on the right. */
 .plan-view {
   display: flex;
   flex-wrap: wrap;
@@ -1805,61 +1807,120 @@ h2.nav-heading {
   margin: 0.5rem 0 0;
 }
 
-/* The selected activity's name, start, end and Delete (FR-130). */
-.plan-activity-bar {
+/* Undo last change, at the bottom of the plan (FR-158). */
+.plan-foot {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.6rem 0.75rem;
-  margin: 0 0 0.75rem;
-  padding: 0.6rem 0.75rem;
+  margin: 0.75rem 0 0;
+}
+
+/* The gear and its panel (FR-156). */
+.plan-options-root {
+  position: relative;
+}
+
+.plan-options {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 10;
+  display: grid;
+  gap: 0.5rem;
+  min-width: max-content;
+  padding: 0.75rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
 }
 
+.plan-options[hidden] {
+  display: none;
+}
+
+.plan-options-label {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* The details page of an activity (FR-149 – FR-153). */
+.plan-details-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.75rem 1rem;
+  max-width: 40rem;
+}
+
 .plan-field {
-  flex: 0 1 9.5rem;
-  min-width: 0; /* a date field's own width must not push the buttons to a new line */
+  flex: 0 1 10rem;
+  min-width: 0;
   margin: 0;
   font-size: 0.85rem;
   white-space: nowrap;
 }
 
-.plan-field .hint {
-  font-weight: 400;
-}
-
 .plan-field-name {
-  flex: 1 1 7rem;
+  flex: 1 1 100%;
 }
 
-/* One height for text, date and select fields and the buttons, so the row lines up. */
-.plan-activity-bar input,
-.plan-activity-bar select,
-.plan-activity-bar button {
+.plan-details-fields input:not([type='checkbox']) {
+  display: block;
+  width: 100%;
   height: 2.5rem;
+  margin-top: 0.25rem;
   font-size: 1rem;
 }
 
-.plan-activity-bar select {
+.plan-ends {
   display: block;
   margin-top: 0.25rem;
   font-weight: 400;
 }
 
-.plan-bar-actions {
+.plan-done {
+  flex: 1 1 100%;
+}
+
+.plan-after {
+  flex: 1 1 100%;
+}
+
+.plan-after h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.plan-after ul {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-after li {
   display: flex;
-  gap: 0.5rem;
-  margin-left: auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  max-width: 24rem;
+  padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.plan-details-actions {
+  display: flex;
+  margin-top: 1.5rem;
 }
 
 /* The chart: scrolls sideways; the header and the name column stay in place. */
 .plan-timeline {
-  --plan-day: 36px; /* DAY_WIDTH in lib/timeline.ts */
+  --plan-day: 36px; /* dayWidth(scale) in lib/timeline.ts, set by the component */
   --plan-row: 44px; /* ROW_HEIGHT */
   --plan-head: 28px;
-  --plan-names: 0px;
+  --plan-names: 2.75rem; /* the details buttons (FR-149) */
   overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1867,7 +1928,7 @@ h2.nav-heading {
 }
 
 .plan-timeline[data-names='column'] {
-  --plan-names: 11rem;
+  --plan-names: 13rem;
 }
 
 .plan-canvas {
@@ -1876,7 +1937,7 @@ h2.nav-heading {
   min-width: 100%;
 }
 
-.plan-name-col {
+.plan-side {
   position: sticky;
   left: 0;
   z-index: 3;
@@ -1897,13 +1958,29 @@ h2.nav-heading {
   font-weight: 600;
 }
 
+.plan-side-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: var(--plan-row);
+  padding-left: 0.2rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.plan-details-btn {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-color: transparent;
+  background: transparent;
+}
+
 .plan-name {
   display: block;
-  width: 100%;
-  height: var(--plan-row);
-  padding: 0 0.6rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0 0.6rem 0 0.2rem;
   border: 0;
-  border-bottom: 1px solid var(--border);
   border-radius: 0;
   background: transparent;
   text-align: left;
@@ -1950,15 +2027,24 @@ h2.nav-heading {
   white-space: nowrap;
 }
 
-.plan-days {
-  display: flex;
-}
-
 .plan-day {
-  flex: none;
-  width: var(--plan-day);
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  overflow: hidden;
   line-height: var(--plan-head);
   text-align: center;
+  white-space: nowrap;
+}
+
+/* Coarse scales: a column is a week, a month or a quarter (FR-157). */
+.plan-timeline:not([data-scale='day']) .plan-day {
+  border-left: 1px solid var(--border);
+}
+
+.plan-day.has-today {
+  color: var(--accent);
+  font-weight: 700;
 }
 
 .plan-day.is-weekend {
@@ -2003,12 +2089,30 @@ h2.nav-heading {
   background-repeat: repeat, repeat, repeat-x;
 }
 
+/* Coarse scales: only the row lines; columns are drawn as lines of their own. */
+.plan-timeline:not([data-scale='day']) .plan-rows {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0 calc(var(--plan-row) - 1px),
+    var(--border) calc(var(--plan-row) - 1px) var(--plan-row)
+  );
+}
+
+.plan-unit-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  pointer-events: none;
+}
+
 .plan-today {
   position: absolute;
   top: 0;
   bottom: 0;
   pointer-events: none;
-  width: var(--plan-day);
+  width: max(2px, var(--plan-day));
   border-left: 2px solid var(--accent);
 }
 
@@ -2083,7 +2187,7 @@ h2.nav-heading {
   display: flex;
   align-items: center;
   width: 100%;
-  padding: 0 12px;
+  padding: 0 min(12px, 20%); /* a 12 px block on the coarse scales stays 12 px */
   border: 0;
   border-radius: 6px;
   background: var(--accent);
@@ -2129,7 +2233,7 @@ h2.nav-heading {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 10px;
+  width: min(10px, 30%);
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -2158,6 +2262,29 @@ h2.nav-heading {
   opacity: 0.7;
 }
 
+/* A done activity (FR-155): outlined instead of filled, its name struck through. */
+.plan-bar.is-done .plan-block {
+  border: 2px solid var(--accent);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.plan-bar.is-done .plan-block-name,
+.plan-bar.is-done .plan-after-name,
+.plan-side-row.is-done .plan-name {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.plan-bar.is-done .plan-handle::after {
+  background: var(--accent);
+}
+
+/* A short activity on a coarse scale: no grip marks, the name after it (FR-157). */
+.plan-bar.is-narrow .plan-handle::after {
+  display: none;
+}
+
 /* The block an end is being dropped on: releasing links the two (FR-133). */
 .plan-bar.is-link-target .plan-block {
   outline: 3px dashed var(--fg);
@@ -2174,41 +2301,42 @@ h2.nav-heading {
   .plan-add input,
   .plan-first button,
   .plan-add button,
-  .plan-activity-bar button,
+  .plan-view .chip,
+  .plan-details-actions button,
   .plan-undo {
     min-height: 44px;
   }
 
-  .plan-timeline[data-names='column'] {
-    --plan-names: 7.5rem;
-  }
-
-  .plan-bar-actions {
-    margin-left: 0;
-  }
-
-  .plan-activity-bar input,
-  .plan-activity-bar select,
-  .plan-activity-bar button {
+  .plan-details-fields input:not([type='checkbox']) {
     height: 44px;
   }
 
-  /* Start and End share a line; the name gets its own. */
-  .plan-field {
-    flex: 1 1 8.5rem;
+  .plan-timeline {
+    --plan-names: 3rem;
   }
 
-  .plan-field-name {
-    flex-basis: 100%;
+  .plan-timeline[data-names='column'] {
+    --plan-names: 10rem;
+  }
+
+  /* The details button fills the row's 44 px. */
+  .plan-details-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Start and Duration share a line; the name gets its own. */
+  .plan-field:not(.plan-field-name) {
+    flex: 1 1 8.5rem;
   }
 
   /*
    * Exception to the 44 px rule (UI_GUIDELINES.md, docs/plan decision P5): a day is 36 px
-   * wide, so the grips are 44 px high but narrower. The edit bar that opens
-   * when a block is tapped has full-size controls for the same changes.
+   * wide, so the grips are 44 px high but narrower. The details page (the button on the
+   * row) has full-size controls for the same changes.
    */
   .plan-handle {
-    width: 14px;
+    width: min(14px, 30%);
   }
 
   .plan-handle::after {

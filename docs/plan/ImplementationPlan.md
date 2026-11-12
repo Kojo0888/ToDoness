@@ -277,12 +277,12 @@ pull flag), so it follows the full order: PRD → this plan → tests → implem
 
 | Step | Content | Status |
 | ---- | ------- | ------ |
-| 14 | Shared: `done` in the activity fields, create / update / pulled patches, merge default `false`  | ☐ |
-| 15 | Server: migration `009_activity_done.sql`, rows, pull flag `activities=done` (FR-159)  | ☐ |
-| 16 | Client data: Dexie version 8 (default `done`, reset the pull cursor), `updateActivity({ done })`, undo diff and `revertActivities` with `done`, recovery copy, engine asks with the flag  | ☐ |
-| 17 | Client lib: straight `arrowPath` / `arrowTip` (FR-148), scales (`SCALES`, `dayWidth`, `timelineRange(…, scale)`, `unitSpans`), `planScale` device setting, double-click detector  | ☐ |
-| 18 | UI: sticky row column with the details button, `ActivityPage` (details view) and its route, `ActivityBar` removed, done look, double click, options popover with the gear, scale chips, Undo below the timeline, texts, styles  | ☐ |
-| 19 | Browser tests for PRD 8.3, decisions, checks  | ☐ |
+| 14 | Shared: `done` in the activity fields, create / update / pulled patches, merge default `false`  | ☑ |
+| 15 | Server: migration `009_activity_done.sql`, rows, pull flag `activities=done` (FR-159)  | ☑ |
+| 16 | Client data: Dexie version 8 (default `done`, reset the pull cursor), `updateActivity({ done })`, undo diff and `revertActivities` with `done`, recovery copy, engine asks with the flag  | ☑ |
+| 17 | Client lib: straight `arrowPath` / `arrowTip` (FR-148), scales (`SCALES`, `dayWidth`, `timelineRange(…, scale)`, `unitSpans`), `planScale` device setting, double-click detector  | ☑ |
+| 18 | UI: sticky row column with the details button, `ActivityPage` (details view) and its route, `ActivityBar` removed, done look, double click, options popover with the gear, scale chips, Undo below the timeline, texts, styles  | ☑ |
+| 19 | Browser tests for PRD 8.3, decisions, checks  | ☑ |
 
 ### Design
 
@@ -332,3 +332,19 @@ pull flag), so it follows the full order: PRD → this plan → tests → implem
 | `client/test/lib/timeline.test.ts` | straight arrows, tip angle, scales, ranges, unit spans, min block width |
 | `client/test/lib/planScale.test.ts`, `doubleTap.test.ts` | the setting; double tap timing |
 | `e2e/test/plan.test.ts` | PRD 8.3 points 1 – 7 (the old edit bar and Starts after tests are rewritten for the details page) |
+
+### Changed on the way
+
+1. **Short blocks on coarse scales show their name after the block.** At 4 or 0.6 px per
+   day a block is often 12 – 47 px wide; "On block" then showed "D…". A block narrower than
+   48 px (`NARROW_BLOCK` in `Timeline.tsx`) puts its name after itself and hides its grip
+   marks; the block's inner padding shrinks with it, so 12 px stays 12 px.
+2. **Click selects, it no longer toggles the selection**, so the two clicks of a double
+   click leave the block selected instead of selecting and deselecting it.
+3. **`input[type='number']`** joined the shared field styles (the duration is the app's
+   first number field).
+4. **Browser tests and the sign-up limit.** The server allows 20 sign-ups per hour from one
+   address; one user per test went over it. The checks of the options panel and of Undo's
+   place share a user with a neighbouring test.
+5. **Scrolling keeps its place across scales:** the day at the left edge of the view stays
+   at the left edge when the scale changes (and, as before, when days are added on the left).

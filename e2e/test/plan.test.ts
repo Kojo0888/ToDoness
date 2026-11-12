@@ -369,9 +369,15 @@ describe('activities on the timeline (FR-123 – FR-131)', () => {
     await waitDays(page, 'Sketch', plus(t0, 6), plus(t0, 7));
   });
 
-  it('a double click marks done and draws it differently; again clears it; Undo takes it back (FR-153 – FR-155)', async () => {
+  it('a double click marks done and draws it differently; again clears it; Undo (below the timeline) takes it back (FR-153 – FR-155, FR-158)', async () => {
     const { page, t0 } = await withPlan('done');
     await addActivity(page, 'Design');
+    // Undo last change is at the bottom of the plan (FR-158). Sign-ups are limited per hour,
+    // so this shares the user of this test.
+    const timeline = (await page.locator('.plan-timeline').boundingBox())!;
+    expect((await undo(page).boundingBox())!.y).toBeGreaterThanOrEqual(
+      timeline.y + timeline.height,
+    );
     await block(page, 'Design').dblclick();
     await block(page, 'Design').and(page.locator('[aria-label$=", done"]')).waitFor();
     expect(await page.locator('.plan-bar.is-done').count()).toBe(1);
@@ -387,20 +393,13 @@ describe('activities on the timeline (FR-123 – FR-131)', () => {
     // The details switch, and it survives a reload.
     await detailsLink(page, 'Design').click();
     const done = page.getByRole('switch', { name: 'Done' });
-    await done.check();
+    await done.click(); // saved, then shown: not instant, so not `check()`
+    await page.getByRole('switch', { name: 'Done', checked: true }).waitFor();
     await waitSaved(page);
     await page.reload();
     await expect(page.getByRole('switch', { name: 'Done' }).isChecked()).resolves.toBe(true);
     await page.getByRole('link', { name: 'Back to Launch' }).click();
     await page.locator('.plan-bar.is-done').waitFor();
-  });
-
-  it('Undo last change is below the timeline (FR-158)', async () => {
-    const { page } = await withPlan('undo-place');
-    await addActivity(page, 'Design');
-    const timeline = (await page.locator('.plan-timeline').boundingBox())!;
-    const button = (await undo(page).boundingBox())!;
-    expect(button.y).toBeGreaterThanOrEqual(timeline.y + timeline.height);
   });
 });
 
@@ -515,6 +514,7 @@ describe('dependencies (FR-133 – FR-138) and undo (FR-147)', () => {
 
     await detailsLink(page, 'Build').click();
     const after = page.getByRole('list', { name: 'Starts after' });
+    await after.waitFor();
     expect(await after.getByRole('listitem').allTextContents()).toEqual([
       expect.stringContaining('Design'),
     ]);
@@ -560,9 +560,11 @@ describe('where the name is shown (FR-140, FR-141)', () => {
 });
 
 describe('options and scale (FR-156, FR-157)', () => {
-  it('the gear opens the options; Escape closes them', async () => {
-    const { page } = await withPlan('options');
-    await addActivity(page, 'Design');
+  it('the gear opens the options; Days / Weeks / Months / Years change the columns; the choice survives a reload; drags work', async () => {
+    const { page, t0 } = await withPlan('scale');
+    await addActivity(page, 'Design'); // 3 days
+
+    // The gear opens the options (FR-156); Escape closes them.
     const group = page.getByRole('group', { name: 'Activity names' });
     expect(await group.isVisible()).toBe(false);
     await optionsButton(page).click();
@@ -570,11 +572,7 @@ describe('options and scale (FR-156, FR-157)', () => {
     await group.waitFor();
     await page.keyboard.press('Escape');
     await group.waitFor({ state: 'hidden' });
-  });
 
-  it('Days / Weeks / Months / Years change the columns; the choice survives a reload; drags work', async () => {
-    const { page, t0 } = await withPlan('scale');
-    await addActivity(page, 'Design'); // 3 days
     await expect(scaleChip(page, 'Days').getAttribute('aria-pressed')).resolves.toBe('true');
     const width = async () => Math.round((await block(page, 'Design').boundingBox())!.width);
     expect(await width()).toBe(3 * DAY);
