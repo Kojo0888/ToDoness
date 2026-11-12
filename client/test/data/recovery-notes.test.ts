@@ -34,8 +34,8 @@ describe('takeSnapshot with notes', () => {
   it('keeps live notes with their fields and skips deleted ones', async () => {
     const old = await oldDevice();
     const snap = (await takeSnapshot(old.db, 'ann@corp.test'))!;
-    expect(snap.notes.map((n) => n.text).sort()).toEqual(['Older note', 'Shared note']);
-    expect(snap.notes.find((n) => n.id === old.shared.id)).toMatchObject({
+    expect(snap.notes!.map((n) => n.text).sort()).toEqual(['Older note', 'Shared note']);
+    expect(snap.notes!.find((n) => n.id === old.shared.id)).toMatchObject({
       isPublic: true,
       orderKey: old.shared.orderKey,
     });

@@ -65,13 +65,13 @@ through `useLiveQuery`.
 | `data/db.ts`          | Dexie schema and **versions / upgrades** (add a version for any local data change)                                                                                                                                                                                    |
 | `data/repo.ts`        | **All writes**: create / update / delete of every entity, queues sync ops                                                                                                                                                                                             |
 | `data/queries.ts`     | Reads used by the screens                                                                                                                                                                                                                                             |
-| `data/recovery.ts`    | Snapshot kept aside after a server loss                                                                                                                                                                                                                               |
+| `data/recovery.ts`    | Snapshot kept aside after a server loss; `sameData` compares it with the account                                                                                                                                                                                      |
 | `sync/engine.ts`      | Push / pull HTTP (the pull URL carries the compat flags), `sync/apply-changes.ts` merges pulled changes, `sync/runner.ts` schedules syncs                                                                                                                             |
 | `services/`           | Logic without UI: session, push, reminders, public lists / notes, recovery, `planChanges` (undo + serial changes of a plan page)                                                                                                                                      |
 | `lib/`                | Small pure helpers, unit tested: dates, drag-and-drop, `modules.ts` (module list), `timeline.ts` (plan geometry, scales, arrows), `planNames.ts` / `planScale.ts` / `planHideDone.ts` (device settings), `planUndo.ts`, `doubleTap.ts`, `serial.ts`, `signUpAgain.ts` |
-| `components/layout/`  | `Shell.tsx` (**routes**), `Sidebar.tsx`, `ModuleSwitch.tsx`, sync badge / diagnostics                                                                                                                                                                                 |
-| `components/common/`  | Reusable controls: `ConfirmDialog`, `Toast` (Undo messages), `InfoTip`, `SettingRow`, `ManageItems`, drag and drop                                                                                                                                                    |
-| `components/lists/`   | Tasks module: `ListPage`, `TodoRow`, `TaskDetail`, `QuickAdd`, `ManageLists`, `ListMenu`                                                                                                                                                                              |
+| `components/layout/`  | `Shell.tsx` (**routes**), `Sidebar.tsx`, `ModuleSwitch.tsx`, sync badge / diagnostics (`syncSummary.ts`: which status wins)                                                                                                                                           |
+| `components/common/`  | Reusable controls: `ConfirmDialog`, `Toast` (Undo messages), `InfoTip`, `SettingRow`, `ManageItems` (every Manage screen), `icons.tsx` (grip, back, lock icons, sub-page `AppBar`), drag and drop                                                                     |
+| `components/lists/`   | Tasks module: `ListPage`, `TodoRow`, `TaskDetail`, `QuickAdd`, `ManageLists` (task and note lists, over `ManageItems`), `ListMenu`                                                                                                                                    |
 | `components/notes/`   | Notes module: `NotesPage`, `NoteEditor`, `NoteSearch`, `PublicNotesPage`                                                                                                                                                                                              |
 | `components/plan/`    | Plan module: `PlansHome`, `PlanPage` (toolbar, undo), `Timeline` (grid, blocks, drag, arrows), `ActivityPage` (details view), `PlanOptions` (gear panel), `ManagePlans`                                                                                               |
 | `components/public/`  | Other users' public lists                                                                                                                                                                                                                                             |
@@ -110,6 +110,10 @@ steps, "changed on the way"): `mvp`, `v1` (+ `Decisions.md`, `TechStack.md`), `n
 **Add a screen / route:** component in `client/src/components/<area>/`, route in
 `components/layout/Shell.tsx` (more specific paths first), texts in `app/strings.ts`, styles
 in `styles.css`, e2e test in `e2e/test/<area>.test.ts`.
+
+**Add a Manage screen** (rename / reorder / delete of a module's items): a thin wrapper over
+`components/common/ManageItems.tsx` that passes its texts and repo actions, like
+`components/plan/ManagePlans.tsx`; add a scope in `lib/dropOrder.ts`.
 
 **Change UI text:** `client/src/app/strings.ts` only (e2e tests find controls by these names).
 

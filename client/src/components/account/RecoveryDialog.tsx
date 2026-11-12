@@ -52,7 +52,7 @@ export function RecoveryDialog() {
 
   /** The device's data goes to the server: added to an empty account, replacing otherwise. */
   const takeDevice = () =>
-    // Nothing to overwrite on an empty account: append (decision U1).
+    // Nothing to overwrite on an empty account: append (docs/recovery-upload decision U1).
     run(() => recovery.accept(empty ? 'append' : 'overwrite'));
   /** The server's data stays (or the account stays empty); the device's copy is deleted. */
   const takeServer = () => run(() => recovery.decline());

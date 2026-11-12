@@ -16,12 +16,16 @@ connection returns.
   that pushes dependent activities later automatically. Double-click a block to mark it
   **done**; the button on its row opens its **details**. The timeline shows **days, weeks,
   months or years**; names can be shown on the block, after it, or in a column (under the gear).
-  Plans work offline and sync like tasks.
+  Activities that are not done and whose last day has passed are drawn in **red**; done
+  activities can be **hidden** (under the gear). The sidebar shows how many activities each plan
+  has. Plans work offline and sync like tasks.
 - **Notes**: simple text boxes, newest on top, saved automatically while you type, **reordered
   by drag and drop** and **searchable** (every word, ignoring case and accents). They work
   offline and sync like tasks, can be made **public** (every user can read and edit the text;
   only the owner can delete it or make it private again), and come back with the recovery
-  after a server loss.
+  after a server loss. Notes are grouped in **note lists** ("My notes" plus your own lists,
+  managed like task lists); other users' public notes appear under "Public notes".
+- The sidebar shows the number of **open tasks** of every list and of **notes** in every note list.
 - Change your **password** in Settings; the admin can still reset a forgotten one.
 - Make a list **public**: every user can read **and edit** its tasks under "Public lists"
   (add, change, complete, delete, reorder, attach files). Only the owner can rename or
@@ -32,24 +36,37 @@ connection returns.
   need a connection.
 - Reorder tasks by **drag and drop** (mouse, touch or keyboard), or drop a task on a
   list in the sidebar to move it there.
-- **Reminders**: 1 week, 1 day or 1 hour before a task is due, as a notification, also
-  when the app is closed (**web push**, needs HTTPS, see below).
+- **Reminders**: any of 1 week, 1 day and 1 hour before a task is due (several per task), as
+  a notification, also when the app is closed (**web push**, needs HTTPS, see below), and
+  optionally through **ntfy**. Each channel has its own on/off switch in Settings.
 - **Attachments** on tasks, up to a configurable size per file.
 - **Recovery after a server loss**: if the server's database is lost and you sign up again on a
-  device that still holds your old tasks and notes, the app offers to push them back (and asks whether to
-  **append** to or **overwrite** what the new account holds). Only attachments cannot come back.
+  device that still holds your old tasks, notes and plans, the app keeps them aside and compares
+  them with what the new account holds. An empty account gets the question **Upload my data** /
+  **Keep it empty**; an account that holds different data asks **Which data is newer?** (the
+  server's or this device's); the same data asks nothing. While this is open the sync status
+  shows **Data comparison**. A failed login with the e-mail of the data on the device suggests
+  the server may have been set up again and offers **Sign up again**. Only attachments cannot
+  come back.
 - The admin screen shows **who is online**, and admins see **sync diagnostics** (flags and a
   log of the last 100 sync events with timings) above the "All changes saved" indicator, to
   find out why a reconnect was slow.
 
 ## Documentation
 
-| Folder                       | Contents                                                                                                                                                                                  |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`docs/plan/`](docs/plan/)   | The Plan module (timeline, dependencies): [PRD with decisions](docs/plan/PRD.md), [implementation plan with design and status](docs/plan/ImplementationPlan.md)                           |
-| [`docs/notes/`](docs/notes/) | The Notes module and module switch: [PRD with decisions](docs/notes/PRD.md), [implementation plan with design and status](docs/notes/ImplementationPlan.md)                               |
-| [`docs/v1/`](docs/v1/)       | Version 1: [PRD](docs/v1/PRD.md), [implementation plan with status](docs/v1/ImplementationPlan.md), [tech stack changes](docs/v1/TechStack.md), [decisions and why](docs/v1/Decisions.md) |
-| [`docs/mvp/`](docs/mvp/)     | The MVP: [PRD](docs/mvp/PRD.md), [tech stack](docs/mvp/TechStack.md), [database model](docs/mvp/DBModel.md), [build plan](docs/mvp/MVPImplementationSteps.md)                             |
+| Folder                                           | Contents                                                                                                                                                                                  |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`docs/recovery-upload/`](docs/recovery-upload/) | Uploading the device's data to an empty or different account, data comparison: [PRD](docs/recovery-upload/PRD.md), [implementation plan](docs/recovery-upload/ImplementationPlan.md)      |
+| [`docs/plan/`](docs/plan/)                       | The Plan module (timeline, dependencies): [PRD with decisions](docs/plan/PRD.md), [implementation plan with design and status](docs/plan/ImplementationPlan.md)                           |
+| [`docs/note-lists/`](docs/note-lists/)           | Note lists, unified notification settings, info tooltips: [PRD](docs/note-lists/PRD.md), [implementation plan](docs/note-lists/ImplementationPlan.md)                                     |
+| [`docs/notes/`](docs/notes/)                     | The Notes module and module switch: [PRD with decisions](docs/notes/PRD.md), [implementation plan with design and status](docs/notes/ImplementationPlan.md)                               |
+| [`docs/ui-refresh/`](docs/ui-refresh/)           | Several reminders per task, modern Manage lists controls: [PRD](docs/ui-refresh/PRD.md), [implementation plan](docs/ui-refresh/ImplementationPlan.md)                                     |
+| [`docs/v1/`](docs/v1/)                           | Version 1: [PRD](docs/v1/PRD.md), [implementation plan with status](docs/v1/ImplementationPlan.md), [tech stack changes](docs/v1/TechStack.md), [decisions and why](docs/v1/Decisions.md) |
+| [`docs/mvp/`](docs/mvp/)                         | The MVP: [PRD](docs/mvp/PRD.md), [tech stack](docs/mvp/TechStack.md), [database model](docs/mvp/DBModel.md), [build plan](docs/mvp/MVPImplementationSteps.md)                             |
+
+Rules for contributors (people and AI agents): [`AGENTS.md`](AGENTS.md) (order of work,
+[`IMPLEMENTATION_WORKFLOW.md`](IMPLEMENTATION_WORKFLOW.md)), [`UI_GUIDELINES.md`](UI_GUIDELINES.md)
+and [`CODEBASE_MAP.md`](CODEBASE_MAP.md) (where things are).
 
 ## Development
 
@@ -77,16 +94,17 @@ server/src/
   index.ts     process entry: config, database, reminder sweeper, HTTP server
   app.ts       builds the Hono app (composition only)
   http/        cross-cutting HTTP pieces: context types, errors, presence, static files
-  routes/      one file per API area (auth, admin, sync, public, attachments, push, meta)
+  routes/      one file per API area (auth, admin, sync, public, attachments, push, ntfy, meta)
   auth/ sync/ push/ attachments/ db/   the logic behind the routes, and the database
 client/src/
   main.tsx     entry point
   app/         App root, the long-lived service container, React hooks, UI strings
   components/  React components by area: common, layout, lists, notes, plan, public, account
-  services/    browser-side logic without UI: session, push, reminders, public lists, …
+  services/    browser-side logic without UI: session, push, reminders, public lists, recovery, …
   data/        IndexedDB (Dexie) database, repository and queries
   sync/        sync engine, runner, connectivity and diagnostics
-  lib/         small pure helpers (dates, time field, drag-and-drop, the module list, timeline geometry)
+  lib/         small pure helpers (dates, time field, drag-and-drop, the module list, timeline geometry,
+               device settings)
   sw/          the service worker and its tested logic
 integration/   client sync engine against a real in-process server
 e2e/           browser tests against the built app

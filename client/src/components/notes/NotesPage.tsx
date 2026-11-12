@@ -13,6 +13,7 @@ import { useUndoToast } from '../common/Toast';
 import { InfoTip } from '../common/InfoTip';
 import { NoteEditor } from './NoteEditor';
 import { NoteSearch } from './NoteSearch';
+import { GripIcon } from '../common/icons';
 
 export const formatChanged = (ms: number) =>
   new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -154,15 +155,7 @@ function NoteCard({
           {...attributes}
           {...listeners}
         >
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
-            <path
-              d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01"
-              stroke="currentColor"
-              strokeWidth="3"
-              strokeLinecap="round"
-              fill="none"
-            />
-          </svg>
+          <GripIcon />
         </button>
         <label className="switch note-public" title={t.notes.publicHint}>
           <input

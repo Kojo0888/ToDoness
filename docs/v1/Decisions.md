@@ -117,7 +117,9 @@
 
 ## Recovery (added later)
 
-21. **Only sign-up triggers the offer, and the data is kept aside first.** After the server loses its
+21. **Only sign-up triggers the offer, and the data is kept aside first.** _(Still true; since
+    docs/recovery-upload a failed login with the e-mail of the kept data points to "Sign up
+    again", decision U2 there.)_ After the server loses its
     database, signing up is the only way into the fresh server, and it is the moment the old
     account's data on the device would be deleted (a different user). A login must never pull
     another account's data into a working account. The copy is stored in the device's own
@@ -129,7 +131,10 @@
     and is sent by the usual sync. Keeping the ids means restoring the same data twice (two
     devices of one user) merges instead of duplicating. The old Inbox is not recreated; its tasks
     go to the new Inbox. Deleted rows are not restored.
-23. **Overwrite deletes, it does not wipe.** It marks the account's tasks and lists (not the Inbox)
+23. **Overwrite deletes, it does not wipe.** _(Superseded in part by docs/recovery-upload
+    decisions U1 – U6: the user no longer chooses append or overwrite. An empty account is
+    appended to, a different account is overwritten when "Data on this device is newer" is
+    chosen, and the same data asks nothing. Overwrite still deletes as described here.)_ It marks the account's tasks and lists (not the Inbox)
     as deleted first, as the user could do by hand, so other devices follow through the normal
     sync. The popup shows what the account holds (refreshed after each sync) so the user knows what
     overwrite would remove. A new account is empty, so there both choices give the same result;
@@ -142,7 +147,26 @@
     (P1 – P9: start + duration instead of start + end, dependencies as a field of the dependent
     activity, no automatic repair after a sync, …) and the "Changed on the way" section of
     [`../plan/ImplementationPlan.md`](../plan/ImplementationPlan.md) (older apps and the pull).
-    Update 3 (details page, done, scales, straight arrows) adds P12 – P16 in PRD section 8.2.
+    Update 3 (details page, done, scales, straight arrows) adds P12 – P16 in PRD section 8.2;
+    update 4 (activity counts, red overdue blocks, hide done) adds P17 – P19 in section 9.2.
+
+## Upload to an empty server and data comparison (docs/recovery-upload)
+
+- After signing up on a device that holds another account's data, the kept copy is compared
+  with the account by **what an upload would write**, row by row (U3). The same data asks
+  nothing; an empty account asks *Upload my data* / *Keep it empty*; different data asks
+  *Which data is newer?* (U4, U5). A re-login to the **same** account asks nothing: the
+  per-field merge already keeps the newer value (U6).
+- Until the question is answered the sync status shows **Data comparison** in its own colour,
+  `--compare` (U7, U8).
+
+## UI refresh (docs/ui-refresh)
+
+- A task can have **several reminders** (any of 1 week, 1 day, 1 hour), chosen with chips.
+  This replaces decision D2 of the v1 PRD ("one choice per task").
+- Every control follows [`../../UI_GUIDELINES.md`](../../UI_GUIDELINES.md) unless a PRD or
+  decision says otherwise.
+
 ## Note lists and unified settings (docs/note-lists)
 
 - Notes are grouped in **note lists**, stored as `lists` with `module = 'notes'`; a note's
@@ -153,3 +177,16 @@
   cannot revoke a browser permission (decision S1).
 - UI rule: descriptions go behind an "i" info button; sub-pages use an app bar with a round
   back button (decision U1).
+
+## Code structure (refactoring, November 2026)
+
+- **One Manage screen.** Manage lists, Manage note lists and Manage plans are all
+  `components/common/ManageItems.tsx` with their own texts and actions. Note lists use its
+  `fixed` row ("My notes": rename only) and `after` slot (the locked "Public notes" row).
+  Before, Manage lists was a separate copy of the same drag, rename and delete code.
+- **Shared icons and app bar.** The drag handle, back arrow and lock icons and the sub-page
+  app bar live in `components/common/icons.tsx`, so every screen draws them the same way.
+- **Sidebar.** The "Manage …" button and the "New list / plan" field are one component each
+  (`ManageLink`, `NewItemForm` in `Sidebar.tsx`) used by all three modules; name fields use the
+  shared limits (`LIST_NAME_MAX`, `PLAN_NAME_MAX`) instead of a literal 200.
+- No behaviour, text or data changed; the existing unit and browser tests cover these screens.
