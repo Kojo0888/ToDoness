@@ -163,6 +163,10 @@ and makes tasks richer:
 
 ### 4.11 Recovery after the server lost its data (FR-77 – FR-82)
 
+> **Updated** in [`../recovery-upload/PRD.md`](../recovery-upload/PRD.md) (FR-163 – FR-167): the
+> answers are now *Upload my data* / *Keep it empty*, an empty account is uploaded without the
+> *Overwrite or append?* step, and a failed login offers *Sign up again*.
+
 Scenario: the server's database is lost and a fresh instance is set up. A user signs up
 again **on a device that still holds the tasks of the old account**. Everything except
 attachments (which only live on the server) is still on that device.

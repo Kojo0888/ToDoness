@@ -18,16 +18,15 @@ describe('recovery texts', () => {
     );
   });
 
-  it('says what the account already holds, notes included', () => {
+  it('says what the server and the device hold when they differ (docs/recovery-upload FR-169)', () => {
     expect(
-      t.recovery.filledAccount('a@b.co', { todos: 1, lists: 0, notes: 1 }, { todos: 4, notes: 2 }),
+      t.recovery.differs(
+        'a@b.co',
+        { todos: 1, lists: 0, notes: 1 },
+        { todos: 4, lists: 1, notes: 2, plans: 1 },
+      ),
     ).toBe(
-      'Your new account already holds 4 tasks and 2 notes, and 1 task, 0 lists (besides the Inbox) and 1 note of a@b.co are still stored offline on this device.',
-    );
-    expect(
-      t.recovery.filledAccount('a@b.co', { todos: 1, lists: 0, notes: 0 }, { todos: 4, notes: 0 }),
-    ).toBe(
-      'Your new account already holds 4 tasks, and 1 task and 0 lists (besides the Inbox) of a@b.co are still stored offline on this device.',
+      'The server already holds 4 tasks, 1 list (besides the Inbox), 2 notes and 1 plan for this account, and this device holds 1 task, 0 lists (besides the Inbox) and 1 note of a@b.co. They are not the same.',
     );
   });
 });

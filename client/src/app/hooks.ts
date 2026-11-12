@@ -24,6 +24,11 @@ export function useRecoveryOffer() {
   return useSyncExternalStore(recovery.subscribe, recovery.getOffer);
 }
 
+/** The device's data is being compared with the server's (docs/recovery-upload FR-172). */
+export function useDataComparison() {
+  return useSyncExternalStore(recovery.subscribe, recovery.isComparing);
+}
+
 export function useReminderMessages() {
   return useSyncExternalStore(reminderFeed.subscribe, reminderFeed.getSnapshot);
 }

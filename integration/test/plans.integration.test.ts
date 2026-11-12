@@ -109,3 +109,73 @@ describe('plans sync', () => {
     expect(await b.db.outbox.count()).toBe(0);
   });
 });
+
+describe('plans sync, more changes (docs/recovery-upload FR-167)', () => {
+  it('rename and reorder of plans reach the other device', async () => {
+    const { a, b } = await twoBrowsers();
+    const launch = await a.repo.createPlan('Launch');
+    const move = await a.repo.createPlan('Move');
+    await a.sync();
+    await b.sync();
+    await b.repo.renamePlan(launch.id, 'Launch 2.0');
+    await b.repo.reorderPlan(move.id, launch.id);
+    await b.sync();
+    await a.sync();
+    expect((await getPlans(a.db)).map((p) => p.name)).toEqual(['Move', 'Launch 2.0']);
+  });
+
+  it('done, unlink, delete and restore of activities reach the other device', async () => {
+    const { a, b } = await twoBrowsers();
+    const plan = await a.repo.createPlan('Launch');
+    const design = await a.repo.createActivity(plan.id, 'Design');
+    a.time += 10;
+    const build = await a.repo.createActivity(plan.id, 'Build');
+    await a.repo.linkActivities(design.id, build.id);
+    await a.sync();
+    await b.sync();
+
+    b.online = false;
+    await b.repo.updateActivity(design.id, { done: true });
+    await b.repo.unlinkActivities(design.id, build.id);
+    await b.repo.deleteActivity(build.id);
+    b.online = true;
+    await b.sync();
+    await a.sync();
+    expect((await a.db.activities.get(design.id))?.done).toBe(true);
+    expect((await a.db.activities.get(build.id))?.dependsOn).toEqual([]);
+    expect((await getActivities(a.db, plan.id)).map((x) => x.name)).toEqual(['Design']);
+
+    await a.repo.restoreActivity(build.id);
+    await a.sync();
+    await b.sync();
+    expect((await getActivities(b.db, plan.id)).map((x) => x.name).sort()).toEqual([
+      'Build',
+      'Design',
+    ]);
+    expect(await shape(b, plan.id)).toEqual(await shape(a, plan.id));
+  });
+
+  it('two devices adding activities offline to the same plan both keep both', async () => {
+    const { a, b } = await twoBrowsers();
+    const plan = await a.repo.createPlan('Launch');
+    await a.sync();
+    await b.sync();
+    a.online = false;
+    b.online = false;
+    await a.repo.createActivity(plan.id, 'From laptop');
+    b.time += 5;
+    await b.repo.createActivity(plan.id, 'From phone');
+    a.online = true;
+    b.online = true;
+    await a.sync();
+    await b.sync();
+    await a.sync();
+    for (const x of [a, b]) {
+      expect((await getActivities(x.db, plan.id)).map((y) => y.name).sort()).toEqual([
+        'From laptop',
+        'From phone',
+      ]);
+    }
+    expect(await shape(b, plan.id)).toEqual(await shape(a, plan.id));
+  });
+});

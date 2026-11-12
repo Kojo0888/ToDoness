@@ -57,6 +57,10 @@ export const t = {
       server: 'The server had a problem. Try again in a moment.',
       network: 'Cannot reach the server. Check your connection.',
     },
+    /** docs/recovery-upload FR-166. */
+    serverReset:
+      'If the server was set up again, your account is not there yet. Sign up again with this e-mail and you will be asked to upload the data on this device.',
+    signUpAgain: 'Sign up again',
   },
 
   offlineNoSession: {
@@ -77,24 +81,23 @@ export const t = {
     title: 'Offline data found',
     emptyAccount: (email: string, offline: KeptCounts) =>
       `Your new account is empty on the server, but ${kept(offline)} of ${email} are still stored offline on this device.`,
-    filledAccount: (
-      email: string,
-      offline: KeptCounts,
-      account: { todos: number; notes: number; plans?: number },
-    ) =>
-      `Your new account already holds ${and([count(account.todos, 'task'), ...extras(account)])}, and ${kept(offline)} of ${email} are still stored offline on this device.`,
-    question: 'Would you like to push all offline data to the server?',
+    /** docs/recovery-upload FR-169. */
+    differs: (email: string, offline: KeptCounts, account: KeptCounts) =>
+      `The server already holds ${kept(account)} for this account, and this device holds ${kept(offline)} of ${email}. They are not the same.`,
+    differsTitle: 'Your data differs from the server',
+    newerQuestion: 'Which data is newer?',
+    serverNewer: 'Server data is newer',
+    deviceNewer: 'Data on this device is newer',
+    serverNewerHint: 'Server data is newer: the data on this device is deleted.',
+    deviceNewerHint:
+      'Data on this device is newer: every task, list, note and plan on the server is replaced with it.',
+    question: 'Upload all data from this device to the server?',
     attachments: 'Attachments are only stored on the server and cannot be restored.',
-    no: 'No, discard it',
-    yes: 'Yes, push it',
-    noWarning: 'The offline data will be deleted from this device.',
-    chooseTitle: 'Overwrite or append?',
-    chooseText:
-      'Append adds the offline data to what the account already holds. Overwrite deletes all tasks, lists, notes and plans the account holds now (only the empty Inbox list itself stays) and replaces them with the offline data.',
-    append: 'Append',
-    overwrite: 'Overwrite',
-    back: 'Back',
-    working: 'Pushing offline data…',
+    /** docs/recovery-upload FR-163, FR-164. */
+    upload: 'Upload my data',
+    keepEmpty: 'Keep it empty',
+    noWarning: 'Data that is not uploaded is deleted from this device.',
+    working: 'Uploading your data…',
     errors: {
       no_inbox: 'The account is not ready yet. Try again in a moment.',
       failed: 'Something went wrong. The offline data is still kept. Try again.',
@@ -421,6 +424,8 @@ export const t = {
     saved: 'All changes saved',
     pending: (n: number) => `${n} change${n === 1 ? '' : 's'} pending`,
     problem: 'Sync problem, retrying',
+    /** docs/recovery-upload FR-172. */
+    comparing: 'Data comparison',
   },
 
   settings: {

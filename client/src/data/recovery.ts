@@ -3,7 +3,14 @@
  * (docs/v1/PRD.md section 4.11). Pure functions on the local database; the
  * restore itself is `Repo.restoreSnapshot`, because only the repo changes data.
  */
-import type { Activity, List, Note, Plan, Todo } from '@todoness/shared';
+import {
+  normalizeRemindBefore,
+  type Activity,
+  type List,
+  type Note,
+  type Plan,
+  type Todo,
+} from '@todoness/shared';
 import type { TodonessDB } from './db';
 
 /** `meta` key the snapshot is stored under. */
@@ -56,4 +63,62 @@ export async function takeSnapshot(
   );
   if (lists.length + todos.length + notes.length + plans.length === 0) return undefined;
   return { fromEmail, takenAt: now(), lists, todos, notes, plans, activities };
+}
+
+/**
+ * What uploading a copy writes, row by row (the fields `Repo.restoreSnapshot` sends), keyed
+ * by entity and id. Tasks whose list is not in the copy belong to the Inbox; notes whose
+ * note list is not in the copy belong to My notes.
+ */
+function uploaded(copy: RecoverySnapshot): Map<string, string> {
+  const moduleOf = (l: List) => l.module ?? 'tasks';
+  const taskLists = new Set(copy.lists.filter((l) => moduleOf(l) === 'tasks').map((l) => l.id));
+  const noteLists = new Set(copy.lists.filter((l) => moduleOf(l) === 'notes').map((l) => l.id));
+  const rows = new Map<string, string>();
+  const add = (key: string, value: unknown[]) => rows.set(key, JSON.stringify(value));
+  for (const l of copy.lists) add(`list:${l.id}`, [l.name, l.orderKey, l.isPublic, moduleOf(l)]);
+  for (const t of copy.todos) {
+    add(`todo:${t.id}`, [
+      taskLists.has(t.listId) ? t.listId : 'inbox',
+      t.title,
+      t.orderKey,
+      t.notes,
+      t.done,
+      t.completedAt,
+      t.dueAt,
+      t.priority,
+      normalizeRemindBefore(t.remindBefore),
+    ]);
+  }
+  for (const n of copy.notes ?? []) {
+    const listId = n.listId != null && noteLists.has(n.listId) ? n.listId : null;
+    add(`note:${n.id}`, [listId, n.text, n.orderKey, n.isPublic]);
+  }
+  for (const p of copy.plans ?? []) add(`plan:${p.id}`, [p.name, p.orderKey]);
+  const planIds = new Set((copy.plans ?? []).map((p) => p.id));
+  for (const a of copy.activities ?? []) {
+    if (!planIds.has(a.planId)) continue;
+    add(`activity:${a.id}`, [
+      a.planId,
+      a.name,
+      a.start,
+      a.days,
+      [...a.dependsOn].sort(),
+      a.done ?? false, // missing in a copy kept before done activities
+      a.orderKey,
+    ]);
+  }
+  return rows;
+}
+
+/**
+ * Whether two copies hold the same data: uploading one where the other is would change
+ * nothing (docs/recovery-upload FR-168, decision U3). Clocks and timestamps do not count.
+ */
+export function sameData(a: RecoverySnapshot, b: RecoverySnapshot): boolean {
+  const x = uploaded(a);
+  const y = uploaded(b);
+  if (x.size !== y.size) return false;
+  for (const [key, value] of x) if (y.get(key) !== value) return false;
+  return true;
 }

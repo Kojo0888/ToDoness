@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { newId } from '@todoness/shared';
 import { RECOVERY_KEY, takeSnapshot } from '../../src/data/recovery';
 import { createRepo } from '../../src/data/repo';
-import { createRecovery } from '../../src/services/recovery';
+import { createRecovery, isAccountEmpty } from '../../src/services/recovery';
 import { fakeNow, seedInbox, testDb, T0 } from '../helpers/db';
 
 /** A device that was Ann's, now showing a fresh account (new Inbox) with the data kept aside. */
@@ -64,15 +64,15 @@ describe('recovery service', () => {
     expect(again.getOffer()).toBeDefined();
   });
 
-  it('notifies listeners when the offer appears and when it is gone', async () => {
+  it('notifies listeners when the comparison starts, when the offer appears and when it is gone', async () => {
     const { db, repo } = await deviceWithKeptData();
     const recovery = createRecovery({ db, repo });
     let calls = 0;
     recovery.subscribe(() => calls++);
     await recovery.load();
-    expect(calls).toBe(1);
+    expect(calls).toBe(2); // "Data comparison" (FR-172), then the offer
     await recovery.decline();
-    expect(calls).toBe(2);
+    expect(calls).toBe(3);
   });
 
   it('a load that was slow does not bring back an offer that was answered meanwhile', async () => {
@@ -172,5 +172,118 @@ describe('recovery service', () => {
     const recovery = createRecovery({ db, repo });
     await recovery.load();
     expect(await recovery.accept('append')).toEqual({ ok: false, error: 'no_offer' });
+  });
+});
+
+describe('isAccountEmpty (docs/recovery-upload FR-163, FR-164)', () => {
+  const offer = {
+    fromEmail: 'ann@corp.test',
+    todos: 2,
+    lists: 1,
+    notes: 1,
+    plans: 1,
+    accountTodos: 0,
+    accountLists: 0,
+    accountNotes: 0,
+    accountPlans: 0,
+  };
+
+  it('is empty when the account holds nothing but its Inbox', () => {
+    expect(isAccountEmpty(offer)).toBe(true);
+  });
+
+  it.each(['accountTodos', 'accountLists', 'accountNotes', 'accountPlans'] as const)(
+    'is not empty with one in %s',
+    (key) => {
+      expect(isAccountEmpty({ ...offer, [key]: 1 })).toBe(false);
+    },
+  );
+
+  it('a fresh account with kept data offers an empty account', async () => {
+    const { db, repo } = await deviceWithKeptData();
+    const recovery = createRecovery({ db, repo });
+    await recovery.load();
+    expect(isAccountEmpty(recovery.getOffer()!)).toBe(true);
+  });
+});
+
+describe('comparing with the account (docs/recovery-upload FR-168 – FR-170)', () => {
+  it('drops the kept data without asking when the account already holds the same', async () => {
+    const { db, repo, snapshot } = await deviceWithKeptData();
+    await repo.restoreSnapshot(snapshot, 'append'); // another device uploaded the same data
+    await db.outbox.clear();
+    const recovery = createRecovery({ db, repo });
+    const seen = vi.fn();
+    recovery.subscribe(seen);
+    await recovery.load();
+    expect(recovery.getOffer()).toBeUndefined();
+    expect(await db.getMeta(RECOVERY_KEY)).toBeUndefined();
+    expect(await db.outbox.count()).toBe(0); // nothing to send: nothing changed
+  });
+
+  it('asks when the account holds something else', async () => {
+    const { db, repo, snapshot, inbox } = await deviceWithKeptData();
+    await repo.restoreSnapshot(snapshot, 'append');
+    await repo.createTodo({ listId: inbox.id, title: 'added on the phone' });
+    const recovery = createRecovery({ db, repo });
+    await recovery.load();
+    expect(recovery.getOffer()).toMatchObject({ todos: 2, accountTodos: 3 });
+    expect(isAccountEmpty(recovery.getOffer()!)).toBe(false);
+  });
+
+  it('device newer (overwrite) leaves exactly the kept data; server newer (decline) leaves the account', async () => {
+    for (const answer of ['device', 'server'] as const) {
+      const { db, repo, inbox } = await deviceWithKeptData();
+      await repo.createTodo({ listId: inbox.id, title: 'phone task' });
+      const recovery = createRecovery({ db, repo });
+      await recovery.load();
+      if (answer === 'device') await recovery.accept('overwrite');
+      else await recovery.decline();
+      const titles = (await db.todos.toArray())
+        .filter((t) => t.deletedAt === null)
+        .map((t) => t.title)
+        .sort();
+      expect(titles).toEqual(answer === 'device' ? ['one', 'two'] : ['phone task']);
+      expect(recovery.getOffer()).toBeUndefined();
+    }
+  });
+});
+
+describe('isComparing: the "Data comparison" status (docs/recovery-upload FR-172)', () => {
+  it('is false when nothing was kept aside', async () => {
+    const { db, repo } = await deviceWithKeptData({ snapshot: false });
+    const recovery = createRecovery({ db, repo });
+    await recovery.load();
+    expect(recovery.isComparing()).toBe(false);
+  });
+
+  it('is true while the comparison runs and while the question waits, false after an answer', async () => {
+    for (const answer of ['accept', 'decline'] as const) {
+      const { db, repo } = await deviceWithKeptData();
+      const recovery = createRecovery({ db, repo });
+      const seen: boolean[] = [];
+      recovery.subscribe(() => seen.push(recovery.isComparing()));
+      const loading = recovery.load();
+      expect(recovery.isComparing()).toBe(false); // nothing read yet
+      await loading;
+      expect(seen[0]).toBe(true); // set as soon as kept data is found
+      expect(recovery.isComparing()).toBe(true); // the question waits
+      await recovery.load(); // later syncs keep it, without a flicker to false
+      expect(seen.every(Boolean)).toBe(true);
+      if (answer === 'accept') await recovery.accept('append');
+      else await recovery.decline();
+      expect(recovery.isComparing()).toBe(false);
+    }
+  });
+
+  it('ends when the comparison finds the same data', async () => {
+    const { db, repo, snapshot } = await deviceWithKeptData();
+    await repo.restoreSnapshot(snapshot, 'append');
+    const recovery = createRecovery({ db, repo });
+    const seen: boolean[] = [];
+    recovery.subscribe(() => seen.push(recovery.isComparing()));
+    await recovery.load();
+    expect(seen).toEqual([true, false]);
+    expect(recovery.isComparing()).toBe(false);
   });
 });

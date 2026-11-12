@@ -34,4 +34,24 @@ describe('syncSummary', () => {
   it('a needed login is a warning', () => {
     expect(s({ state: 'auth_required' }).tone).toBe('warn');
   });
+
+  describe('data comparison (docs/recovery-upload FR-172)', () => {
+    it('has its own text and tone', () => {
+      expect(s({ comparing: true })).toEqual({ text: 'Data comparison', tone: 'compare' });
+    });
+
+    it('wins over syncing, pending changes and all saved', () => {
+      expect(s({ comparing: true, state: 'syncing' }).tone).toBe('compare');
+      expect(s({ comparing: true, pending: 3 })).toEqual({
+        text: 'Data comparison',
+        tone: 'compare',
+      });
+    });
+
+    it('offline, a sync problem and a needed login still show first', () => {
+      expect(s({ comparing: true, online: false }).text).toBe('Offline');
+      expect(s({ comparing: true, state: 'error' }).tone).toBe('warn');
+      expect(s({ comparing: true, state: 'auth_required' }).tone).toBe('warn');
+    });
+  });
 });
