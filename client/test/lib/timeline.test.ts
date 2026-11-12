@@ -422,6 +422,31 @@ describe('planRows (docs/plan/PRD.md FR-179 – FR-181, FR-184)', () => {
   });
 });
 
+describe('planRows deeper than GROUP_DEPTH_MAX (review of PR 25)', () => {
+  it('draws a tree nested too deep by two devices as it is', () => {
+    const chain = ['l1', 'l2', 'l3', 'l4', 'l5', 'leaf'].map((id, i, all) => ({
+      id,
+      planId: 'p',
+      start: '2026-03-01',
+      days: 1,
+      dependsOn: [],
+      parentId: i === 0 ? null : all[i - 1]!,
+      deletedAt: null,
+      done: false,
+    }));
+    const r = planRows(chain, planTree(chain), new Set(), false);
+    expect(r.rows.map((x) => `${x.id}:${x.depth}`)).toEqual([
+      'l1:0',
+      'l2:1',
+      'l3:2',
+      'l4:3',
+      'l5:4',
+      'leaf:5',
+    ]);
+    expect(r.boxes.map((b) => b.levels)).toEqual([5, 4, 3, 2, 1]);
+  });
+});
+
 describe('groupBox (FR-179)', () => {
   it('reaches from its first to its last row and is wider than its children by level', () => {
     expect(groupBox({ left: 100, width: 50 }, 2, 4, 1)).toEqual({

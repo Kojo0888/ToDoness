@@ -15,6 +15,7 @@ import {
   GROUP_DEPTH_MAX,
   addDays,
   applyOp,
+  compareHlc,
   dayNumber,
   daysBetween,
   depthOf,
@@ -30,6 +31,7 @@ import {
   localDay,
   newId,
   normalizeRemindBefore,
+  parseHlc,
   schedulePlan,
   syncOpSchema,
   wouldLoop,
@@ -295,6 +297,18 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
     return (await rowsOfPlan(planId).toArray()).filter((a) => a.deletedAt === null);
   }
 
+  /**
+   * Was `a` deleted together with the deletion whose clock is `ref` (review of PR 25)? By the
+   * same device, at or after it. Clocks of the same device always grow, so this does not
+   * depend on how well the clocks of different devices agree; an activity deleted on its own
+   * by another device is never taken for one deleted with it.
+   */
+  function deletedWith(a: Activity, ref: string | undefined): boolean {
+    const at = a.fieldHlc.deletedAt;
+    if (!at || !ref) return false;
+    return parseHlc(at).clientId === parseHlc(ref).clientId && compareHlc(at, ref) >= 0;
+  }
+
   /** Pushes activities later until every dependency of the plan holds again (FR-136). */
   async function reschedule(planId: string): Promise<void> {
     for (const [id, start] of schedulePlan(await activitiesOfPlan(planId))) {
@@ -351,7 +365,7 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
     const current = { ...group, ...span, done: leaves.every((l) => l.done) };
     const patch = typeof edit === 'function' ? edit(current) : edit;
     if (patch.name !== undefined && patch.name.trim() !== group.name) {
-      await commit<Activity>('activity', 'update', group.id, { name: patch.name });
+      await commit<Activity>('activity', 'update', group.id, { name: patch.name.trim() });
     }
     if (patch.done !== undefined) {
       for (const l of leaves) {
@@ -647,7 +661,7 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         const patch = typeof edit === 'function' ? edit(activity) : edit;
         const changes: Record<string, unknown> = {};
         if (patch.name !== undefined && patch.name.trim() !== activity.name) {
-          changes.name = patch.name;
+          changes.name = patch.name.trim();
         }
         if (patch.days !== undefined && patch.days !== activity.days) changes.days = patch.days;
         if (patch.done !== undefined && patch.done !== activity.done) changes.done = patch.done;
@@ -679,8 +693,12 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
             await commit<Activity>('activity', 'delete', a.id, {});
           }
         }
+        // A group left without children goes too (FR-178), then the dates of those around it.
         const up = tree.parent.get(id);
-        if (up !== undefined) await storeGroupSpans(activity.planId);
+        if (up !== undefined) {
+          await removeEmptied(activity.planId, up);
+          await storeGroupSpans(activity.planId);
+        }
         return deleted;
       }),
 
@@ -689,21 +707,33 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         const activity = await db.activities.get(id);
         if (!activity) throw new RepoError('not_found', 'Activity not found');
         if (activity.deletedAt === null) return activity;
-        const since = activity.deletedAt;
+        const ref = activity.fieldHlc.deletedAt;
         await commit<Activity>('activity', 'restore', id, {});
-        // What was deleted with it, not what was deleted on its own before (FR-186).
         const rows = await rowsOfPlan(activity.planId).toArray();
+        const byId = new Map(rows.map((a) => [a.id, a]));
+        // What was deleted with it, not what was deleted on its own before (FR-186) …
         const back = new Set([id]);
         for (let grew = true; grew;) {
           grew = false;
           for (const a of rows) {
-            if (back.has(a.id) || a.deletedAt === null || a.deletedAt < since) continue;
+            if (back.has(a.id) || a.deletedAt === null || !deletedWith(a, ref)) continue;
             if (a.parentId && back.has(a.parentId)) {
               back.add(a.id);
               grew = true;
               await commit<Activity>('activity', 'restore', a.id, {});
             }
           }
+        }
+        // … and the groups its deletion emptied and removed (FR-178).
+        for (let up = activity.parentId; up;) {
+          const group = byId.get(up);
+          if (!group || group.deletedAt === null || !deletedWith(group, ref)) break;
+          const live = rows.some(
+            (a) => a.parentId === up && a.deletedAt === null && !back.has(a.id),
+          );
+          if (live) break;
+          await commit<Activity>('activity', 'restore', up, {});
+          up = group.parentId;
         }
         await reschedule(activity.planId); // its links count again
         return liveActivity(id);

@@ -1,6 +1,6 @@
 /** Activity groups in the local database (docs/plan/PRD.md section 11). */
 import { describe, expect, it } from 'vitest';
-import { addDays, localDay, planTree, spansOf } from '@todoness/shared';
+import { addDays, formatHlc, localDay, planTree, spansOf } from '@todoness/shared';
 import { diffActivities } from '../../src/lib/planUndo';
 import { RepoError } from '../../src/data/repo';
 import { getActivities } from '../../src/data/queries';
@@ -170,6 +170,39 @@ describe('groups – repo (FR-174 – FR-178)', () => {
     s.now.advance(10);
     await s.repo.deleteActivity(g.id);
     expect(await s.rows()).toEqual([]);
+    await s.repo.restoreActivity(g.id);
+    expect(await s.rows()).toEqual(['A & B', 'A<A & B', 'B<A & B']);
+  });
+});
+
+describe('groups – deleting (review of PR 25)', () => {
+  it('deleting the last child removes the emptied group; restoring brings both back (FR-178)', async () => {
+    const s = await setup();
+    const a = await s.add('A', 0, 1);
+    const b = await s.add('B', 1, 1);
+    await s.add('C', 5, 1);
+    const g = await s.repo.groupActivities(a.id, b.id);
+    await s.repo.deleteActivity(a.id);
+    expect(await s.rows()).toEqual(['A & B', 'B<A & B', 'C']);
+    await s.repo.deleteActivity(b.id);
+    expect(await s.rows()).toEqual(['C']);
+    expect((await s.db.activities.get(g.id))!.deletedAt).not.toBeNull();
+    await s.repo.restoreActivity(b.id);
+    expect(await s.rows()).toEqual(['A & B', 'B<A & B', 'C']);
+  });
+
+  it('restoring a group does not bring back a child another device deleted on its own', async () => {
+    const s = await setup();
+    const a = await s.add('A', 0, 1);
+    const b = await s.add('B', 1, 1);
+    const c = await s.add('C', 2, 1);
+    const g = await s.repo.groupActivities(a.id, b.id);
+    await s.repo.moveToGroup(c.id, g.id);
+    await s.repo.deleteActivity(g.id);
+    // C's deletion as if it came from another device, even with a later clock.
+    const row = (await s.db.activities.get(c.id))!;
+    const other = formatHlc({ wall: s.now() + 60_000, counter: 0, clientId: 'other' });
+    await s.db.activities.put({ ...row, fieldHlc: { ...row.fieldHlc, deletedAt: other } });
     await s.repo.restoreActivity(g.id);
     expect(await s.rows()).toEqual(['A & B', 'A<A & B', 'B<A & B']);
   });

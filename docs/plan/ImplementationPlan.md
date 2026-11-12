@@ -474,3 +474,9 @@ major-change order: PRD → plan → tests → code.
 5. **Undo of grouping** (FR-187) restores emptied groups and deletes created ones only when
    the change also changed a `parentId`, so adding and deleting activities keep their own
    Undo message (FR-131).
+6. **Review of PR 25.** Deleting a group's last child removes the emptied group as well, and
+   restoring the child brings it back. "Deleted together" is decided by the deletion clocks
+   (HLC: the same device, at or after the restored activity's deletion) instead of wall
+   times, so a child another device deleted on its own is not restored with its group. A
+   tree nested deeper than four levels by two devices is drawn as it is (tested). Names are
+   trimmed before they are written.

@@ -116,6 +116,24 @@ describe('planTree', () => {
   });
 });
 
+describe('deeper than GROUP_DEPTH_MAX (review of PR 25)', () => {
+  it('a tree two devices nested too deep is shown as it is; only new nesting is refused', () => {
+    const chain = [
+      act('l1', 1, 1),
+      act('l2', 1, 1, 'l1'),
+      act('l3', 1, 1, 'l2'),
+      act('l4', 1, 1, 'l3'),
+      act('l5', 1, 1, 'l4'),
+      act('leaf', 3, 2, 'l5'),
+    ];
+    const tree = planTree(chain);
+    expect(tree.parent.size).toBe(5);
+    expect(depthOf(tree, 'leaf')).toBe(6);
+    expect(heightOf(tree, 'l1')).toBe(6);
+    expect(spansOf(chain).get('l1')).toEqual({ start: '2026-03-03', days: 2 });
+  });
+});
+
 describe('spansOf (FR-175)', () => {
   it('runs a group from its earliest child start to its latest child end, whatever it stores', () => {
     const list = [
