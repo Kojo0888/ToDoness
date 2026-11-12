@@ -15,6 +15,7 @@ import {
   SCALES,
   unitSpans,
   dragResult,
+  isOverdue,
   monthSpans,
   nudge,
   timelineRange,
@@ -255,5 +256,20 @@ describe('weekShift (weekend shading as one background)', () => {
     expect(weekShift('2026-03-14')).toBe(5); // Saturday
     expect(weekShift('2026-03-15')).toBe(6); // Sunday
     expect(weekShift('1969-12-29')).toBe(0); // before 1970 too
+  });
+});
+
+describe('isOverdue (FR-161)', () => {
+  it('is true for an open activity whose last day is before today', () => {
+    expect(isOverdue({ start: '2026-03-07', days: 3 }, false, TODAY)).toBe(true); // ended 9th
+  });
+
+  it('is false while the last day is today or later', () => {
+    expect(isOverdue({ start: '2026-03-08', days: 3 }, false, TODAY)).toBe(false); // ends today
+    expect(isOverdue({ start: '2026-03-12', days: 1 }, false, TODAY)).toBe(false);
+  });
+
+  it('is false for a done activity, however old', () => {
+    expect(isOverdue({ start: '2025-01-01', days: 1 }, true, TODAY)).toBe(false);
   });
 });

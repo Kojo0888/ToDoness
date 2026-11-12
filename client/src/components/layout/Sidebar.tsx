@@ -6,6 +6,7 @@ import { listDropId } from '../../lib/dnd';
 import { PLAN_NAME_MAX } from '@todoness/shared';
 import { MANAGE_LISTS_PATH, MANAGE_NOTE_LISTS_PATH, noteListPath } from '../../lib/listManage';
 import {
+  countActivitiesByPlan,
   countNotesByList,
   countOpenTodosByList,
   getLists,
@@ -260,6 +261,7 @@ function PlanNav({
 }) {
   const [, navigate] = useLocation();
   const plans = useLiveQuery(() => getPlans(db), [], []);
+  const counts = useLiveQuery(() => countActivitiesByPlan(db), [], new Map<string, number>());
   const [name, setName] = useState('');
 
   async function addPlan(e: FormEvent) {
@@ -277,6 +279,7 @@ function PlanNav({
       <ul className="nav-lists" aria-label={t.plan.plans}>
         {plans.map((p) => {
           const href = planPath(p.id);
+          const count = counts.get(p.id) ?? 0;
           return (
             <li key={p.id}>
               <Link
@@ -285,7 +288,11 @@ function PlanNav({
                 aria-current={active(href) ? 'page' : undefined}
                 onClick={onNavigate}
               >
-                {p.name}
+                <span className="nav-name">{p.name}</span>
+                {/* All activities, done ones included (FR-160, decision P17). */}
+                <span className="nav-count" title={t.common.activitiesCount(count)}>
+                  {count}
+                </span>
               </Link>
             </li>
           );

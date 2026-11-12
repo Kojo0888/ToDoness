@@ -29,6 +29,7 @@ import {
   dayWidth,
   dragResult,
   headerUnits,
+  isOverdue,
   nudge,
   timelineRange,
   unitSpans,
@@ -46,6 +47,8 @@ interface Props {
   activities: Activity[];
   nameMode: NameMode;
   scale: Scale;
+  /** Done activities get no row, block or arrows (FR-162). */
+  hideDone: boolean;
   planId: string;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
@@ -94,6 +97,7 @@ export function Timeline({
   activities,
   nameMode,
   scale,
+  hideDone,
   planId,
   selectedId,
   onSelect,
@@ -130,10 +134,18 @@ export function Timeline({
     }
   }
 
+  // Hidden done activities (FR-162) are still part of the schedule above (a drag still
+  // pushes them), they are only not drawn.
+  if (hideDone) shown = shown.filter((a) => !a.done);
+
   // Read once: the grid must not shift at midnight in the middle of a drag.
   const [today] = useState(() => localDay(Date.now()));
   // The grid follows the saved days, not the preview: it must not move under the pointer.
-  const range = timelineRange(activities, today, scale);
+  const range = timelineRange(
+    hideDone ? activities.filter((a) => !a.done) : activities,
+    today,
+    scale,
+  );
   const gridWidth = range.days * w;
   const rowsHeight = (shown.length + 1) * ROW_HEIGHT;
 
@@ -308,21 +320,24 @@ export function Timeline({
   const rowOf = new Map(shown.map((a, i) => [a.id, i]));
   const boxOf = new Map(shown.map((a) => [a.id, blockBox(a, range, scale)]));
   const broken = new Set(brokenLinks(shown, links).map((l) => `${l.from}>${l.to}`));
-  const arrows = links.map((l) => {
-    const from = boxOf.get(l.from)!;
-    const to = boxOf.get(l.to)!;
-    const source = { x: from.left + from.width, row: rowOf.get(l.from)! };
-    const target = { x: to.left, row: rowOf.get(l.to)! };
-    const tip = arrowTip(source, target);
-    return {
-      ...l,
-      key: `${l.from}>${l.to}`,
-      d: arrowPath(source, target),
-      // A small triangle on the corner of the target block, pointing along the line.
-      head: `M ${tip.x} ${tip.y} l -9 -5 v 10 z`,
-      turn: `rotate(${tip.angle} ${tip.x} ${tip.y})`,
-    };
-  });
+  // An arrow to or from a hidden activity would point at nothing (decision P19).
+  const arrows = links
+    .filter((l) => rowOf.has(l.from) && rowOf.has(l.to))
+    .map((l) => {
+      const from = boxOf.get(l.from)!;
+      const to = boxOf.get(l.to)!;
+      const source = { x: from.left + from.width, row: rowOf.get(l.from)! };
+      const target = { x: to.left, row: rowOf.get(l.to)! };
+      const tip = arrowTip(source, target);
+      return {
+        ...l,
+        key: `${l.from}>${l.to}`,
+        d: arrowPath(source, target),
+        // A small triangle on the corner of the target block, pointing along the line.
+        head: `M ${tip.x} ${tip.y} l -9 -5 v 10 z`,
+        turn: `rotate(${tip.angle} ${tip.x} ${tip.y})`,
+      };
+    });
 
   const todayIndex = daysBetween(range.first, today);
   const dragBox = drag ? boxOf.get(drag.id) : undefined;
@@ -448,6 +463,8 @@ export function Timeline({
                 const nameOn = nameMode === 'on' && !narrow;
                 const nameAfter = nameMode === 'after' || (nameMode === 'on' && narrow);
                 const end = endDay(a.start, a.days);
+                // Ended before today and not done: red (FR-161).
+                const overdue = isOverdue(a, a.done, today);
                 const style: CSSProperties = {
                   left: box.left,
                   width: box.width,
@@ -460,6 +477,7 @@ export function Timeline({
                   a.id === drag?.id && 'is-dragged',
                   a.id === drag?.linkTo && 'is-link-target',
                   a.done && 'is-done',
+                  overdue && 'is-overdue',
                 ];
                 return (
                   <div
@@ -473,7 +491,12 @@ export function Timeline({
                       className="plan-block"
                       data-start={a.start}
                       data-end={end}
-                      aria-label={t.plan.block(a.name, formatDay(a.start), formatDay(end), a.done)}
+                      aria-label={t.plan.block(
+                        a.name,
+                        formatDay(a.start),
+                        formatDay(end),
+                        a.done ? 'done' : overdue ? 'overdue' : 'open',
+                      )}
                       aria-pressed={a.id === selectedId}
                       aria-describedby="plan-block-help"
                       title={`${a.name}: ${formatDay(a.start)} – ${formatDay(end)}`}

@@ -12,7 +12,12 @@ import {
 import { diffActivities } from '../../src/lib/planUndo';
 import { applyChanges } from '../../src/sync/apply-changes';
 import { RepoError } from '../../src/data/repo';
-import { getActivities, getPlanById, getPlans } from '../../src/data/queries';
+import {
+  countActivitiesByPlan,
+  getActivities,
+  getPlanById,
+  getPlans,
+} from '../../src/data/queries';
 import { expectValidOutbox, fakeNow, T0, testRepo } from '../helpers/db';
 import { hlcAt } from '../helpers/fetch';
 
@@ -75,6 +80,23 @@ describe('plans – repo', () => {
     expect((await s.db.activities.get(kept.id))?.deletedAt).toBeNull();
     expect((await getPlans(s.db)).map((p) => p.name)).toEqual(['Other']);
     await expectValidOutbox(s.db);
+  });
+});
+
+describe('countActivitiesByPlan (sidebar count, FR-160)', () => {
+  it('counts the live activities of every plan, done ones included', async () => {
+    const s = await setup();
+    const other = await s.repo.createPlan('Move house');
+    expect((await countActivitiesByPlan(s.db)).size).toBe(0);
+    await s.add('Design', 0, 3);
+    const build = await s.add('Build', 3, 3);
+    const gone = await s.add('Gone', 6, 1);
+    await s.repo.createActivity(other.id, 'Pack');
+    await s.repo.updateActivity(build.id, { done: true });
+    await s.repo.deleteActivity(gone.id);
+    const counts = await countActivitiesByPlan(s.db);
+    expect(counts.get(s.plan.id)).toBe(2);
+    expect(counts.get(other.id)).toBe(1);
   });
 });
 

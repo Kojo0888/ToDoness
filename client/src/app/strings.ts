@@ -31,6 +31,7 @@ export const t = {
     moreInfo: (about: string) => `About ${about}`,
     openTasks: (n: number) => `${n} open task${n === 1 ? '' : 's'}`,
     notesCount: (n: number) => `${n} note${n === 1 ? '' : 's'}`,
+    activitiesCount: (n: number) => `${n} activit${n === 1 ? 'y' : 'ies'}`,
   },
 
   login: {
@@ -265,12 +266,14 @@ export const t = {
     nameModes: { on: 'On block', after: 'After block', column: 'Column' },
     options: 'Timeline options',
     scale: 'Timeline scale',
+    hideDone: 'Hide done activities',
+    allDoneHidden: 'All activities are done and hidden.',
     scales: { day: 'Days', week: 'Weeks', month: 'Months', year: 'Years' },
     timeline: 'Timeline',
     activityColumn: 'Activity',
     today: 'Today',
-    block: (name: string, start: string, end: string, done: boolean) =>
-      `${name}, ${start} – ${end}${done ? ', done' : ''}`,
+    block: (name: string, start: string, end: string, state: 'open' | 'done' | 'overdue') =>
+      `${name}, ${start} – ${end}${state === 'open' ? '' : `, ${state}`}`,
     moveHandle: (name: string) => `Move ${name}`,
     endHandle: (name: string) => `Change the end of ${name}`,
     arrow: (from: string, to: string) => `${from} → ${to}, remove link`,

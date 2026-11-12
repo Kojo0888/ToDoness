@@ -1836,6 +1836,14 @@ h2.nav-heading {
   display: none;
 }
 
+.plan-options-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 44px;
+}
+
 .plan-options-label {
   color: var(--muted);
   font-size: 0.8rem;
@@ -2278,6 +2286,11 @@ h2.nav-heading {
 
 .plan-bar.is-done .plan-handle::after {
   background: var(--accent);
+}
+
+/* An open activity that ended before today (FR-161): red instead of the accent. */
+.plan-bar.is-overdue .plan-block {
+  background: var(--danger);
 }
 
 /* A short activity on a coarse scale: no grip marks, the name after it (FR-157). */

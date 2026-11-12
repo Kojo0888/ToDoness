@@ -5,6 +5,7 @@ import { ACTIVITY_NAME_MAX } from '@todoness/shared';
 import { getActivities, getPlanById } from '../../data/queries';
 import { browserStorage } from '../../lib/modules';
 import { readNameMode, saveNameMode, type NameMode } from '../../lib/planNames';
+import { readHideDone, saveHideDone } from '../../lib/planHideDone';
 import { readScale, saveScale } from '../../lib/planScale';
 import { SCALES, type Scale } from '../../lib/timeline';
 import { createPlanChanges, type PlanError } from '../../services/planChanges';
@@ -33,6 +34,7 @@ export function PlanPage({ planId }: { planId: string }) {
 
   const [nameMode, setNameMode] = useState<NameMode>(() => readNameMode(browserStorage()));
   const [scale, setScale] = useState<Scale>(() => readScale(browserStorage()));
+  const [hideDone, setHideDone] = useState(() => readHideDone(browserStorage()));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   // Every change of this page goes through here: one at a time, undoable where it alters
@@ -79,6 +81,11 @@ export function PlanPage({ planId }: { planId: string }) {
   function chooseNames(mode: NameMode) {
     saveNameMode(browserStorage(), mode);
     setNameMode(mode);
+  }
+
+  function chooseHideDone(hide: boolean) {
+    saveHideDone(browserStorage(), hide);
+    setHideDone(hide);
   }
 
   function chooseScale(next: Scale) {
@@ -128,7 +135,12 @@ export function PlanPage({ planId }: { planId: string }) {
               </button>
             ))}
           </div>
-          <PlanOptions nameMode={nameMode} onNameMode={chooseNames} />
+          <PlanOptions
+            nameMode={nameMode}
+            onNameMode={chooseNames}
+            hideDone={hideDone}
+            onHideDone={chooseHideDone}
+          />
         </div>
       </div>
 
@@ -139,11 +151,15 @@ export function PlanPage({ planId }: { planId: string }) {
       )}
 
       {activities.length === 0 && <p className="empty">{t.plan.noActivities}</p>}
+      {hideDone && activities.length > 0 && activities.every((a) => a.done) && (
+        <p className="empty">{t.plan.allDoneHidden}</p>
+      )}
 
       <Timeline
         activities={activities}
         nameMode={nameMode}
         scale={scale}
+        hideDone={hideDone}
         planId={planId}
         selectedId={selected?.id ?? null}
         onSelect={setSelectedId}
