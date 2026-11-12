@@ -148,7 +148,9 @@ describe('the Plan module and plans (FR-119 – FR-122)', () => {
     await addPlan(page, 'Launch');
     await addPlan(page, 'Move house');
     const nav = page.getByRole('list', { name: 'Plans' });
-    expect(await nav.getByRole('link').allTextContents()).toEqual(['Launch', 'Move house']);
+    expect(await nav.locator('.nav-name').allTextContents()).toEqual(['Launch', 'Move house']);
+    // Each with its number of activities (FR-160).
+    expect(await nav.locator('.nav-count').allTextContents()).toEqual(['0', '0']);
     await expect(
       nav.getByRole('link', { name: 'Move house' }).getAttribute('aria-current'),
     ).resolves.toBe('page');
@@ -190,14 +192,14 @@ describe('the Plan module and plans (FR-119 – FR-122)', () => {
           .map((e) => e.textContent)
           .join() === 'Second,Launch 2',
     );
-    expect(await nav.getByRole('link').allTextContents()).toEqual(['Second', 'Launch 2']);
+    expect(await nav.locator('.nav-name').allTextContents()).toEqual(['Second', 'Launch 2']);
 
     await page.getByRole('button', { name: 'Actions: Launch 2' }).click();
     await page.getByRole('menuitem', { name: 'Delete plan' }).click();
     await page.getByRole('dialog').getByText('1 activity').waitFor();
     await page.getByRole('dialog').getByRole('button', { name: 'Delete', exact: true }).click();
     await page.waitForFunction(() => document.querySelectorAll('.manage-row').length === 1);
-    expect(await nav.getByRole('link').allTextContents()).toEqual(['Second']);
+    expect(await nav.locator('.nav-name').allTextContents()).toEqual(['Second']);
 
     await page.getByRole('link', { name: 'Back to plans' }).click();
     await heading(page, 'Second').waitFor();
@@ -599,7 +601,10 @@ describe('options and scale (FR-156, FR-157)', () => {
     const count = page.getByRole('list', { name: 'Plans' }).locator('.nav-count');
     await expect(count.textContent()).resolves.toBe('1');
     await addActivity(page, 'Old');
-    await page.getByRole('list', { name: 'Plans' }).locator('.nav-count', { hasText: '2' }).waitFor();
+    await page
+      .getByRole('list', { name: 'Plans' })
+      .locator('.nav-count', { hasText: '2' })
+      .waitFor();
 
     // 2. An open activity that ended before today is red (FR-161).
     expect(await page.locator('.plan-bar.is-overdue').count()).toBe(0);

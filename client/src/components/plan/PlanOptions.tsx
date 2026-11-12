@@ -4,18 +4,23 @@ import { t } from '../../app/strings';
 
 /**
  * The timeline's less used settings behind a gear button (docs/plan/PRD.md FR-156): where
- * activity names are shown. A small panel below the button; Escape, the button or a click
+ * activity names are shown, and whether done activities are hidden (FR-162). A small panel below the button; Escape, the button or a click
  * outside close it.
  */
 export function PlanOptions({
   nameMode,
   onNameMode,
+  hideDone,
+  onHideDone,
 }: {
   nameMode: NameMode;
   onNameMode: (mode: NameMode) => void;
+  hideDone: boolean;
+  onHideDone: (hide: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
+  const hideId = useId();
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
 
@@ -75,6 +80,18 @@ export function PlanOptions({
               {t.plan.nameModes[mode]}
             </button>
           ))}
+        </div>
+        <div className="plan-options-switch">
+          <label htmlFor={hideId}>{t.plan.hideDone}</label>
+          <span className="switch">
+            <input
+              id={hideId}
+              type="checkbox"
+              role="switch"
+              checked={hideDone}
+              onChange={(e) => onHideDone(e.target.checked)}
+            />
+          </span>
         </div>
       </div>
     </div>

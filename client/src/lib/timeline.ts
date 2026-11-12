@@ -3,7 +3,7 @@
  * shown, where a block sits, what a drag means and how an arrow runs. Pure functions; the
  * component only turns them into elements.
  */
-import { ACTIVITY_DAYS_MAX, addDays, dayNumber, daysBetween } from '@todoness/shared';
+import { ACTIVITY_DAYS_MAX, addDays, dayNumber, daysBetween, endDay } from '@todoness/shared';
 
 /** Pixels per day (on the Days scale) and per row. A row is 44 px so that blocks are easy to hit by touch. */
 export const DAY_WIDTH = 36;
@@ -104,6 +104,13 @@ export interface Span {
   start: string;
   days: number;
 }
+
+/**
+ * An open activity whose last day is before today: drawn in red (FR-161). One that ends
+ * today is not overdue yet, and a done one never is (decision P18).
+ */
+export const isOverdue = (span: Span, done: boolean, today: string): boolean =>
+  !done && endDay(span.start, span.days) < today;
 
 /**
  * All activities and today, with 3 spare days before and 14 after (room to drag into), and

@@ -132,6 +132,15 @@ export async function getPlanById(db: TodonessDB, id: string): Promise<Plan | un
   return p && p.deletedAt === null ? p : undefined;
 }
 
+/** Number of live activities in each plan, done ones included (sidebar, FR-160). */
+export async function countActivitiesByPlan(db: TodonessDB): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  for (const a of await db.activities.toArray()) {
+    if (a.deletedAt === null) counts.set(a.planId, (counts.get(a.planId) ?? 0) + 1);
+  }
+  return counts;
+}
+
 /** The live activities of a plan, in row order (a new one goes to the bottom). */
 export async function getActivities(db: TodonessDB, planId: string): Promise<Activity[]> {
   const rows = await db.activities
