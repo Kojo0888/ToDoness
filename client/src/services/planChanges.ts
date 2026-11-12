@@ -10,8 +10,11 @@ import { RepoError, type Repo } from '../data/repo';
 import { diffActivities, type ActivityChange, type ActivityState } from '../lib/planUndo';
 import { createSerialQueue } from '../lib/serial';
 
-/** `loop`: the link would close a loop. `limit`: too many links. `failed`: anything else. */
-export type PlanError = 'loop' | 'limit' | 'failed';
+/**
+ * `loop`: the link would close a loop. `limit`: too many links. `depth`: groups nested too
+ * deep. `failed`: anything else.
+ */
+export type PlanError = 'loop' | 'limit' | 'depth' | 'failed';
 
 export interface PlanChangesState {
   /** What the last change did, for "Undo last change"; `null` when there is nothing to undo. */
@@ -33,7 +36,9 @@ export interface PlanChanges {
 }
 
 const errorOf = (err: unknown): PlanError =>
-  err instanceof RepoError && (err.code === 'loop' || err.code === 'limit') ? err.code : 'failed';
+  err instanceof RepoError && (err.code === 'loop' || err.code === 'limit' || err.code === 'depth')
+    ? err.code
+    : 'failed';
 
 export function createPlanChanges(deps: {
   db: TodonessDB;
@@ -51,12 +56,13 @@ export function createPlanChanges(deps: {
   }
 
   const read = async (): Promise<ActivityState[]> =>
-    (await getActivities(db, planId)).map(({ id, start, days, dependsOn, done }) => ({
+    (await getActivities(db, planId)).map(({ id, start, days, dependsOn, done, parentId }) => ({
       id,
       start,
       days,
       dependsOn,
       done,
+      parentId,
     }));
 
   return {

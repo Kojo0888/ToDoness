@@ -105,6 +105,7 @@ function uploaded(copy: RecoverySnapshot): Map<string, string> {
       a.days,
       [...a.dependsOn].sort(),
       a.done ?? false, // missing in a copy kept before done activities
+      a.parentId ?? null, // missing in a copy kept before activity groups
       a.orderKey,
     ]);
   }

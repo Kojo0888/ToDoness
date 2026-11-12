@@ -245,3 +245,57 @@ describe('done activities (docs/plan/PRD.md FR-153, FR-159)', () => {
     expect(activities.at(-1)!.patch).toEqual({});
   });
 });
+
+describe('activity groups (docs/plan/PRD.md FR-174, FR-188)', () => {
+  it('stores parentId and sends it to apps that ask with activities=done,groups', async () => {
+    const r = await c.ann.device.push([
+      op('activity', 'update', c.buildId, { parentId: c.designId }, hlcAt(10)),
+    ]);
+    expect(r.rejected).toEqual([]);
+    expect(row(c, 'activities', c.buildId)).toMatchObject({ parent_id: c.designId });
+    expect(row(c, 'activities', c.designId)).toMatchObject({ parent_id: null });
+    const changes = await c.ann.device.pullAll();
+    expect(changes.at(-1)).toMatchObject({ entityId: c.buildId, patch: { parentId: c.designId } });
+  });
+
+  it('a create with a parent keeps it; null clears it', async () => {
+    const id = newId();
+    await c.ann.device.push([
+      op(
+        'activity',
+        'create',
+        id,
+        {
+          planId: c.planId,
+          name: 'Child',
+          start: '2026-03-01',
+          orderKey: 'a2',
+          parentId: c.designId,
+        },
+        hlcAt(11),
+      ),
+    ]);
+    expect(row(c, 'activities', id)).toMatchObject({ parent_id: c.designId });
+    await c.ann.device.push([op('activity', 'update', id, { parentId: null }, hlcAt(12))]);
+    expect(row(c, 'activities', id)).toMatchObject({ parent_id: null });
+  });
+
+  it('leaves parentId out for apps that do not ask for groups (they would refuse the field)', async () => {
+    await c.ann.device.push([
+      op('activity', 'update', c.buildId, { parentId: c.designId, done: true }, hlcAt(10)),
+    ]);
+    const res = await c.ann.device.http.get(
+      '/api/sync/pull?since=0&limit=1000&reminders=list&lists=modules&plans=1&activities=done',
+    );
+    const body = (await res.json()) as { changes: { entity: string; patch: object }[] };
+    const activities = body.changes.filter((ch) => ch.entity === 'activity');
+    expect(activities.some((ch) => 'parentId' in ch.patch)).toBe(false);
+    expect(activities.at(-1)!.patch).toEqual({ done: true });
+    // The current app gets both.
+    const now = await c.ann.device.http.get(
+      '/api/sync/pull?since=0&limit=1000&reminders=list&lists=modules&plans=1&activities=done,groups',
+    );
+    const all = (await now.json()) as { changes: { entity: string; patch: object }[] };
+    expect(all.changes.at(-1)!.patch).toEqual({ parentId: c.designId, done: true });
+  });
+});

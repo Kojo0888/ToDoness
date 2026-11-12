@@ -60,6 +60,7 @@ const ACTIVITY_DEFAULTS = {
   days: 1,
   dependsOn: [] as string[],
   done: false,
+  parentId: null,
   deletedAt: null,
 } as const satisfies Partial<Activity>;
 

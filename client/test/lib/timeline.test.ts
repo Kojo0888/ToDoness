@@ -1,6 +1,6 @@
 /** Geometry of the plan timeline (docs/plan/ImplementationPlan.md, "Timeline"). */
 import { describe, expect, it } from 'vitest';
-import { ACTIVITY_DAYS_MAX } from '@todoness/shared';
+import { ACTIVITY_DAYS_MAX, planTree } from '@todoness/shared';
 import {
   DAY_WIDTH,
   BLOCK_INSET,
@@ -23,6 +23,11 @@ import {
   nudge,
   timelineRange,
   weekShift,
+  GROUP_INSET,
+  GROUP_PAD,
+  GROUP_PAD_STEP,
+  groupBox,
+  planRows,
 } from '../../src/lib/timeline';
 
 const TODAY = '2026-03-10';
@@ -308,5 +313,148 @@ describe('hidden predecessor mark (FR-173)', () => {
 
   it('is cut at the left edge of the grid', () => {
     expect(hiddenMark({ left: 10, width: 50 }, 0)).toEqual({ x1: 0, x2: 10, y: ROW_HEIGHT / 2 });
+  });
+});
+
+describe('planRows (docs/plan/PRD.md FR-179 – FR-181, FR-184)', () => {
+  // g: { a, h: { b, c } }, d
+  const list = [
+    {
+      id: 'g',
+      planId: 'p',
+      start: '2026-03-01',
+      days: 1,
+      dependsOn: [],
+      parentId: null,
+      deletedAt: null,
+      done: false,
+    },
+    {
+      id: 'a',
+      planId: 'p',
+      start: '2026-03-01',
+      days: 2,
+      dependsOn: [],
+      parentId: 'g',
+      deletedAt: null,
+      done: true,
+    },
+    {
+      id: 'h',
+      planId: 'p',
+      start: '2026-03-01',
+      days: 1,
+      dependsOn: [],
+      parentId: 'g',
+      deletedAt: null,
+      done: false,
+    },
+    {
+      id: 'b',
+      planId: 'p',
+      start: '2026-03-03',
+      days: 2,
+      dependsOn: [],
+      parentId: 'h',
+      deletedAt: null,
+      done: true,
+    },
+    {
+      id: 'c',
+      planId: 'p',
+      start: '2026-03-04',
+      days: 3,
+      dependsOn: [],
+      parentId: 'h',
+      deletedAt: null,
+      done: true,
+    },
+    {
+      id: 'd',
+      planId: 'p',
+      start: '2026-03-09',
+      days: 1,
+      dependsOn: [],
+      parentId: null,
+      deletedAt: null,
+      done: false,
+    },
+  ];
+  const tree = planTree(list);
+  const ids = (r: ReturnType<typeof planRows>) => r.rows.map((x) => `${x.id}:${x.kind}:${x.depth}`);
+
+  it('lists an expanded group as a header row followed by its children, with a box over them', () => {
+    const r = planRows(list, tree, new Set(), false);
+    expect(ids(r)).toEqual([
+      'g:open:0',
+      'a:leaf:1',
+      'h:open:1',
+      'b:leaf:2',
+      'c:leaf:2',
+      'd:leaf:0',
+    ]);
+    expect(r.boxes).toEqual([
+      { id: 'g', depth: 0, first: 0, last: 4, levels: 2 },
+      { id: 'h', depth: 1, first: 2, last: 4, levels: 1 },
+    ]);
+    expect(r.rowOf.get('c')).toBe(4);
+  });
+
+  it('a collapsed group is one row; its children are drawn at that row', () => {
+    const r = planRows(list, tree, new Set(['h']), false);
+    expect(ids(r)).toEqual(['g:open:0', 'a:leaf:1', 'h:closed:1', 'd:leaf:0']);
+    // Only expanded groups inside make a box wider.
+    expect(r.boxes).toEqual([{ id: 'g', depth: 0, first: 0, last: 2, levels: 1 }]);
+    expect(r.rowOf.get('b')).toBe(2);
+    // The outermost collapsed group wins.
+    const both = planRows(list, tree, new Set(['h', 'g']), false);
+    expect(ids(both)).toEqual(['g:closed:0', 'd:leaf:0']);
+    expect(both.rowOf.get('b')).toBe(0);
+  });
+
+  it('hiding done hides done activities and groups whose activities are all done', () => {
+    expect(ids(planRows(list, tree, new Set(), true))).toEqual(['d:leaf:0']);
+    const open = list.map((a) => (a.id === 'c' ? { ...a, done: false } : a));
+    const r = planRows(open, planTree(open), new Set(), true);
+    expect(ids(r)).toEqual(['g:open:0', 'h:open:1', 'c:leaf:2', 'd:leaf:0']);
+    expect(r.rowOf.has('a')).toBe(false);
+    expect(r.rowOf.has('b')).toBe(false);
+  });
+});
+
+describe('planRows deeper than GROUP_DEPTH_MAX (review of PR 25)', () => {
+  it('draws a tree nested too deep by two devices as it is', () => {
+    const chain = ['l1', 'l2', 'l3', 'l4', 'l5', 'leaf'].map((id, i, all) => ({
+      id,
+      planId: 'p',
+      start: '2026-03-01',
+      days: 1,
+      dependsOn: [],
+      parentId: i === 0 ? null : all[i - 1]!,
+      deletedAt: null,
+      done: false,
+    }));
+    const r = planRows(chain, planTree(chain), new Set(), false);
+    expect(r.rows.map((x) => `${x.id}:${x.depth}`)).toEqual([
+      'l1:0',
+      'l2:1',
+      'l3:2',
+      'l4:3',
+      'l5:4',
+      'leaf:5',
+    ]);
+    expect(r.boxes.map((b) => b.levels)).toEqual([5, 4, 3, 2, 1]);
+  });
+});
+
+describe('groupBox (FR-179)', () => {
+  it('reaches from its first to its last row and is wider than its children by level', () => {
+    expect(groupBox({ left: 100, width: 50 }, 2, 4, 1)).toEqual({
+      left: 100 - GROUP_PAD,
+      width: 50 + 2 * GROUP_PAD,
+      top: 2 * ROW_HEIGHT + GROUP_INSET,
+      height: 3 * ROW_HEIGHT - 2 * GROUP_INSET,
+    });
+    expect(groupBox({ left: 100, width: 50 }, 0, 4, 2).left).toBe(100 - GROUP_PAD - GROUP_PAD_STEP);
   });
 });

@@ -7,24 +7,37 @@
  *   3. appends the operation to the outbox,
  * so the screen and the queue of pending changes never get out of step.
  */
-import { generateKeyBetween } from 'fractional-indexing';
+import { generateKeyBetween, generateNKeysBetween } from 'fractional-indexing';
 import Dexie from 'dexie';
 import {
   ACTIVITY_LINKS_MAX,
+  ACTIVITY_NAME_MAX,
+  GROUP_DEPTH_MAX,
   addDays,
   applyOp,
+  compareHlc,
   dayNumber,
+  daysBetween,
+  depthOf,
   earliestStart,
+  heightOf,
+  isGroup,
+  isInside,
+  leavesOf,
+  planTree,
+  spansOf,
   ignoredLinks,
   liveLinks,
   localDay,
   newId,
   normalizeRemindBefore,
+  parseHlc,
   schedulePlan,
   syncOpSchema,
   wouldLoop,
   type Activity,
   type Entity,
+  type PlanTree,
   type List,
   type ListModule,
   type Note,
@@ -40,7 +53,8 @@ import { sameLinks, type ActivityChange } from '../lib/planUndo';
 import { moduleOf, noteListKey } from './queries';
 import type { RecoverySnapshot, RestoreMode } from './recovery';
 
-export type RepoErrorCode = 'invalid' | 'not_found' | 'inbox_protected' | 'loop' | 'limit';
+export type RepoErrorCode =
+  'invalid' | 'not_found' | 'inbox_protected' | 'loop' | 'limit' | 'depth';
 
 export interface ActivityEdit {
   name?: string;
@@ -133,8 +147,27 @@ export interface Repo {
     /** The new values, or a function that works them out from the stored activity. */
     patch: ActivityEdit | ((current: Activity) => ActivityEdit),
   ): Promise<Activity>;
+  /** Deletes an activity; a group with everything in it (docs/plan/PRD.md FR-186). */
   deleteActivity(id: string): Promise<Activity>;
+  /** Brings a deleted activity back; a group with what was deleted with it. */
   restoreActivity(id: string): Promise<Activity>;
+  /**
+   * A new group in `targetId`'s place holding `targetId` and then `movedId` (FR-176),
+   * named "‹target› & ‹moved›". Returns the group. Errors: `loop` (the target is the moved
+   * activity or inside it), `depth` (deeper than GROUP_DEPTH_MAX), `invalid` (different plans,
+   * or the target is a group: use `moveToGroup`).
+   */
+  groupActivities(targetId: string, movedId: string): Promise<Activity>;
+  /**
+   * Makes `id` the last child of the group `parentId`, or (`null`) takes it out of its group
+   * to the top level, right after its old group. A group the move left empty is deleted
+   * (FR-178). Errors: `loop`, `depth`, `invalid` (not a group of the same plan).
+   */
+  moveToGroup(id: string, parentId: string | null): Promise<Activity>;
+  /** Deletes a group and puts its children in its place (FR-186). Returns their ids. */
+  ungroupActivity(id: string): Promise<string[]>;
+  /** Takes `ungroupActivity` back: the group is restored with these children. */
+  regroupActivity(id: string, childIds: readonly string[]): Promise<Activity>;
   /**
    * Makes `toId` depend on `fromId` (it starts after `fromId` has ended) and pushes it later
    * where needed. Returns `toId`'s activity. Errors: `loop` (the link would close a loop, or
@@ -264,10 +297,106 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
     return (await rowsOfPlan(planId).toArray()).filter((a) => a.deletedAt === null);
   }
 
+  /**
+   * Was `a` deleted together with the deletion whose clock is `ref` (review of PR 25)? By the
+   * same device, at or after it. Clocks of the same device always grow, so this does not
+   * depend on how well the clocks of different devices agree; an activity deleted on its own
+   * by another device is never taken for one deleted with it.
+   */
+  function deletedWith(a: Activity, ref: string | undefined): boolean {
+    const at = a.fieldHlc.deletedAt;
+    if (!at || !ref) return false;
+    return parseHlc(at).clientId === parseHlc(ref).clientId && compareHlc(at, ref) >= 0;
+  }
+
   /** Pushes activities later until every dependency of the plan holds again (FR-136). */
   async function reschedule(planId: string): Promise<void> {
     for (const [id, start] of schedulePlan(await activitiesOfPlan(planId))) {
       await commit<Activity>('activity', 'update', id, { start });
+    }
+    await storeGroupSpans(planId);
+  }
+
+  /**
+   * Writes every group's dates (its children's, FR-175) into its own `start` / `days`, where
+   * they differ: what older apps show, and what the group keeps if it loses its children
+   * (FR-188, decision P22).
+   */
+  async function storeGroupSpans(planId: string): Promise<void> {
+    const all = await activitiesOfPlan(planId);
+    const tree = planTree(all);
+    const spans = spansOf(all, tree);
+    for (const a of all) {
+      if (!isGroup(tree, a.id)) continue;
+      const span = spans.get(a.id)!;
+      if (span.start !== a.start || span.days !== a.days) {
+        await commit<Activity>('activity', 'update', a.id, { ...span });
+      }
+    }
+  }
+
+  /** A key just after `key` among all rows of the plan (deleted ones too), skipping `skip`. */
+  async function keyAfter(planId: string, key: string, skip: ReadonlySet<string>) {
+    const next = (await rowsOfPlan(planId).toArray()).find(
+      (a) => a.orderKey > key && !skip.has(a.id),
+    );
+    return generateKeyBetween(key, next?.orderKey ?? null);
+  }
+
+  /** A key just before `key` among all rows of the plan. */
+  async function keyBefore(planId: string, key: string) {
+    const prev = (await rowsOfPlan(planId).toArray()).filter((a) => a.orderKey < key).at(-1);
+    return generateKeyBetween(prev?.orderKey ?? null, key);
+  }
+
+  /**
+   * A change of a group (FR-175, FR-182, FR-184): its dates and done come from its activities.
+   * A new start moves all of them by the same number of days, not before their predecessors
+   * outside the group allow; a duration is ignored; done is written to all of them.
+   */
+  async function updateGroup(
+    group: Activity,
+    all: Activity[],
+    tree: PlanTree,
+    edit: ActivityEdit | ((current: Activity) => ActivityEdit),
+  ): Promise<Activity> {
+    const span = spansOf(all, tree).get(group.id)!;
+    const leaves = leavesOf(tree, group.id).map((id) => all.find((a) => a.id === id)!);
+    const current = { ...group, ...span, done: leaves.every((l) => l.done) };
+    const patch = typeof edit === 'function' ? edit(current) : edit;
+    if (patch.name !== undefined && patch.name.trim() !== group.name) {
+      await commit<Activity>('activity', 'update', group.id, { name: patch.name.trim() });
+    }
+    if (patch.done !== undefined) {
+      for (const l of leaves) {
+        if (l.done !== patch.done) {
+          await commit<Activity>('activity', 'update', l.id, { done: patch.done });
+        }
+      }
+    }
+    if (patch.start !== undefined) {
+      const earliest = earliestStart(all, group.id);
+      const start = earliest !== null && patch.start < earliest ? earliest : patch.start;
+      const shift = daysBetween(span.start, start);
+      if (shift !== 0) {
+        for (const l of leaves) {
+          await commit<Activity>('activity', 'update', l.id, { start: addDays(l.start, shift) });
+        }
+        await reschedule(group.planId);
+      }
+    }
+    return liveActivity(group.id);
+  }
+
+  /** Deletes `groupId` if it lost its last child, and so on up (FR-178). */
+  async function removeEmptied(planId: string, groupId: string | undefined): Promise<void> {
+    let id = groupId;
+    while (id !== undefined) {
+      const tree = planTree(await activitiesOfPlan(planId));
+      if (isGroup(tree, id) || !(await db.activities.get(id))) return;
+      const up = tree.parent.get(id);
+      await commit<Activity>('activity', 'delete', id, {});
+      id = up;
     }
   }
 
@@ -526,16 +655,19 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
     updateActivity: (id, edit) =>
       inTx(async () => {
         const activity = await liveActivity(id);
+        const all = await activitiesOfPlan(activity.planId);
+        const tree = planTree(all);
+        if (isGroup(tree, id)) return updateGroup(activity, all, tree, edit);
         const patch = typeof edit === 'function' ? edit(activity) : edit;
         const changes: Record<string, unknown> = {};
         if (patch.name !== undefined && patch.name.trim() !== activity.name) {
-          changes.name = patch.name;
+          changes.name = patch.name.trim();
         }
         if (patch.days !== undefined && patch.days !== activity.days) changes.days = patch.days;
         if (patch.done !== undefined && patch.done !== activity.done) changes.done = patch.done;
         if (patch.start !== undefined) {
           // Not before its predecessors have ended (days compare as text).
-          const earliest = earliestStart(await activitiesOfPlan(activity.planId), id);
+          const earliest = earliestStart(all, id);
           const start = earliest !== null && patch.start < earliest ? earliest : patch.start;
           if (start !== activity.start) changes.start = start;
         }
@@ -552,7 +684,22 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         const activity = await db.activities.get(id);
         if (!activity) throw new RepoError('not_found', 'Activity not found');
         if (activity.deletedAt !== null) return activity;
-        return commit<Activity>('activity', 'delete', id, {});
+        const all = await activitiesOfPlan(activity.planId);
+        const tree = planTree(all);
+        // The group first: what goes with it is deleted after it (see restoreActivity).
+        const deleted = await commit<Activity>('activity', 'delete', id, {});
+        for (const a of all) {
+          if (a.id !== id && isInside(tree, a.id, id)) {
+            await commit<Activity>('activity', 'delete', a.id, {});
+          }
+        }
+        // A group left without children goes too (FR-178), then the dates of those around it.
+        const up = tree.parent.get(id);
+        if (up !== undefined) {
+          await removeEmptied(activity.planId, up);
+          await storeGroupSpans(activity.planId);
+        }
+        return deleted;
       }),
 
     restoreActivity: (id) =>
@@ -560,8 +707,153 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         const activity = await db.activities.get(id);
         if (!activity) throw new RepoError('not_found', 'Activity not found');
         if (activity.deletedAt === null) return activity;
+        const ref = activity.fieldHlc.deletedAt;
         await commit<Activity>('activity', 'restore', id, {});
+        const rows = await rowsOfPlan(activity.planId).toArray();
+        const byId = new Map(rows.map((a) => [a.id, a]));
+        // What was deleted with it, not what was deleted on its own before (FR-186) …
+        const back = new Set([id]);
+        for (let grew = true; grew;) {
+          grew = false;
+          for (const a of rows) {
+            if (back.has(a.id) || a.deletedAt === null || !deletedWith(a, ref)) continue;
+            if (a.parentId && back.has(a.parentId)) {
+              back.add(a.id);
+              grew = true;
+              await commit<Activity>('activity', 'restore', a.id, {});
+            }
+          }
+        }
+        // … and the groups its deletion emptied and removed (FR-178).
+        for (let up = activity.parentId; up;) {
+          const group = byId.get(up);
+          if (!group || group.deletedAt === null || !deletedWith(group, ref)) break;
+          const live = rows.some(
+            (a) => a.parentId === up && a.deletedAt === null && !back.has(a.id),
+          );
+          if (live) break;
+          await commit<Activity>('activity', 'restore', up, {});
+          up = group.parentId;
+        }
         await reschedule(activity.planId); // its links count again
+        return liveActivity(id);
+      }),
+
+    groupActivities: (targetId, movedId) =>
+      inTx(async () => {
+        if (targetId === movedId) throw new RepoError('loop', 'An activity cannot hold itself');
+        const target = await liveActivity(targetId);
+        const moved = await liveActivity(movedId);
+        if (target.planId !== moved.planId) {
+          throw new RepoError('invalid', 'Activities of different plans cannot be grouped');
+        }
+        const planId = target.planId;
+        const all = await activitiesOfPlan(planId);
+        const tree = planTree(all);
+        if (isGroup(tree, targetId)) throw new RepoError('invalid', 'The target is a group');
+        if (isInside(tree, targetId, movedId)) {
+          throw new RepoError('loop', 'A group cannot go into itself');
+        }
+        if (depthOf(tree, targetId) + heightOf(tree, movedId) > GROUP_DEPTH_MAX) {
+          throw new RepoError('depth', 'Groups cannot be nested deeper');
+        }
+        const spans = spansOf(all, tree);
+        const a = spans.get(targetId)!;
+        const b = spans.get(movedId)!;
+        const from = Math.min(dayNumber(a.start), dayNumber(b.start));
+        const to = Math.max(dayNumber(a.start) + a.days, dayNumber(b.start) + b.days);
+        const oldParent = tree.parent.get(movedId);
+        const group = await commit<Activity>('activity', 'create', newId(now()), {
+          planId,
+          name: `${target.name} & ${moved.name}`.slice(0, ACTIVITY_NAME_MAX),
+          start: addDays('1970-01-01', from),
+          days: to - from,
+          parentId: tree.parent.get(targetId) ?? null,
+          orderKey: await keyBefore(planId, target.orderKey),
+        });
+        await commit<Activity>('activity', 'update', targetId, { parentId: group.id });
+        await commit<Activity>('activity', 'update', movedId, {
+          parentId: group.id,
+          orderKey: await keyAfter(planId, target.orderKey, new Set([movedId])),
+        });
+        await removeEmptied(planId, oldParent);
+        await reschedule(planId);
+        return liveActivity(group.id);
+      }),
+
+    moveToGroup: (id, parentId) =>
+      inTx(async () => {
+        const activity = await liveActivity(id);
+        const planId = activity.planId;
+        const all = await activitiesOfPlan(planId);
+        const tree = planTree(all);
+        const oldParent = tree.parent.get(id);
+        let orderKey: string;
+        if (parentId !== null) {
+          const parent = await liveActivity(parentId);
+          if (parent.planId !== planId || !isGroup(tree, parentId)) {
+            throw new RepoError('invalid', 'Not a group of this plan');
+          }
+          if (isInside(tree, parentId, id)) {
+            throw new RepoError('loop', 'A group cannot go into itself');
+          }
+          if (depthOf(tree, parentId) + heightOf(tree, id) > GROUP_DEPTH_MAX) {
+            throw new RepoError('depth', 'Groups cannot be nested deeper');
+          }
+          if (oldParent === parentId) return activity;
+          // After its last child.
+          const siblings = tree.children.get(parentId)!.filter((c) => c !== id);
+          const last = all.filter((a) => siblings.includes(a.id)).at(-1)!;
+          orderKey = await keyAfter(planId, last.orderKey, new Set([id]));
+        } else {
+          if (oldParent === undefined) {
+            if (activity.parentId === null) return activity;
+            return commit<Activity>('activity', 'update', id, { parentId: null });
+          }
+          // Right after its old group.
+          const old = all.find((a) => a.id === oldParent)!;
+          orderKey = await keyAfter(planId, old.orderKey, new Set([id]));
+        }
+        await commit<Activity>('activity', 'update', id, { parentId, orderKey });
+        await removeEmptied(planId, oldParent);
+        await reschedule(planId);
+        return liveActivity(id);
+      }),
+
+    ungroupActivity: (id) =>
+      inTx(async () => {
+        const group = await liveActivity(id);
+        const all = await activitiesOfPlan(group.planId);
+        const tree = planTree(all);
+        const kids = [...(tree.children.get(id) ?? [])];
+        if (kids.length === 0) return [];
+        // In the group's place, in their order.
+        const skip = new Set([id, ...kids]);
+        const next = (await rowsOfPlan(group.planId).toArray()).find(
+          (a) => a.orderKey > group.orderKey && !skip.has(a.id),
+        );
+        const keys = generateNKeysBetween(group.orderKey, next?.orderKey ?? null, kids.length);
+        const parentId = tree.parent.get(id) ?? null;
+        for (const [i, kid] of kids.entries()) {
+          await commit<Activity>('activity', 'update', kid, { parentId, orderKey: keys[i] });
+        }
+        await commit<Activity>('activity', 'delete', id, {});
+        await reschedule(group.planId);
+        return kids;
+      }),
+
+    regroupActivity: (id, childIds) =>
+      inTx(async () => {
+        const group = await db.activities.get(id);
+        if (!group) throw new RepoError('not_found', 'Activity not found');
+        if (group.deletedAt !== null) await commit<Activity>('activity', 'restore', id, {});
+        for (const kid of childIds) {
+          const a = await db.activities.get(kid);
+          if (a && a.deletedAt === null && a.planId === group.planId) {
+            await commit<Activity>('activity', 'update', kid, { parentId: id });
+          }
+        }
+        await reschedule(group.planId);
         return liveActivity(id);
       }),
 
@@ -612,9 +904,19 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
 
     revertActivities: (changes) =>
       inTx(async () => {
-        for (const { id, before, after } of changes) {
+        const plans = new Set<string>();
+        // Activities the change removed come back first (an emptied group, FR-187) …
+        for (const c of changes) {
+          const row = await db.activities.get(c.id);
+          if (c.deleted && row && row.deletedAt !== null) {
+            await commit<Activity>('activity', 'restore', c.id, {});
+          }
+        }
+        for (const { id, before, after, created, deleted } of changes) {
+          if (created || deleted) continue;
           const now = await db.activities.get(id);
           if (!now || now.deletedAt !== null) continue;
+          plans.add(now.planId);
           // Only fields that still hold what the change wrote: nothing newer is lost.
           const patch: Record<string, unknown> = {};
           if (before.start !== undefined && now.start === after.start) patch.start = before.start;
@@ -627,9 +929,20 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
           ) {
             patch.dependsOn = before.dependsOn;
           }
+          if (before.parentId !== undefined && (now.parentId ?? null) === after.parentId) {
+            patch.parentId = before.parentId;
+          }
           if (Object.keys(patch).length > 0)
             await commit<Activity>('activity', 'update', id, patch);
         }
+        // … and the ones it created (a new group) go again.
+        for (const c of changes) {
+          const row = await db.activities.get(c.id);
+          if (c.created && row && row.deletedAt === null) {
+            await commit<Activity>('activity', 'delete', c.id, {});
+          }
+        }
+        for (const planId of plans) await storeGroupSpans(planId);
       }),
 
     restoreSnapshot: (snapshot, mode) =>
@@ -721,6 +1034,7 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
             days: a.days,
             dependsOn: a.dependsOn,
             done: a.done ?? false, // missing in a copy kept before done activities
+            parentId: a.parentId ?? null, // missing in a copy kept before activity groups
             orderKey: a.orderKey,
           });
         }

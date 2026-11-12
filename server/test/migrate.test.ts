@@ -366,3 +366,28 @@ describe('migration 009 (done activities)', () => {
     expect(() => db.exec("UPDATE activities SET done = 2 WHERE id = 'a1'")).toThrow();
   });
 });
+
+describe('migration 010 (activity groups)', () => {
+  const upTo = (version: number) => {
+    const dir = mkdtempSync(join(tmpdir(), 'todoness-mig-'));
+    for (const f of readdirSync(MIGRATIONS_DIR)) {
+      if (Number(f.slice(0, 3)) <= version) copyFileSync(join(MIGRATIONS_DIR, f), join(dir, f));
+    }
+    return dir;
+  };
+
+  it('adds parent_id (null for existing activities)', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, upTo(9));
+    db.exec(`INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
+      INSERT INTO plans (id, user_id, name, order_key, created_at, updated_at) VALUES ('p1','u1','P','a0',1,1);
+      INSERT INTO activities (id, user_id, plan_id, name, start_day, order_key, created_at, updated_at)
+        VALUES ('a1','u1','p1','A','2026-03-02','a0',1,1);`);
+    expect(migrate(db, upTo(10))).toBe(1);
+    expect(db.prepare("SELECT name, parent_id FROM activities WHERE id = 'a1'").get()).toEqual({
+      name: 'A',
+      parent_id: null,
+    });
+  });
+});

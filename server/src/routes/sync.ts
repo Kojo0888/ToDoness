@@ -67,7 +67,11 @@ export function syncRoutes({
     const knowsModules = c.req.query('lists') === 'modules';
     // Apps from before done activities (docs/plan/PRD.md FR-159) refuse the unknown field,
     // so it is left out for them; an update of `done` alone becomes an empty patch.
-    const knowsDone = c.req.query('activities') === 'done';
+    // Apps from before activity groups (FR-188) refuse `parentId` the same way; the current
+    // app asks with `activities=done,groups`.
+    const activityFlags = new Set((c.req.query('activities') ?? '').split(','));
+    const knowsDone = activityFlags.has('done');
+    const knowsGroups = activityFlags.has('groups');
     const userId = c.get('user').id;
 
     // Accounts from before note lists get "My notes" at their first sync (FR-124).
@@ -116,7 +120,8 @@ export function syncRoutes({
           type: r.op_type,
           patch: ((p: Record<string, unknown>) => {
             const q = knowsModules ? p : withoutModules(r.entity, p);
-            return knowsDone ? q : withoutDone(r.entity, q);
+            const d = knowsDone ? q : withoutField(r.entity, q, 'done');
+            return knowsGroups ? d : withoutField(r.entity, d, 'parentId');
           })(remindersAsList ? JSON.parse(r.patch) : legacyPatch(r.entity, JSON.parse(r.patch))),
           hlc: r.hlc,
         })),
@@ -147,10 +152,17 @@ function withoutModules(entity: string, patch: Record<string, unknown>): Record<
   return rest;
 }
 
-/** For apps from before done activities: no `done` on activities. */
-function withoutDone(entity: string, patch: Record<string, unknown>): Record<string, unknown> {
-  if (entity !== 'activity' || !('done' in patch)) return patch;
+/**
+ * For apps from before done activities (`done`) or activity groups (`parentId`): an activity
+ * without that field.
+ */
+function withoutField(
+  entity: string,
+  patch: Record<string, unknown>,
+  field: 'done' | 'parentId',
+): Record<string, unknown> {
+  if (entity !== 'activity' || !(field in patch)) return patch;
   const rest = { ...patch };
-  delete rest.done;
+  delete rest[field];
   return rest;
 }

@@ -1,11 +1,19 @@
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useCallback, useEffect, useState, useSyncExternalStore, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+} from 'react';
 import { Redirect } from 'wouter';
-import { ACTIVITY_NAME_MAX } from '@todoness/shared';
+import { ACTIVITY_NAME_MAX, isGroup, planTree } from '@todoness/shared';
 import { getActivities, getPlanById } from '../../data/queries';
 import { browserStorage } from '../../lib/modules';
 import { readNameMode, saveNameMode, type NameMode } from '../../lib/planNames';
 import { readHideDone, saveHideDone } from '../../lib/planHideDone';
+import { readCollapsed, saveCollapsed } from '../../lib/planCollapsed';
 import { readScale, saveScale } from '../../lib/planScale';
 import { SCALES, type Scale } from '../../lib/timeline';
 import { createPlanChanges, type PlanError } from '../../services/planChanges';
@@ -18,6 +26,7 @@ import { Timeline } from './Timeline';
 const ERRORS: Record<PlanError, string> = {
   loop: t.plan.loop,
   limit: t.plan.tooManyLinks,
+  depth: t.plan.tooDeep,
   failed: t.plan.failed,
 };
 
@@ -35,6 +44,9 @@ export function PlanPage({ planId }: { planId: string }) {
   const [nameMode, setNameMode] = useState<NameMode>(() => readNameMode(browserStorage()));
   const [scale, setScale] = useState<Scale>(() => readScale(browserStorage()));
   const [hideDone, setHideDone] = useState(() => readHideDone(browserStorage()));
+  // Collapsed groups of this plan, remembered on this device (FR-181).
+  const [collapsed, setCollapsed] = useState(() => readCollapsed(browserStorage(), planId));
+  const tree = useMemo(() => planTree(activities), [activities]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   // Every change of this page goes through here: one at a time, undoable where it alters
@@ -60,17 +72,31 @@ export function PlanPage({ planId }: { planId: string }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [canUndo, changes]);
 
+  const toggleGroup = useCallback(
+    (id: string) => {
+      setCollapsed((current) => {
+        const next = new Set(current);
+        if (!next.delete(id)) next.add(id);
+        saveCollapsed(browserStorage(), planId, next);
+        return next;
+      });
+    },
+    [planId],
+  );
+
   const deleteActivity = useCallback(
     (id: string) => {
       setSelectedId((current) => (current === id ? null : current));
+      // A group goes with everything in it (FR-186).
+      const message = isGroup(tree, id) ? t.plan.groupDeleted : t.plan.activityDeleted;
       void changes
         .run(() => repo.deleteActivity(id))
         .then((deleted) => {
           if (!deleted) return; // refused: the page shows why
-          toast(t.plan.activityDeleted, () => void changes.run(() => repo.restoreActivity(id)));
+          toast(message, () => void changes.run(() => repo.restoreActivity(id)));
         });
     },
-    [changes, toast],
+    [changes, toast, tree],
   );
 
   if (plan === undefined) return null;
@@ -151,15 +177,19 @@ export function PlanPage({ planId }: { planId: string }) {
       )}
 
       {activities.length === 0 && <p className="empty">{t.plan.noActivities}</p>}
-      {hideDone && activities.length > 0 && activities.every((a) => a.done) && (
-        <p className="empty">{t.plan.allDoneHidden}</p>
-      )}
+      {hideDone &&
+        activities.length > 0 &&
+        activities.every((a) => a.done || isGroup(tree, a.id)) && (
+          <p className="empty">{t.plan.allDoneHidden}</p>
+        )}
 
       <Timeline
         activities={activities}
         nameMode={nameMode}
         scale={scale}
         hideDone={hideDone}
+        collapsed={collapsed}
+        onToggleGroup={toggleGroup}
         planId={planId}
         selectedId={selected?.id ?? null}
         onSelect={setSelectedId}

@@ -48,7 +48,7 @@ export function localDay(ms: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Dependencies
+// Groups (docs/plan/PRD.md section 11)
 // ---------------------------------------------------------------------------
 
 /** What the rules need to know about an activity. */
@@ -58,8 +58,119 @@ export interface Scheduled {
   start: string;
   days: number;
   dependsOn: readonly string[];
+  /** The group it is part of (FR-174); missing or `null` = top level. */
+  parentId?: string | null;
   deletedAt: number | null;
 }
+
+/** How deep activities can be nested: a top-level activity is on level 1 (FR-174). */
+export const GROUP_DEPTH_MAX = 4;
+
+/** The groups of a plan: the parents that count, and each group's children in row order. */
+export interface PlanTree {
+  parent: ReadonlyMap<string, string>;
+  children: ReadonlyMap<string, readonly string[]>;
+}
+
+const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+/**
+ * The parents that count (decision P21). `parentId` is merged between devices like any
+ * field, so it can name anything: an unknown or deleted activity, one of another plan, the
+ * activity itself, or – after two devices nested two activities into each other – make a
+ * loop. Those are ignored. Activities are looked at by id, so every device drops the same
+ * parent of a loop. Children keep the order of `activities` (row order).
+ */
+export function planTree(activities: readonly Scheduled[]): PlanTree {
+  const live = activities.filter((a) => a.deletedAt === null);
+  const all = new Map(live.map((a) => [a.id, a]));
+  const parent = new Map<string, string>();
+  for (const a of [...live].sort(byId)) {
+    const p = a.parentId;
+    if (!p || p === a.id || all.get(p)?.planId !== a.planId) continue;
+    let up: string | undefined = p;
+    while (up !== undefined && up !== a.id) up = parent.get(up);
+    if (up === a.id) continue; // would close a loop
+    parent.set(a.id, p);
+  }
+  const children = new Map<string, string[]>();
+  for (const a of live) {
+    const p = parent.get(a.id);
+    if (p !== undefined) children.set(p, [...(children.get(p) ?? []), a.id]);
+  }
+  return { parent, children };
+}
+
+/** Is `id` a group: an activity with at least one child that counts? */
+export const isGroup = (tree: PlanTree, id: string): boolean =>
+  (tree.children.get(id)?.length ?? 0) > 0;
+
+/** The activities in `id` that are not groups, in row order; an activity is its own leaf. */
+export function leavesOf(tree: PlanTree, id: string): string[] {
+  const kids = tree.children.get(id);
+  return kids && kids.length > 0 ? kids.flatMap((k) => leavesOf(tree, k)) : [id];
+}
+
+/** Is `id` the activity `ancestor` or inside it? */
+export function isInside(tree: PlanTree, id: string, ancestor: string): boolean {
+  for (let up: string | undefined = id; up !== undefined; up = tree.parent.get(up)) {
+    if (up === ancestor) return true;
+  }
+  return false;
+}
+
+/** The level of an activity: 1 at the top level, 2 in a top-level group, … */
+export function depthOf(tree: PlanTree, id: string): number {
+  let depth = 1;
+  for (let up = tree.parent.get(id); up !== undefined; up = tree.parent.get(up)) depth++;
+  return depth;
+}
+
+/** How many levels an activity takes: 1 for an activity, 2 for a group of activities, … */
+export function heightOf(tree: PlanTree, id: string): number {
+  const kids = tree.children.get(id) ?? [];
+  return 1 + Math.max(0, ...kids.map((k) => heightOf(tree, k)));
+}
+
+/**
+ * The days of every live activity (FR-175, decision P22): its own, or for a group from the
+ * earliest start to the latest end of its children – whatever the group stores.
+ */
+export function spansOf(
+  activities: readonly Scheduled[],
+  tree: PlanTree = planTree(activities),
+): Map<string, { start: string; days: number }> {
+  const own = new Map(
+    activities.filter((a) => a.deletedAt === null).map((a) => [a.id, a] as const),
+  );
+  const result = new Map<string, { start: string; days: number }>();
+  const visit = (id: string): { from: number; to: number } => {
+    const kids = tree.children.get(id);
+    let from: number;
+    let to: number;
+    if (kids && kids.length > 0) {
+      from = Infinity;
+      to = -Infinity;
+      for (const k of kids) {
+        const s = visit(k);
+        from = Math.min(from, s.from);
+        to = Math.max(to, s.to);
+      }
+    } else {
+      const a = own.get(id)!;
+      from = dayNumber(a.start);
+      to = from + a.days; // the first day after
+    }
+    result.set(id, { start: dayOf(from), days: to - from });
+    return { from, to };
+  };
+  for (const id of own.keys()) if (!result.has(id)) visit(id);
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Dependencies
+// ---------------------------------------------------------------------------
 
 /** `to` can only start after `from` has ended. */
 export interface Link {
@@ -82,44 +193,61 @@ function reaches(next: Map<string, string[]>, start: string, target: string): bo
 }
 
 /**
+ * A link stands for links between the activities in its two ends (decision P24): from every
+ * leaf of `from` to every leaf of `to`. Successors per leaf.
+ */
+function leafGraph(links: readonly Link[], tree: PlanTree): Map<string, string[]> {
+  const next = new Map<string, string[]>();
+  for (const l of links) {
+    const to = leavesOf(tree, l.to);
+    for (const f of leavesOf(tree, l.from)) next.set(f, [...(next.get(f) ?? []), ...to]);
+  }
+  return next;
+}
+
+/** Would `from → to`, as links between their leaves, close a loop in `next`? */
+const closesLoop = (next: Map<string, string[]>, tree: PlanTree, from: string, to: string) => {
+  const fromLeaves = leavesOf(tree, from);
+  return leavesOf(tree, to).some((t) => fromLeaves.some((f) => reaches(next, t, f)));
+};
+
+/**
  * The dependencies that count. `dependsOn` is merged between devices as one value, so it can
- * name anything: ids that are unknown, deleted, in another plan, the activity itself, or
- * links that together form a loop. Those are ignored here, never refused when stored.
- * Links are looked at in a fixed order (by id), so every device drops the same link of a loop.
+ * name anything: ids that are unknown, deleted, in another plan, the activity itself, a group
+ * it is in or an activity inside it (FR-183), or links that together form a loop – also
+ * through groups. Those are ignored here, never refused when stored. Links are looked at in a
+ * fixed order (by id), so every device drops the same link of a loop.
  */
 export function liveLinks(activities: readonly Scheduled[]): Link[] {
-  const live = activities
-    .filter((a) => a.deletedAt === null)
-    .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  const byId = new Map(live.map((a) => [a.id, a]));
+  const tree = planTree(activities);
+  const live = activities.filter((a) => a.deletedAt === null).sort(byId);
+  const all = new Map(live.map((a) => [a.id, a]));
   const next = new Map<string, string[]>();
   const links: Link[] = [];
 
   for (const to of live) {
     for (const from of [...new Set(to.dependsOn)].sort()) {
-      const pred = byId.get(from);
+      const pred = all.get(from);
       if (!pred || pred.planId !== to.planId || from === to.id) continue;
-      if (reaches(next, to.id, from)) continue; // would close a loop
+      if (isInside(tree, from, to.id) || isInside(tree, to.id, from)) continue;
+      if (closesLoop(next, tree, from, to.id)) continue;
       links.push({ from, to: to.id });
-      next.set(from, [...(next.get(from) ?? []), to.id]);
+      const toLeaves = leavesOf(tree, to.id);
+      for (const f of leavesOf(tree, from)) next.set(f, [...(next.get(f) ?? []), ...toLeaves]);
     }
   }
   return links;
 }
 
-/** Would the new link `from → to` close a loop (or link an activity to itself)? */
+/**
+ * Would the new link `from → to` close a loop, link an activity to itself, or link a group
+ * and an activity inside it?
+ */
 export function wouldLoop(activities: readonly Scheduled[], from: string, to: string): boolean {
   if (from === to) return true;
-  const next = new Map<string, string[]>();
-  for (const l of liveLinks(activities)) next.set(l.from, [...(next.get(l.from) ?? []), l.to]);
-  return reaches(next, to, from);
-}
-
-/** First day after each activity: the day a successor may start. */
-function freeAfter(activities: readonly Scheduled[]): Map<string, number> {
-  return new Map(
-    activities.filter((a) => a.deletedAt === null).map((a) => [a.id, dayNumber(a.start) + a.days]),
-  );
+  const tree = planTree(activities);
+  if (isInside(tree, from, to) || isInside(tree, to, from)) return true;
+  return closesLoop(leafGraph(liveLinks(activities), tree), tree, from, to);
 }
 
 /**
@@ -128,28 +256,38 @@ function freeAfter(activities: readonly Scheduled[]): Map<string, number> {
  * on every pointer move) computes `liveLinks` once and passes it in.
  */
 
+/** Predecessors of every leaf, from the links (to a group, to its ancestors) that count. */
+function leafPreds(links: readonly Link[], tree: PlanTree): Map<string, Set<string>> {
+  const preds = new Map<string, Set<string>>();
+  for (const [f, tos] of leafGraph(links, tree)) {
+    for (const t of tos) preds.set(t, (preds.get(t) ?? new Set()).add(f));
+  }
+  return preds;
+}
+
 /**
  * The start days that have to change so that every activity starts after its predecessors
  * have ended (docs/plan/PRD.md FR-136): id → new start. Durations stay; an activity is only
- * ever moved later, to the first allowed day. Empty when the plan is consistent.
+ * ever moved later, to the first allowed day. Empty when the plan is consistent. Only
+ * activities that are not groups are moved; a group follows them (FR-175, FR-183).
  */
 export function schedulePlan(
   activities: readonly Scheduled[],
   links: readonly Link[] = liveLinks(activities),
 ): Map<string, string> {
-  const live = activities.filter((a) => a.deletedAt === null);
-  const preds = new Map<string, string[]>();
+  const tree = planTree(activities);
+  const leaves = activities.filter((a) => a.deletedAt === null && !isGroup(tree, a.id));
+  const preds = leafPreds(links, tree);
   const succs = new Map<string, string[]>();
-  for (const l of links) {
-    preds.set(l.to, [...(preds.get(l.to) ?? []), l.from]);
-    succs.set(l.from, [...(succs.get(l.from) ?? []), l.to]);
+  for (const [t, from] of preds) {
+    for (const f of from) succs.set(f, [...(succs.get(f) ?? []), t]);
   }
 
-  const start = new Map(live.map((a) => [a.id, dayNumber(a.start)]));
-  const days = new Map(live.map((a) => [a.id, a.days]));
-  const waiting = new Map(live.map((a) => [a.id, preds.get(a.id)?.length ?? 0]));
+  const start = new Map(leaves.map((a) => [a.id, dayNumber(a.start)]));
+  const days = new Map(leaves.map((a) => [a.id, a.days]));
+  const waiting = new Map(leaves.map((a) => [a.id, preds.get(a.id)?.size ?? 0]));
   // Predecessors first. `liveLinks` has no loops, so every activity gets its turn.
-  const ready = live.filter((a) => waiting.get(a.id) === 0).map((a) => a.id);
+  const ready = leaves.filter((a) => waiting.get(a.id) === 0).map((a) => a.id);
   const moved = new Map<string, string>();
 
   while (ready.length > 0) {
@@ -171,25 +309,41 @@ export function schedulePlan(
   return moved;
 }
 
-/** Links whose successor starts before the predecessor has ended (FR-139). */
+/** Links whose successor starts before the predecessor has ended (FR-139), by group dates. */
 export function brokenLinks(
   activities: readonly Scheduled[],
   links: readonly Link[] = liveLinks(activities),
 ): Link[] {
-  const free = freeAfter(activities);
-  const start = new Map(activities.map((a) => [a.id, dayNumber(a.start)]));
-  return links.filter((l) => start.get(l.to)! < free.get(l.from)!);
+  const spans = spansOf(activities);
+  const free = (id: string) => dayNumber(spans.get(id)!.start) + spans.get(id)!.days;
+  return links.filter((l) => dayNumber(spans.get(l.to)!.start) < free(l.from));
 }
 
-/** The first day `id` may start on because of its predecessors; `null` if it has none. */
+/**
+ * The first day `id` may start on because of its predecessors; `null` if it has none. For a
+ * group (FR-182): the first day it may move to so that every activity in it still starts
+ * after its predecessors outside the group.
+ */
 export function earliestStart(
   activities: readonly Scheduled[],
   id: string,
   links: readonly Link[] = liveLinks(activities),
 ): string | null {
-  const free = freeAfter(activities);
-  const ends = links.filter((l) => l.to === id).map((l) => free.get(l.from)!);
-  return ends.length === 0 ? null : dayOf(Math.max(...ends));
+  const tree = planTree(activities);
+  const spans = spansOf(activities, tree);
+  if (!spans.has(id)) return null;
+  const inside = new Set(leavesOf(tree, id));
+  const preds = leafPreds(links, tree);
+  const startOf = (x: string) => dayNumber(spans.get(x)!.start);
+  let shift: number | null = null;
+  for (const leaf of inside) {
+    for (const p of preds.get(leaf) ?? []) {
+      if (inside.has(p)) continue;
+      const need = startOf(p) + spans.get(p)!.days - startOf(leaf);
+      shift = shift === null ? need : Math.max(shift, need);
+    }
+  }
+  return shift === null ? null : dayOf(startOf(id) + shift);
 }
 
 /**

@@ -118,6 +118,8 @@ const activityFields = {
   orderKey: orderKeySchema,
   /** Finished (docs/plan/PRD.md FR-153). Changes nothing in the schedule. */
   done: z.boolean(),
+  /** The group this activity is part of (docs/plan/PRD.md FR-174); `null` = top level. */
+  parentId: idSchema.nullable(),
 };
 
 const rowMeta = {
@@ -216,6 +218,7 @@ export const activityCreatePatchSchema = z.strictObject({
   days: activityFields.days.optional(),
   dependsOn: activityFields.dependsOn.optional(),
   done: activityFields.done.optional(),
+  parentId: activityFields.parentId.optional(),
 });
 export const activityUpdatePatchSchema = z
   .strictObject(activityFields)
