@@ -15,6 +15,9 @@ import {
   SCALES,
   unitSpans,
   dragResult,
+  HIDDEN_MARK,
+  hiddenMark,
+  hiddenPredecessors,
   isOverdue,
   monthSpans,
   nudge,
@@ -271,5 +274,39 @@ describe('isOverdue (FR-161)', () => {
 
   it('is false for a done activity, however old', () => {
     expect(isOverdue({ start: '2025-01-01', days: 1 }, true, TODAY)).toBe(false);
+  });
+});
+
+describe('hidden predecessor mark (FR-173)', () => {
+  const links = [
+    { from: 'a', to: 'b' },
+    { from: 'c', to: 'b' },
+    { from: 'b', to: 'd' },
+    { from: 'x', to: 'y' },
+  ];
+
+  it('marks a shown activity whose predecessor is not shown, once', () => {
+    expect(hiddenPredecessors(links, new Set(['b', 'd']))).toEqual(new Set(['b']));
+  });
+
+  it('marks nothing when every predecessor is shown', () => {
+    expect(hiddenPredecessors(links, new Set(['a', 'b', 'c', 'd', 'x', 'y']))).toEqual(new Set());
+  });
+
+  it('does not mark hidden activities or successors of hidden ones only', () => {
+    expect(hiddenPredecessors(links, new Set(['a', 'c', 'x']))).toEqual(new Set());
+  });
+
+  it('is a 30 px line ending at the start of the block, in the middle of its row', () => {
+    expect(HIDDEN_MARK).toBe(30);
+    expect(hiddenMark({ left: 100, width: 50 }, 2)).toEqual({
+      x1: 70,
+      x2: 100,
+      y: 2 * ROW_HEIGHT + ROW_HEIGHT / 2,
+    });
+  });
+
+  it('is cut at the left edge of the grid', () => {
+    expect(hiddenMark({ left: 10, width: 50 }, 0)).toEqual({ x1: 0, x2: 10, y: ROW_HEIGHT / 2 });
   });
 });

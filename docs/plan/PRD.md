@@ -265,3 +265,26 @@ Requested by the product owner (three points, quoted in short):
 1. The sidebar shows the number of activities of each plan and follows adds and deletes.
 2. An open activity that ended before today is red with ", overdue" in its name; marked done, it is not.
 3. The switch hides done activities and their rows; the choice survives a reload; turned off, they are back.
+
+## 10. Update 5 – a mark for hidden predecessors
+
+Requested by the product owner: when task 1 depends on task 2, task 2 is done and done
+activities are hidden, task 1 shows a **horizontal dotted line of about 30 px before its
+block**, so that it is clear a hidden activity it waits for is not on the timeline.
+
+### 10.1 Requirements
+
+| ID     | Requirement | Priority |
+| ------ | ----------- | -------- |
+| FR-173 | **Hidden predecessor mark.** While done activities are hidden (FR-162), a visible activity with at least one **hidden predecessor** (a live dependency, FR-133, whose source is not drawn) shows a horizontal **dotted line, 30 px long, ending at the start of its block**, at the middle of its row. One line per activity, however many hidden predecessors. It is a mark only: it cannot be clicked and does not change the schedule. With hiding off, or without hidden predecessors, there is no line. **[Decision P20]** | Must |
+
+### 10.2 Decisions
+
+| ID  | Decision |
+| --- | -------- |
+| P20 | **Fixed 30 px on every scale**, in the muted arrow colour, dotted so that it does not read as an arrow (solid) or a broken link (dashed, FR-139). Only predecessors are marked (the request is about what an activity waits for). The line may start left of the grid's first day only if the block starts there; it is then cut at the grid's edge. |
+
+### 10.3 Acceptance (tested)
+
+1. Design → Build, Design done, hiding on: Build has the dotted line before its block; Design has none.
+2. Hiding off: no line.

@@ -635,6 +635,28 @@ describe('options and scale (FR-156, FR-157)', () => {
     await expect(hide.isChecked()).resolves.toBe(true);
     await hide.click();
     await block(page, 'Old').waitFor();
+
+    // 4. A hidden done predecessor leaves a dotted mark before its successor (FR-173).
+    await page.keyboard.press('Escape');
+    await addActivity(page, 'Prep');
+    await link(page, 'Prep', 'Design');
+    await block(page, 'Prep').dblclick();
+    await page.locator('.plan-bar.is-done', { has: block(page, 'Prep') }).waitFor();
+    const mark = page.locator('.plan-hidden-pred');
+    expect(await mark.count()).toBe(0);
+    await optionsButton(page).click();
+    await hide.click();
+    await block(page, 'Prep').waitFor({ state: 'detached' });
+    await mark.waitFor({ state: 'attached' }); // a line: no height to be "visible"
+    expect(await mark.count()).toBe(1);
+    const line = (await mark.boundingBox())!;
+    const design = (await block(page, 'Design').boundingBox())!;
+    // It ends at the start of the block (give or take the block's border) and is 30 px long.
+    expect(Math.abs(line.x + line.width - design.x)).toBeLessThanOrEqual(2);
+    expect(Math.abs(line.width - 30)).toBeLessThanOrEqual(2); // the box may include the stroke
+    await hide.click();
+    await block(page, 'Prep').waitFor();
+    expect(await mark.count()).toBe(0);
   });
 });
 
