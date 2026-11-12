@@ -288,3 +288,53 @@ block**, so that it is clear a hidden activity it waits for is not on the timeli
 
 1. Design → Build, Design done, hiding on: Build has the dotted line before its block; Design has none.
 2. Hiding off: no line.
+
+## 11. Update 6 – activity groups
+
+Requested by the product owner: activities can be **grouped**. Moving one activity onto
+another creates a **parent activity** drawn as a high and wide, lighter time block that
+covers its children. A parent can be **expanded** (its children drawn inside it) or
+**collapsed** (one row like any other activity, but with bold **{ }** at the ends instead of
+the **[ ]** grips). A child can have children of its own. The proposal and mockup
+(reviewed with the product owner) chose the rules below.
+
+### 11.1 Requirements
+
+| ID     | Requirement | Priority |
+| ------ | ----------- | -------- |
+| FR-174 | **Groups.** An activity can be **part of** another activity (a new field, `parentId`, default none). An activity with at least one live child is a **group**. Groups can be nested, up to **4 levels** deep (a top-level activity is level 1). A group is listed, linked, renamed, opened and deleted like any activity. **[Decision P21]** | Must |
+| FR-175 | **A group's dates come from its children**: it starts with its earliest child and ends with its latest one (also after a sync), so it always covers them. Its own start and duration cannot be set; its details show them read-only. **[Decision P22]** | Must |
+| FR-176 | **Making a group by dragging.** Dragging a block by its **middle** (not its grips) and holding it over a block of **another row** outlines that block; releasing: on an **activity** creates a **new group** at that activity's place holding both (named "‹target› & ‹dragged›"); on a **group** (its collapsed block or the box of an expanded one) adds the dragged activity to it as its last child. Over **an empty part of another row**, outside its group's box, it **takes the activity out** of its group (into the enclosing group's box under the pointer, or to the top level). In its own row the drag moves the dates as before (FR-127). A drag that would put a group into itself, or nest deeper than 4 levels, is refused with a message. A line below the timeline says what releasing will do. **[Decision P23]** | Must |
+| FR-177 | **Part of** (keyboard and phone). The details page of an activity has a **Part of** select: *None*, every group it can join, and "New group with ‹activity›" for every activity it can be grouped with. Choosing does what the drag does. | Must |
+| FR-178 | **A group with no children left is removed** when the user's change emptied it (dragging its last child out or into another group). | Must |
+| FR-179 | **Expanded group.** It is drawn as a light, tall box from its own row (a header with an expand / collapse button, its name in bold, its dates and how many of its activities are done) down to its last child's row, a little wider than its children; nested groups are boxes inside it, each level slightly darker. | Must |
+| FR-180 | **Collapsed group.** One row with one block, like any activity, in a lighter colour with a bold **{** and **}** at its ends (instead of the grips), the expand button, its name, the number of activities in it and a thin progress line along its bottom (done / all). Its children have no rows; arrows to or from them are drawn to the group's block (one arrow per pair). | Must |
+| FR-181 | **Expand / collapse** with the ▸ / ▾ button on the group (the box header, the collapsed block, and the name column in the Column mode). Which groups are collapsed is a **device setting per plan**; new groups are expanded. **[Decision P25]** | Must |
+| FR-182 | **Moving a group** (dragging its collapsed block, its **{** grip or the header of its box; keys ← / → on its block; its Start field) moves **every activity in it** by the same number of days, not before its predecessors allow. Its **}** grip does not change any duration: it only makes links. | Must |
+| FR-183 | **Links and groups.** A dependency can be made to and from a group as to any activity. **A → group**: every activity in the group starts after A has ended. **Group → B**: B starts after the group's last activity has ended. The automatic shift (FR-136) and the loop check (FR-137) follow these rules; a link between a group and an activity inside it is refused as a loop. **[Decision P24]** | Must |
+| FR-184 | **Done.** A group is done when all its activities are done. A double click on a collapsed group's block, or its **Done** switch, marks all its activities done (or all not done, when they all are). With **Hide done activities** (FR-162) a group whose activities are all done is hidden as a whole. | Must |
+| FR-185 | **Name column.** In the Column mode the names are a tree: indented by level, group names in bold with their expand button. | Must |
+| FR-186 | **Deleting a group.** Its details page offers **Ungroup** (the group goes, its children stay in its place) and **Delete group and ‹n› activities**; Delete on a selected group block is the second. Both show the usual Undo message. | Must |
+| FR-187 | **Undo last change** (FR-147) also takes back grouping and ungrouping by drag or Part of, including the group it created or removed. | Must |
+| FR-188 | **Older apps.** Apps from before this update keep syncing plans: the server leaves `parentId` out of what it sends to them. A group's stored start and duration are kept equal to its children's dates by every change made in the app, so an older app shows a group as an ordinary activity over the same days. Once updated, the app reads all changes again. | Must |
+
+### 11.2 Decisions
+
+| ID  | Decision |
+| --- | -------- |
+| P21 | **A group is an activity with children**, not a new entity: one field (`parentId`) more, so groups sync, merge, are deleted, restored, linked and kept in the recovery copy like activities. A `parentId` that cannot count (unknown, deleted, another plan, itself, or a loop made by two devices at once) is ignored when drawing and scheduling, looking at activities in a fixed order (by id), so every device shows the same tree – the same approach as for links (`liveLinks`). Nothing is repaired automatically (P7). Four levels keep a row's indent and the nested boxes readable on a phone. |
+| P22 | **Derived dates.** "The parent covers its children" must stay true after two devices change different children; stored group dates could not guarantee that. The stored `start` / `days` of a group are only a copy for older apps (FR-188) and for the moment a group loses its last child. |
+| P23 | **Dropping on an activity makes a new group** instead of turning the target into the parent: the target is real work with its own dates, which a group cannot keep. **The middle of a block groups, the grips link** (FR-133), and the drag only groups in **another row**, so the moves of FR-127 are unchanged. |
+| P24 | **Links to a group are links to all its activities**, links from a group wait for all of them. The schedule is worked out on the activities that are not groups; a group follows them. |
+| P25 | **Collapsed state is a view setting** (like the name mode, P6), per plan and per device: collapsing to see the overview on a phone should not collapse it on a computer. |
+
+### 11.3 Acceptance (tested)
+
+1. Dragging the middle of B onto A in another row makes the group "A & B" with both inside; dropping C on the group adds it; dragging C out of the box takes it out; Undo last change takes the group back.
+2. A group starts with its first child and ends with its last; moving the group moves all children.
+3. Collapsing shows one block with { }, the count and no child rows; it survives a reload; expanding shows the children again.
+4. A link A → group pushes every child after A; group → B pushes B after the last child; a link from a group to its own child is refused.
+5. Done: a double click on a collapsed group marks all its activities done; hiding done hides the group.
+6. The details page sets Part of (join, new group, none), and Ungroup / Delete group work with Undo.
+7. The Column mode shows the names as a tree.
+8. An app without the groups flag gets activity changes without `parentId`.

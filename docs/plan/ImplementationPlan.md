@@ -399,3 +399,62 @@ The links are the plan's live links (`liveLinks`, computed from all activities, 
 included). An activity is marked when it is drawn and a link points to it from one that is
 not. The line runs from `max(0, left − 30)` to `left` at `row × 44 + 22`, `stroke-dasharray`
 2 4, with `pointer-events: none`.
+
+## Update 6 – activity groups
+
+Requirements: [PRD.md section 11](./PRD.md#11-update-6--activity-groups) (FR-174 – FR-188).
+A new synced field, so it follows the "add a field to a synced entity" recipe and the full
+major-change order: PRD → plan → tests → code.
+
+| Step | Content | Status |
+| ---- | ------- | ------ |
+| 27 | Shared: `parentId` in `activityFields` (nullable id, optional on create), default `null` in `merge.ts` | ☑ |
+| 28 | Shared rules in `plan.ts`: `planTree` (the parents that count), `leavesOf`, `spansOf`, `groupLevels`; `liveLinks`, `wouldLoop`, `schedulePlan`, `brokenLinks`, `earliestStart` work on groups (links expanded to the activities in them) | ☑ |
+| 29 | Server: migration `010_activity_parent.sql` (`parent_id`), `rows.ts`, pull flag `activities=done,groups` (without `groups`: `parentId` stripped) | ☑ |
+| 30 | Client data: Dexie version 9 (default `parentId: null`, cursor reset), pull flag in `sync/engine.ts`; repo: `groupActivities`, `moveToGroup`, `ungroupActivity`, `regroupActivity`, group-aware `updateActivity` / `deleteActivity` / `restoreActivity`, stored group spans refreshed by `reschedule`; recovery copy and compare | ☑ |
+| 31 | Client lib: `planUndo` records `parentId` and the activities a grouping created or removed; `lib/planCollapsed.ts` (device setting per plan); `lib/timeline.ts` `planRows` (rows, boxes, visible ids) and `groupBox` | ☑ |
+| 32 | UI: `Timeline.tsx` (group boxes, collapsed blocks, drop on a block / box / empty row, arrows to the visible block, tree in the name column), `PlanPage.tsx` (collapsed groups, Delete of a group), `ActivityPage.tsx` (read-only dates, Part of, Ungroup, Delete group); texts and styles | ☑ |
+| 33 | Tests: see below | ☑ |
+
+### Design
+
+- **Tree.** `planTree(activities)` walks the live activities by id and accepts a parent when
+  it is a live activity of the same plan, not the activity itself and not inside it (a loop
+  made by two devices); the result (`parent`, `children` in row order) is the same on every
+  device. A group is an activity with children.
+- **Dates.** `spansOf(activities, tree)` gives every activity its span: its own, or for a group
+  from its earliest child start to its latest child end. The timeline, `brokenLinks`, the
+  range and the details page use these spans.
+- **Links.** A link `from → to` stands for links from every activity in `from` (its leaves) to
+  every activity in `to`. `liveLinks` drops a link between a group and something inside it,
+  and checks loops on these leaf links; `schedulePlan` works on leaves only; `earliestStart`
+  of a group is the earliest day its start can move to so that each of its leaves still
+  starts after its outside predecessors.
+- **Repo.** Every change that can move dates or the tree ends with `reschedule`, which pushes
+  leaves (FR-136) and then writes a group's stored `start` / `days` where they differ from its
+  span (FR-188). Moving a group shifts its leaves; `done` on a group writes all its leaves.
+  Row order: a new group takes the target's place (a key just before it); the target stays,
+  the dragged activity gets a key just after the target; an activity added to a group gets a
+  key after the group's last child; one taken out gets a key just after its old group.
+- **Undo.** `diffActivities` also compares `parentId`; when a change altered any `parentId`,
+  activities it created are deleted again and activities it removed are restored.
+- **Rows.** `planRows(activities, tree, collapsed, hidden)` lists the rows depth-first:
+  a leaf, an expanded group's header row followed by its children, or a collapsed group. It
+  also returns, per expanded group, its first and last row (the box) and, per activity, the
+  row it is drawn in (a hidden child: its outermost collapsed group).
+- **Drag.** A drag by the middle keeps moving the dates while the pointer is in its own row.
+  In another row the element under the pointer decides: a block (`data-activity-id`) or a
+  group box (`data-group-id`) is a drop target; empty grid means "out of the group" (into the
+  box under the pointer, if any).
+
+### Tests (written before the code)
+
+| Where | What |
+| ----- | ---- |
+| `shared/test/plan.test.ts` | tree (ignored parents, loops, order), spans, links to and from groups (schedule, loop, broken), `earliestStart` of a group |
+| `shared/test/merge.test.ts` | `parentId` defaults to `null` |
+| `server/test/plans.test.ts` | stores `parentId`; sends it with `activities=done,groups`, strips it otherwise; migration |
+| `client/test/data/groups.test.ts` | repo: group, join, take out (empty group removed), depth limit, moving and marking a group done, ungroup / regroup, delete / restore a group, stored spans, undo of a grouping |
+| `client/test/lib/timeline.test.ts` | `planRows` with expanded, collapsed and nested groups and hidden done |
+| `client/test/lib/planCollapsed.test.ts` | the setting: per plan, remembered, blocked storage |
+| `e2e/test/plan-groups.test.ts` | PRD 11.3 points 1 – 7 |
