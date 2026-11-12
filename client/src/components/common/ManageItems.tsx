@@ -15,13 +15,13 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
-import { Link } from 'wouter';
+import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { useDropOrder } from '../../app/hooks';
 import { orderAfterDrop, resolveDrop } from '../../lib/dnd';
 import { dropOrder } from '../../lib/dropOrder';
 import { t } from '../../app/strings';
 import { ConfirmDialog } from './ConfirmDialog';
+import { AppBar, GripIcon } from './icons';
 import { ListMenu } from '../lists/ListMenu';
 
 const REORDER_ERROR_MS = 6000;
@@ -31,15 +31,17 @@ export interface ManageItem {
   name: string;
 }
 
-/** The words of one Manage screen (lists, plans). */
+/** The words of one Manage screen (task lists, note lists, plans). */
 export interface ManageText {
   title: string;
   back: string;
-  empty: string;
+  /** Shown when there is nothing to manage; left out, nothing is shown. */
+  empty?: string;
   renameLabel: string;
-  deleteItem: string;
+  /** The menu's delete item; "Delete list" when left out. */
+  deleteItem?: string;
   deleteTitle: string;
-  /** `count` = what goes with it (tasks of a list, activities of a plan). */
+  /** `count` = what goes with it (tasks of a list, notes of a note list, activities of a plan). */
   deleteText: (name: string, count: number) => string;
   drag: (name: string) => string;
   reorderFailed: string;
@@ -57,13 +59,16 @@ interface Props {
   remove: (id: string) => Promise<unknown>;
   /** How many things are deleted together with the item (shown in the question). */
   countOf: (id: string) => Promise<number>;
+  /** A row above the others that can be renamed but not moved or deleted ("My notes"). */
+  fixed?: ManageItem;
+  /** Rows below the others that cannot be changed at all ("Public notes"). */
+  after?: ReactNode;
 }
 
 /**
- * Rename, reorder (by dragging) and delete plans in one place (docs/plan/PRD.md FR-121), the
- * way Manage lists does it: one "⋯" menu per row, no help text (UI_GUIDELINES.md). Kept
- * generic (texts and actions passed in); Manage lists has its own page because of the
- * note-list rows (docs/note-lists).
+ * Rename, reorder (by dragging) and delete the items of one module in one place: task lists,
+ * note lists (docs/note-lists FR-128 – FR-130) and plans (docs/plan/PRD.md FR-121). One "⋯"
+ * menu per row, no help text (UI_GUIDELINES.md). Texts and actions are passed in.
  */
 export function ManageItems({
   items,
@@ -75,6 +80,8 @@ export function ManageItems({
   reorder,
   remove,
   countOf,
+  fixed,
+  after,
 }: Props) {
   const editable = useDropOrder(scope, items);
   const ids = editable.map((l) => l.id);
@@ -133,29 +140,49 @@ export function ManageItems({
     }
   }
 
+  /** The name and its menu, or the rename form while renaming. */
+  const nameOrRename = (item: ManageItem, canDelete: boolean) =>
+    renamingId === item.id ? (
+      <form onSubmit={(e) => void saveName(e, item.id, item.name)} className="rename">
+        <input
+          type="text"
+          aria-label={text.renameLabel}
+          value={newName}
+          maxLength={nameMax}
+          autoFocus
+          onChange={(e) => setNewName(e.target.value)}
+        />
+        <button type="submit">{t.list.save}</button>
+        <button type="button" onClick={() => setRenamingId(null)}>
+          {t.list.cancel}
+        </button>
+      </form>
+    ) : (
+      <>
+        <span className="manage-name">{item.name}</span>
+        <ListMenu
+          name={item.name}
+          deleteLabel={text.deleteItem}
+          onRename={() => {
+            setNewName(item.name);
+            setRenamingId(item.id);
+          }}
+          onDelete={canDelete ? () => void askDelete(item.id, item.name) : undefined}
+        />
+      </>
+    );
+
   return (
     <section className="manage-lists" aria-label={text.title}>
-      {/* App bar: round back button + title on one line, as Manage lists (decision U1). */}
-      <header className="list-head app-bar">
-        <Link
-          href={backHref}
-          className="icon-btn btn-back"
-          aria-label={text.back}
-          title={text.back}
-        >
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
-            <path
-              d="M15 5l-7 7 7 7"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </Link>
-        <h2>{text.title}</h2>
-      </header>
+      <AppBar backHref={backHref} backLabel={text.back} title={text.title} />
+      {fixed && (
+        <ul className="manage-list-rows fixed-rows">
+          <li className="manage-row">
+            <span className="drag-handle-space" aria-hidden="true" />
+            {nameOrRename(fixed, false)}
+          </li>
+        </ul>
+      )}
       {reorderFailed && (
         <p className="error" role="alert">
           {text.reorderFailed}
@@ -163,7 +190,7 @@ export function ManageItems({
       )}
 
       {editable.length === 0 ? (
-        <p className="empty">{text.empty}</p>
+        text.empty && <p className="empty">{text.empty}</p>
       ) : (
         <DndContext
           sensors={sensors}
@@ -188,35 +215,7 @@ export function ManageItems({
             <ul className="manage-list-rows">
               {editable.map((l) => (
                 <SortableRow key={l.id} id={l.id} name={l.name} ids={ids} label={text.drag(l.name)}>
-                  {renamingId === l.id ? (
-                    <form onSubmit={(e) => void saveName(e, l.id, l.name)} className="rename">
-                      <input
-                        type="text"
-                        aria-label={text.renameLabel}
-                        value={newName}
-                        maxLength={nameMax}
-                        autoFocus
-                        onChange={(e) => setNewName(e.target.value)}
-                      />
-                      <button type="submit">{t.list.save}</button>
-                      <button type="button" onClick={() => setRenamingId(null)}>
-                        {t.list.cancel}
-                      </button>
-                    </form>
-                  ) : (
-                    <>
-                      <span className="manage-name">{l.name}</span>
-                      <ListMenu
-                        name={l.name}
-                        deleteLabel={text.deleteItem}
-                        onRename={() => {
-                          setNewName(l.name);
-                          setRenamingId(l.id);
-                        }}
-                        onDelete={() => void askDelete(l.id, l.name)}
-                      />
-                    </>
-                  )}
+                  {nameOrRename(l, true)}
                 </SortableRow>
               ))}
             </ul>
@@ -226,6 +225,8 @@ export function ManageItems({
           </DragOverlay>
         </DndContext>
       )}
+
+      {after}
 
       <ConfirmDialog
         open={deleting !== null}
@@ -256,7 +257,7 @@ function SortableRow({
   name: string;
   ids: string[];
   label: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const {
     setNodeRef,
@@ -281,15 +282,7 @@ function SortableRow({
         {...attributes}
         {...listeners}
       >
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
-          <path
-            d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01"
-            stroke="currentColor"
-            strokeWidth="3"
-            strokeLinecap="round"
-            fill="none"
-          />
-        </svg>
+        <GripIcon />
       </button>
       {children}
     </li>

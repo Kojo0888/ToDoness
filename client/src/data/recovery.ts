@@ -30,7 +30,7 @@ export interface RecoverySnapshot {
    * Live notes (docs/notes/PRD.md FR-98). Missing in a copy kept before the notes update,
    * so readers use `notes ?? []`.
    */
-  notes: Note[];
+  notes?: Note[];
   /**
    * Live plans and the live activities of those plans (docs/plan/PRD.md FR-144). Missing in
    * a copy kept before the Plan module, so readers use `?? []`.
@@ -41,8 +41,8 @@ export interface RecoverySnapshot {
 
 /**
  * What is on this device and worth restoring: live lists (not the Inbox), live tasks of
- * live lists and live notes. `undefined` when there is nothing, so the user is not asked about nothing.
- * Deleted rows are not restored.
+ * live lists, live notes, live plans and the live activities of those plans. `undefined`
+ * when there is nothing, so the user is not asked about nothing. Deleted rows are not restored.
  */
 export async function takeSnapshot(
   db: TodonessDB,

@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useState, useSyncExternalStore } from 'react';
-import { Link, Redirect, useLocation } from 'wouter';
+import { Redirect, useLocation } from 'wouter';
 import {
   ACTIVITY_DAYS_MAX,
   ACTIVITY_NAME_MAX,
@@ -15,6 +15,7 @@ import { createPlanChanges, type PlanError } from '../../services/planChanges';
 import { db, repo } from '../../app/container';
 import { t } from '../../app/strings';
 import { useUndoToast } from '../common/Toast';
+import { AppBar } from '../common/icons';
 import { planPath } from './PlansHome';
 
 export const activityPath = (planId: string, id: string) => `${planPath(planId)}/activity/${id}`;
@@ -58,26 +59,11 @@ export function ActivityPage({ planId, activityId }: { planId: string; activityI
 
   return (
     <section className="plan-details" aria-label={t.plan.activityDetails}>
-      <header className="list-head app-bar">
-        <Link
-          href={planPath(planId)}
-          className="icon-btn btn-back"
-          aria-label={t.plan.backTo(plan.name)}
-          title={t.plan.backTo(plan.name)}
-        >
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
-            <path
-              d="M15 5l-7 7 7 7"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </Link>
-        <h2>{activity.name}</h2>
-      </header>
+      <AppBar
+        backHref={planPath(planId)}
+        backLabel={t.plan.backTo(plan.name)}
+        title={activity.name}
+      />
 
       {error && (
         <p className="notice plan-message" role="alert">

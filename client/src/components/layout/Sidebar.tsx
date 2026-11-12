@@ -3,7 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Link, useLocation } from 'wouter';
 import { listDropId } from '../../lib/dnd';
-import { PLAN_NAME_MAX } from '@todoness/shared';
+import { LIST_NAME_MAX, PLAN_NAME_MAX } from '@todoness/shared';
 import { MANAGE_LISTS_PATH, MANAGE_NOTE_LISTS_PATH, noteListPath } from '../../lib/listManage';
 import {
   countActivitiesByPlan,
@@ -71,21 +71,9 @@ function TasksNav({
   active: (href: string) => boolean;
   onNavigate: () => void;
 }) {
-  const [, navigate] = useLocation();
   const lists = useLiveQuery(() => getLists(db), [], []);
   const counts = useLiveQuery(() => countOpenTodosByList(db), [], new Map<string, number>());
-  const [name, setName] = useState('');
   const { lists: publicLists, failed: publicFailed } = usePublicLists();
-
-  async function addList(e: FormEvent) {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    setName('');
-    const list = await repo.createList(trimmed);
-    navigate(`/l/${list.id}`);
-    onNavigate();
-  }
 
   return (
     <>
@@ -128,29 +116,20 @@ function TasksNav({
         <p className="hint nav-note">{t.nav.publicNeedsConnection}</p>
       )}
 
-      <Link
+      <ManageLink
         href={MANAGE_LISTS_PATH}
-        onClick={onNavigate}
-        className={`btn btn-block manage-lists-link${active(MANAGE_LISTS_PATH) ? ' active' : ''}`}
-        aria-current={active(MANAGE_LISTS_PATH) ? 'page' : undefined}
-      >
-        <span aria-hidden="true" className="btn-icon">
-          ☰
-        </span>
-        {t.nav.manageLists}
-      </Link>
+        label={t.nav.manageLists}
+        active={active(MANAGE_LISTS_PATH)}
+        onNavigate={onNavigate}
+      />
 
-      <form onSubmit={addList} className="new-list">
-        <input
-          type="text"
-          aria-label={t.nav.newList}
-          placeholder={t.nav.newList}
-          value={name}
-          maxLength={200}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <button type="submit">{t.nav.addList}</button>
-      </form>
+      <NewItemForm
+        label={t.nav.newList}
+        addLabel={t.nav.addList}
+        maxLength={LIST_NAME_MAX}
+        create={async (name) => `/l/${(await repo.createList(name)).id}`}
+        onNavigate={onNavigate}
+      />
     </>
   );
 }
@@ -158,26 +137,14 @@ function TasksNav({
 /** The Notes module: the note lists (My notes first) and other users' public notes, with
  *  counts; manage and add note lists (docs/note-lists FR-125, FR-126). */
 function NotesNav({ location, onNavigate }: { location: string; onNavigate: () => void }) {
-  const [, navigate] = useLocation();
   const lists = useLiveQuery(() => getNoteLists(db), [], []);
   const counts = useLiveQuery(() => countNotesByList(db), [], new Map<string | null, number>());
   // The public notes page refreshes them itself; here only the copy is read then.
   const shared = usePublicNotes({ refresh: location !== '/notes/public' });
-  const [name, setName] = useState('');
 
   const myNotes = lists.find((l) => l.isInbox);
   const others = lists.filter((l) => !l.isInbox);
   const isActive = (href: string) => location === href || location === `${href}/`;
-
-  async function addList(e: FormEvent) {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    setName('');
-    const list = await repo.createList(trimmed, 'notes');
-    navigate(noteListPath(list.id));
-    onNavigate();
-  }
 
   const link = (
     key: string,
@@ -224,29 +191,20 @@ function NotesNav({ location, onNavigate }: { location: string; onNavigate: () =
         )}
       </ul>
 
-      <Link
+      <ManageLink
         href={MANAGE_NOTE_LISTS_PATH}
-        onClick={onNavigate}
-        className={`btn btn-block manage-lists-link${isActive(MANAGE_NOTE_LISTS_PATH) ? ' active' : ''}`}
-        aria-current={isActive(MANAGE_NOTE_LISTS_PATH) ? 'page' : undefined}
-      >
-        <span aria-hidden="true" className="btn-icon">
-          ☰
-        </span>
-        {t.notes.manageLists}
-      </Link>
+        label={t.notes.manageLists}
+        active={isActive(MANAGE_NOTE_LISTS_PATH)}
+        onNavigate={onNavigate}
+      />
 
-      <form onSubmit={addList} className="new-list">
-        <input
-          type="text"
-          aria-label={t.notes.newList}
-          placeholder={t.notes.newList}
-          value={name}
-          maxLength={200}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <button type="submit">{t.notes.addList}</button>
-      </form>
+      <NewItemForm
+        label={t.notes.newList}
+        addLabel={t.notes.addList}
+        maxLength={LIST_NAME_MAX}
+        create={async (name) => noteListPath((await repo.createList(name, 'notes')).id)}
+        onNavigate={onNavigate}
+      />
     </>
   );
 }
@@ -259,20 +217,8 @@ function PlanNav({
   active: (href: string) => boolean;
   onNavigate: () => void;
 }) {
-  const [, navigate] = useLocation();
   const plans = useLiveQuery(() => getPlans(db), [], []);
   const counts = useLiveQuery(() => countActivitiesByPlan(db), [], new Map<string, number>());
-  const [name, setName] = useState('');
-
-  async function addPlan(e: FormEvent) {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    setName('');
-    const plan = await repo.createPlan(trimmed);
-    navigate(planPath(plan.id));
-    onNavigate();
-  }
 
   return (
     <>
@@ -299,29 +245,20 @@ function PlanNav({
         })}
       </ul>
 
-      <Link
+      <ManageLink
         href={MANAGE_PLANS_PATH}
-        onClick={onNavigate}
-        className={`btn btn-block manage-lists-link${active(MANAGE_PLANS_PATH) ? ' active' : ''}`}
-        aria-current={active(MANAGE_PLANS_PATH) ? 'page' : undefined}
-      >
-        <span aria-hidden="true" className="btn-icon">
-          ☰
-        </span>
-        {t.plan.managePlans}
-      </Link>
+        label={t.plan.managePlans}
+        active={active(MANAGE_PLANS_PATH)}
+        onNavigate={onNavigate}
+      />
 
-      <form onSubmit={addPlan} className="new-list">
-        <input
-          type="text"
-          aria-label={t.plan.newPlan}
-          placeholder={t.plan.newPlan}
-          value={name}
-          maxLength={PLAN_NAME_MAX}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <button type="submit">{t.plan.addPlan}</button>
-      </form>
+      <NewItemForm
+        label={t.plan.newPlan}
+        addLabel={t.plan.addPlan}
+        maxLength={PLAN_NAME_MAX}
+        create={async (name) => planPath((await repo.createPlan(name)).id)}
+        onNavigate={onNavigate}
+      />
     </>
   );
 }
@@ -356,5 +293,74 @@ function ListLink({
         </span>
       </Link>
     </li>
+  );
+}
+
+/** "Manage lists / note lists / plans": a full-width button-like link (UI_GUIDELINES.md). */
+function ManageLink({
+  href,
+  label,
+  active,
+  onNavigate,
+}: {
+  href: string;
+  label: string;
+  active: boolean;
+  onNavigate: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onNavigate}
+      className={`btn btn-block manage-lists-link${active ? ' active' : ''}`}
+      aria-current={active ? 'page' : undefined}
+    >
+      <span aria-hidden="true" className="btn-icon">
+        ☰
+      </span>
+      {label}
+    </Link>
+  );
+}
+
+/** A name field and an Add button at the bottom of the sidebar; opens what it created. */
+function NewItemForm({
+  label,
+  addLabel,
+  maxLength,
+  create,
+  onNavigate,
+}: {
+  label: string;
+  addLabel: string;
+  maxLength: number;
+  /** Creates the item and returns the path of its page. */
+  create: (name: string) => Promise<string>;
+  onNavigate: () => void;
+}) {
+  const [, navigate] = useLocation();
+  const [name, setName] = useState('');
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setName('');
+    navigate(await create(trimmed));
+    onNavigate();
+  }
+
+  return (
+    <form onSubmit={(e) => void submit(e)} className="new-list">
+      <input
+        type="text"
+        aria-label={label}
+        placeholder={label}
+        value={name}
+        maxLength={maxLength}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <button type="submit">{addLabel}</button>
+    </form>
   );
 }

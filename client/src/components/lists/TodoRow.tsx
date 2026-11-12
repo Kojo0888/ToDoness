@@ -6,6 +6,7 @@ import { formatDue } from '../../lib/dates';
 import { repo } from '../../app/container';
 import { t } from '../../app/strings';
 import type { TodoDragData } from '../common/DragAndDrop';
+import { GripIcon } from '../common/icons';
 
 const MARKS = ['', '!', '!!', '!!!'] as const;
 
@@ -56,15 +57,7 @@ export function SortableTodoRow({
           {...attributes}
           {...listeners}
         >
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
-            <path
-              d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01"
-              stroke="currentColor"
-              strokeWidth="3"
-              strokeLinecap="round"
-              fill="none"
-            />
-          </svg>
+          <GripIcon />
         </button>
       }
     />

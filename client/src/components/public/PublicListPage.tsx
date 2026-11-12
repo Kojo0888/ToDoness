@@ -14,6 +14,7 @@ import type { TodoDragData } from '../common/DragAndDrop';
 import { PublicQueueNotice } from './PublicQueueNotice';
 import { PublicTaskDetail } from './PublicTaskDetail';
 import { useUndoToast } from '../common/Toast';
+import { GripIcon } from '../common/icons';
 
 const MARKS = ['', '!', '!!', '!!!'] as const;
 
@@ -196,15 +197,7 @@ function SortableRow({ open, ...props }: RowProps & { open: PublicTodo[] }) {
           {...attributes}
           {...listeners}
         >
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
-            <path
-              d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01"
-              stroke="currentColor"
-              strokeWidth="3"
-              strokeLinecap="round"
-              fill="none"
-            />
-          </svg>
+          <GripIcon />
         </button>
       }
     />
