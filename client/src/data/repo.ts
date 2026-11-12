@@ -359,7 +359,8 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
   /**
    * A change of a group (FR-175, FR-182, FR-184): its dates and done come from its activities.
    * A new start moves all of them by the same number of days, not before their predecessors
-   * outside the group allow; a duration is ignored; done is written to all of them.
+   * outside the group allow; a duration is ignored; done is ignored too: a group is done when
+   * all its activities are, and is never marked done itself.
    */
   async function updateGroup(
     group: Activity,
@@ -373,13 +374,6 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
     const patch = typeof edit === 'function' ? edit(current) : edit;
     if (patch.name !== undefined && patch.name.trim() !== group.name) {
       await commit<Activity>('activity', 'update', group.id, { name: patch.name.trim() });
-    }
-    if (patch.done !== undefined) {
-      for (const l of leaves) {
-        if (l.done !== patch.done) {
-          await commit<Activity>('activity', 'update', l.id, { done: patch.done });
-        }
-      }
     }
     if (patch.start !== undefined) {
       const earliest = earliestStart(all, group.id);

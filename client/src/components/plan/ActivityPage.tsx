@@ -238,6 +238,8 @@ function ActivityFields({
           type="checkbox"
           role="switch"
           checked={done}
+          // A group is done when all its activities are; it is never set by itself (FR-184).
+          disabled={isGroup(tree, id)}
           onChange={(e) => {
             const done = e.target.checked;
             change(() => repo.updateActivity(id, { done }));

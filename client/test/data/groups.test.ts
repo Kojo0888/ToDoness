@@ -130,20 +130,21 @@ describe('groups – repo (FR-174 – FR-178)', () => {
     await expect(s.repo.linkActivities(g.id, a.id)).rejects.toMatchObject({ code: 'loop' });
   });
 
-  it('done on a group marks all its activities (FR-184)', async () => {
+  it('done cannot be set on a group: it follows its activities (FR-184)', async () => {
     const s = await setup();
     const a = await s.add('A', 0, 1);
     const b = await s.add('B', 1, 1);
     const g = await s.repo.groupActivities(a.id, b.id);
     await s.repo.updateActivity(g.id, { done: true });
-    expect(
-      (await s.acts())
-        .filter((x) => x.done)
-        .map((x) => x.name)
-        .sort(),
-    ).toEqual(['A', 'B']);
     await s.repo.updateActivity(g.id, (now) => ({ done: !now.done }));
     expect((await s.acts()).some((x) => x.done)).toBe(false);
+    // a rename still works, and the group is done once every activity is
+    await s.repo.updateActivity(g.id, { name: 'Both', done: true });
+    expect((await s.acts()).find((x) => x.id === g.id)?.name).toBe('Both');
+    expect((await s.acts()).some((x) => x.done)).toBe(false);
+    await s.repo.updateActivity(a.id, { done: true });
+    await s.repo.updateActivity(b.id, { done: true });
+    expect((await s.acts()).filter((x) => x.parentId === g.id).every((x) => x.done)).toBe(true);
   });
 
   it('ungroup keeps the children in the group’s place; regroup undoes it (FR-186)', async () => {
