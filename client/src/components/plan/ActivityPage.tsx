@@ -20,6 +20,8 @@ import {
 } from '@todoness/shared';
 import { getActivities, getPlanById } from '../../data/queries';
 import { formatDay } from '../../lib/dates';
+import { browserStorage } from '../../lib/modules';
+import { readAutoSort } from '../../lib/planAutoSort';
 import { createPlanChanges, type PlanError } from '../../services/planChanges';
 import { db, repo } from '../../app/container';
 import { t } from '../../app/strings';
@@ -46,7 +48,9 @@ export function ActivityPage({ planId, activityId }: { planId: string; activityI
   // `undefined` = loading, `null` = no such plan / activity (or it was deleted).
   const plan = useLiveQuery(async () => (await getPlanById(db, planId)) ?? null, [planId]);
   const activities = useLiveQuery(() => getActivities(db, planId), [planId]);
-  const [changes] = useState(() => createPlanChanges({ db, repo, planId }));
+  const [changes] = useState(() =>
+    createPlanChanges({ db, repo, planId, autoSort: () => readAutoSort(browserStorage()) }),
+  );
   const { error } = useSyncExternalStore(changes.subscribe, changes.getState);
   const [, navigate] = useLocation();
   const toast = useUndoToast();
@@ -234,6 +238,8 @@ function ActivityFields({
           type="checkbox"
           role="switch"
           checked={done}
+          // A group is done when all its activities are; it is never set by itself (FR-184).
+          disabled={isGroup(tree, id)}
           onChange={(e) => {
             const done = e.target.checked;
             change(() => repo.updateActivity(id, { done }));

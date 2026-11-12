@@ -144,7 +144,8 @@ export function Timeline({
   /** Escape was pressed while the pointer was down: releasing it must not count as a click. */
   const cancelled = useRef(false);
   const pointerDown = useRef(false);
-  /** A second click on the same block soon after the first: done / not done (FR-154). */
+  /** A second click on the same block soon after the first: done / not done (FR-154); for a
+   * group it opens or closes it instead (FR-184). */
   const [doubleTap] = useState(() => createDoubleTap());
   const w = dayWidth(scale);
 
@@ -414,12 +415,16 @@ export function Timeline({
     onSelect(id);
   }
 
-  /** A click on a block selects it; a second one right after toggles done (FR-154, FR-184). */
+  /**
+   * A click on a block selects it; a second one right after toggles done (FR-154). On a
+   * group it expands or collapses it and never marks it done (FR-184).
+   */
   function clickBlock(id: string, at: number) {
     if (suppressClick.current) return;
     onSelect(id);
     if (doubleTap(id, at)) {
-      void change(() => repo.updateActivity(id, (now) => ({ done: !now.done })));
+      if (isGroup(tree, id)) onToggleGroup(id);
+      else void change(() => repo.updateActivity(id, (now) => ({ done: !now.done })));
     }
   }
 
@@ -670,7 +675,7 @@ export function Timeline({
                         aria-pressed={b.id === selectedId}
                         aria-describedby="plan-block-help"
                         title={`${a.name}: ${formatDay(span.start)} – ${formatDay(end)}`}
-                        onClick={() => choose(b.id)}
+                        onClick={(e) => clickBlock(b.id, e.timeStamp)}
                         onKeyDown={(e) => onBlockKey(e, b.id)}
                         {...dragHandlers(b.id, null)}
                       >

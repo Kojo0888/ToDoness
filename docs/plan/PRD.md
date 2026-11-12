@@ -313,7 +313,7 @@ the **[ ]** grips). A child can have children of its own. The proposal and mocku
 | FR-181 | **Expand / collapse** with the ▸ / ▾ button on the group (the box header, the collapsed block, and the name column in the Column mode). Which groups are collapsed is a **device setting per plan**; new groups are expanded. **[Decision P25]** | Must |
 | FR-182 | **Moving a group** (dragging its collapsed block, its **{** grip or the header of its box; keys ← / → on its block; its Start field) moves **every activity in it** by the same number of days, not before its predecessors allow. Its **}** grip does not change any duration: it only makes links. | Must |
 | FR-183 | **Links and groups.** A dependency can be made to and from a group as to any activity. **A → group**: every activity in the group starts after A has ended. **Group → B**: B starts after the group's last activity has ended. The automatic shift (FR-136) and the loop check (FR-137) follow these rules; a link between a group and an activity inside it is refused as a loop. **[Decision P24]** | Must |
-| FR-184 | **Done.** A group is done when all its activities are done. A double click on a collapsed group's block, or its **Done** switch, marks all its activities done (or all not done, when they all are). With **Hide done activities** (FR-162) a group whose activities are all done is hidden as a whole. | Must |
+| FR-184 | **Done.** A group is done when all its activities are done, and **only then**: it is never marked done itself. A double click on a group's block (collapsed) or on the header of its box (expanded) **expands or collapses** it, as the ▸ / ▾ button does; its **Done** switch on the details page is read-only and shows the state of its activities. With **Hide done activities** (FR-162) a group whose activities are all done is hidden as a whole. *(Changed after the first version, which marked all its activities done.)* | Must |
 | FR-185 | **Name column.** In the Column mode the names are a tree: indented by level, group names in bold with their expand button. | Must |
 | FR-186 | **Deleting a group.** Its details page offers **Ungroup** (the group goes, its children stay in its place) and **Delete group and ‹n› activities**; Delete on a selected group block is the second. Both show the usual Undo message. | Must |
 | FR-187 | **Undo last change** (FR-147) also takes back grouping and ungrouping by drag or Part of, including the group it created or removed. | Must |
@@ -335,7 +335,7 @@ the **[ ]** grips). A child can have children of its own. The proposal and mocku
 2. A group starts with its first child and ends with its last; moving the group moves all children.
 3. Collapsing shows one block with { }, the count and no child rows; it survives a reload; expanding shows the children again.
 4. A link A → group pushes every child after A; group → B pushes B after the last child; a link from a group to its own child is refused.
-5. Done: a double click on a collapsed group marks all its activities done; hiding done hides the group.
+5. Done: a double click on a group opens or closes it and never marks anything done; the group is done once all its activities are; hiding done hides it.
 6. The details page sets Part of (join, new group, none), and Ungroup / Delete group work with Undo.
 7. The Column mode shows the names as a tree.
 8. An app without the groups flag gets activity changes without `parentId`.

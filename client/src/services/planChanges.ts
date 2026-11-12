@@ -7,7 +7,12 @@
 import { getActivities } from '../data/queries';
 import type { TodonessDB } from '../data/db';
 import { RepoError, type Repo } from '../data/repo';
-import { diffActivities, type ActivityChange, type ActivityState } from '../lib/planUndo';
+import {
+  diffActivities,
+  sameLinks,
+  type ActivityChange,
+  type ActivityState,
+} from '../lib/planUndo';
 import { createSerialQueue } from '../lib/serial';
 
 /**
@@ -28,6 +33,11 @@ export interface PlanChanges {
    * says why). A change that alters no dates or links (a rename) keeps the undo point.
    */
   run<T>(change: () => Promise<T>): Promise<T | undefined>;
+  /**
+   * Puts the rows in start order (docs/plan-sort FR-189) as one undo step. Resolves to
+   * whether anything moved, or to `undefined` when it failed.
+   */
+  sort(): Promise<boolean | undefined>;
   /** Takes the last change back: only what it changed and nobody has changed since. */
   undo(): Promise<void>;
   clearError(): void;
@@ -44,8 +54,10 @@ export function createPlanChanges(deps: {
   db: TodonessDB;
   repo: Repo;
   planId: string;
+  /** Asked after every successful change: sort the rows too (docs/plan-sort FR-193). */
+  autoSort?: () => boolean;
 }): PlanChanges {
-  const { db, repo, planId } = deps;
+  const { db, repo, planId, autoSort } = deps;
   const inOrder = createSerialQueue();
   const listeners = new Set<() => void>();
   let state: PlanChangesState = { undo: null, error: null };
@@ -55,30 +67,62 @@ export function createPlanChanges(deps: {
     for (const l of listeners) l();
   }
 
-  const read = async (): Promise<ActivityState[]> =>
-    (await getActivities(db, planId)).map(({ id, start, days, dependsOn, done, parentId }) => ({
-      id,
-      start,
-      days,
-      dependsOn,
-      done,
-      parentId,
-    }));
+  /** `orderKey` is part of the undo point only for sorting (docs/plan-sort FR-192, S3). */
+  const read = async (withOrder: boolean): Promise<ActivityState[]> =>
+    (await getActivities(db, planId)).map(
+      ({ id, start, days, dependsOn, done, parentId, orderKey }) => ({
+        id,
+        start,
+        days,
+        dependsOn,
+        done,
+        parentId,
+        ...(withOrder ? { orderKey } : {}),
+      }),
+    );
+
+  /** Only these can change the order a sort wants: dates, links, groups, a new activity. */
+  const affectsOrder = (before: ActivityState[], after: ActivityState[]) => {
+    const was = new Map(before.map((a) => [a.id, a]));
+    return after.some((a) => {
+      const old = was.get(a.id);
+      return (
+        !old ||
+        old.start !== a.start ||
+        !sameLinks(old.dependsOn, a.dependsOn) ||
+        (old.parentId ?? null) !== (a.parentId ?? null)
+      );
+    });
+  };
+
+  const exec = <T>(change: () => Promise<T>, sorting: boolean): Promise<T | undefined> =>
+    inOrder(async () => {
+      try {
+        const auto = !sorting && (autoSort?.() ?? false);
+        const withOrder = sorting || auto;
+        const before = await read(withOrder);
+        const result = await change();
+        if (auto && affectsOrder(before, await read(true))) {
+          // Part of the same undo step. A plan deleted meanwhile is not this change's
+          // failure; anything else is shown.
+          try {
+            await repo.sortActivities(planId);
+          } catch (err) {
+            if (!(err instanceof RepoError && err.code === 'not_found')) throw err;
+          }
+        }
+        const did = diffActivities(before, await read(withOrder));
+        set(did.length > 0 ? { undo: did, error: null } : { error: null });
+        return result;
+      } catch (err) {
+        set({ error: errorOf(err) });
+        return undefined;
+      }
+    });
 
   return {
-    run: (change) =>
-      inOrder(async () => {
-        try {
-          const before = await read();
-          const result = await change();
-          const did = diffActivities(before, await read());
-          set(did.length > 0 ? { undo: did, error: null } : { error: null });
-          return result;
-        } catch (err) {
-          set({ error: errorOf(err) });
-          return undefined;
-        }
-      }),
+    run: (change) => exec(change, false),
+    sort: () => exec(() => repo.sortActivities(planId), true),
 
     undo: () =>
       inOrder(async () => {

@@ -33,6 +33,7 @@ import {
   normalizeRemindBefore,
   parseHlc,
   schedulePlan,
+  sortedActivityIds,
   syncOpSchema,
   wouldLoop,
   type Activity,
@@ -147,6 +148,12 @@ export interface Repo {
     /** The new values, or a function that works them out from the stored activity. */
     patch: ActivityEdit | ((current: Activity) => ActivityEdit),
   ): Promise<Activity>;
+  /**
+   * Puts the rows of a plan in start order, per level and inside every group, predecessors
+   * first (docs/plan-sort FR-189 – FR-191). Only `orderKey` changes. Resolves to whether
+   * anything moved.
+   */
+  sortActivities(planId: string): Promise<boolean>;
   /** Deletes an activity; a group with everything in it (docs/plan/PRD.md FR-186). */
   deleteActivity(id: string): Promise<Activity>;
   /** Brings a deleted activity back; a group with what was deleted with it. */
@@ -352,7 +359,8 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
   /**
    * A change of a group (FR-175, FR-182, FR-184): its dates and done come from its activities.
    * A new start moves all of them by the same number of days, not before their predecessors
-   * outside the group allow; a duration is ignored; done is written to all of them.
+   * outside the group allow; a duration is ignored; done is ignored too: a group is done when
+   * all its activities are, and is never marked done itself.
    */
   async function updateGroup(
     group: Activity,
@@ -364,15 +372,13 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
     const leaves = leavesOf(tree, group.id).map((id) => all.find((a) => a.id === id)!);
     const current = { ...group, ...span, done: leaves.every((l) => l.done) };
     const patch = typeof edit === 'function' ? edit(current) : edit;
+    // A group is done when all its activities are (FR-184): never set by itself, and never
+    // quietly ignored either, so that no caller believes it worked.
+    if (patch.done !== undefined) {
+      throw new RepoError('invalid', 'A group is done when all its activities are');
+    }
     if (patch.name !== undefined && patch.name.trim() !== group.name) {
       await commit<Activity>('activity', 'update', group.id, { name: patch.name.trim() });
-    }
-    if (patch.done !== undefined) {
-      for (const l of leaves) {
-        if (l.done !== patch.done) {
-          await commit<Activity>('activity', 'update', l.id, { done: patch.done });
-        }
-      }
     }
     if (patch.start !== undefined) {
       const earliest = earliestStart(all, group.id);
@@ -652,6 +658,43 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         });
       }),
 
+    sortActivities: (planId) =>
+      inTx(async () => {
+        await livePlan(planId);
+        const all = await activitiesOfPlan(planId);
+        const tree = planTree(all);
+        const wanted = sortedActivityIds(all);
+        const current = all.map((a) => a.id);
+        // Rows only matter in relation to their siblings (the timeline lists a group's
+        // children under it): nothing to do when every set of siblings is in order.
+        const perParent = (ids: readonly string[]) => {
+          const sets = new Map<string | null, string[]>();
+          for (const id of ids) {
+            const key = tree.parent.get(id) ?? null;
+            sets.set(key, [...(sets.get(key) ?? []), id]);
+          }
+          return sets;
+        };
+        const have = perParent(current);
+        const want = perParent(wanted);
+        const inOrder = [...want].every(([key, ids]) => {
+          const now = have.get(key) ?? [];
+          return ids.length === now.length && ids.every((id, i) => now[i] === id);
+        });
+        if (inOrder) return false;
+        // The rows from the first difference on go to the end, after every row of the plan
+        // (deleted ones too, which keep their keys), so no key is used twice.
+        let first = 0;
+        while (wanted[first] === current[first]) first++;
+        const moved = wanted.slice(first);
+        const last = await rowsOfPlan(planId).last();
+        const keys = generateNKeysBetween(last?.orderKey ?? null, null, moved.length);
+        for (const [i, id] of moved.entries()) {
+          await commit<Activity>('activity', 'update', id, { orderKey: keys[i] });
+        }
+        return true;
+      }),
+
     updateActivity: (id, edit) =>
       inTx(async () => {
         const activity = await liveActivity(id);
@@ -928,6 +971,16 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
             sameLinks(now.dependsOn, after.dependsOn)
           ) {
             patch.dependsOn = before.dependsOn;
+          }
+          if (before.orderKey !== undefined && now.orderKey === after.orderKey) {
+            // The key may have been taken since (a row made or synced meanwhile): then the
+            // row goes just before its holder, so two rows never share a key.
+            const holder = (await rowsOfPlan(now.planId).toArray()).find(
+              (r) => r.id !== id && r.orderKey === before.orderKey,
+            );
+            patch.orderKey = holder
+              ? await keyBefore(now.planId, before.orderKey)
+              : before.orderKey;
           }
           if (before.parentId !== undefined && (now.parentId ?? null) === after.parentId) {
             patch.parentId = before.parentId;

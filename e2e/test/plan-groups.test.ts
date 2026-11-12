@@ -178,7 +178,7 @@ describe('activity groups', () => {
     await waitGroupDays(page, 'Pages & Forms', plus(t0, 2), plus(t0, 7));
   });
 
-  it('collapses to one { } block, survives a reload, a double click marks it done, hiding done hides it, the name column is a tree (11.3: 3, 5, 7)', async () => {
+  it('collapses to one { } block, survives a reload, a double click opens and closes it and never marks it done, hiding done hides it, the name column is a tree (11.3: 3, 5, 7)', async () => {
     const { page } = await withPlan('groups-collapse');
     await addActivity(page, 'Pages');
     await addActivity(page, 'Forms');
@@ -200,10 +200,19 @@ describe('activity groups', () => {
     await block(page, 'Pages & Forms').waitFor();
     expect(await block(page, 'Pages').count()).toBe(0);
 
-    // A double click marks all its activities done (FR-184).
+    // A double click opens it; it is not marked done (FR-184).
     await block(page, 'Pages & Forms').dblclick();
-    await page.locator('.plan-bar.is-group.is-done').waitFor();
+    await groupHead(page, 'Pages & Forms').waitFor();
+    expect(await page.locator('.plan-bar.is-done').count()).toBe(0);
+    // A double click on the header of the open group closes it again.
+    await groupHead(page, 'Pages & Forms').dblclick();
+    await block(page, 'Pages & Forms').waitFor();
+    expect(await page.locator('.plan-bar.is-done').count()).toBe(0);
     await expandButton(page, 'Pages & Forms').click();
+    // The group is done when all its activities are.
+    await block(page, 'Pages').dblclick();
+    await page.locator('.plan-bar.is-done .plan-block[aria-label^="Pages, "]').waitFor();
+    await block(page, 'Forms').dblclick();
     await page.locator('.plan-bar.is-done .plan-block[aria-label^="Forms, "]').waitFor();
     expect(await page.locator('.plan-bar[data-parent-id].is-done').count()).toBe(2);
 

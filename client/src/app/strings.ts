@@ -270,6 +270,8 @@ export const t = {
     options: 'Timeline options',
     scale: 'Timeline scale',
     hideDone: 'Hide done activities',
+    sort: 'Sort activities',
+    autoSort: 'Auto sort',
     allDoneHidden: 'All activities are done and hidden.',
     scales: { day: 'Days', week: 'Weeks', month: 'Months', year: 'Years' },
     timeline: 'Timeline',

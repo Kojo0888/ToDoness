@@ -13,6 +13,7 @@ import { getActivities, getPlanById } from '../../data/queries';
 import { browserStorage } from '../../lib/modules';
 import { readNameMode, saveNameMode, type NameMode } from '../../lib/planNames';
 import { readHideDone, saveHideDone } from '../../lib/planHideDone';
+import { readAutoSort, saveAutoSort } from '../../lib/planAutoSort';
 import { readCollapsed, saveCollapsed } from '../../lib/planCollapsed';
 import { readScale, saveScale } from '../../lib/planScale';
 import { SCALES, type Scale } from '../../lib/timeline';
@@ -44,6 +45,7 @@ export function PlanPage({ planId }: { planId: string }) {
   const [nameMode, setNameMode] = useState<NameMode>(() => readNameMode(browserStorage()));
   const [scale, setScale] = useState<Scale>(() => readScale(browserStorage()));
   const [hideDone, setHideDone] = useState(() => readHideDone(browserStorage()));
+  const [autoSort, setAutoSort] = useState(() => readAutoSort(browserStorage()));
   // Collapsed groups of this plan, remembered on this device (FR-181).
   const [collapsed, setCollapsed] = useState(() => readCollapsed(browserStorage(), planId));
   const tree = useMemo(() => planTree(activities), [activities]);
@@ -51,7 +53,9 @@ export function PlanPage({ planId }: { planId: string }) {
   const [newName, setNewName] = useState('');
   // Every change of this page goes through here: one at a time, undoable where it alters
   // dates or links, and failures are shown (services/planChanges.ts, FR-147).
-  const [changes] = useState(() => createPlanChanges({ db, repo, planId }));
+  const [changes] = useState(() =>
+    createPlanChanges({ db, repo, planId, autoSort: () => readAutoSort(browserStorage()) }),
+  );
   const { undo, error } = useSyncExternalStore(changes.subscribe, changes.getState);
   const message = error ? ERRORS[error] : null;
 
@@ -114,6 +118,16 @@ export function PlanPage({ planId }: { planId: string }) {
     setHideDone(hide);
   }
 
+  function chooseAutoSort(on: boolean) {
+    saveAutoSort(browserStorage(), on);
+    setAutoSort(on);
+    if (on) sortNow(); // turning it on sorts at once (FR-193)
+  }
+
+  function sortNow() {
+    void changes.sort();
+  }
+
   function chooseScale(next: Scale) {
     saveScale(browserStorage(), next);
     setScale(next);
@@ -166,6 +180,9 @@ export function PlanPage({ planId }: { planId: string }) {
             onNameMode={chooseNames}
             hideDone={hideDone}
             onHideDone={chooseHideDone}
+            autoSort={autoSort}
+            onAutoSort={chooseAutoSort}
+            onSort={sortNow}
           />
         </div>
       </div>

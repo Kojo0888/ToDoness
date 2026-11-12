@@ -14,6 +14,8 @@ import type { Activity } from '@todoness/shared';
 /** What a change on the timeline can alter in an activity. */
 export type ActivityState = Pick<Activity, 'id' | 'start' | 'days' | 'dependsOn' | 'done'> & {
   parentId?: string | null;
+  /** The row order (docs/plan-sort); undefined where a caller does not track it. */
+  orderKey?: string;
 };
 export type ActivityFields = Partial<Omit<ActivityState, 'id'>>;
 
@@ -63,6 +65,10 @@ export function diffActivities(
       change.before.parentId = old.parentId ?? null;
       change.after.parentId = is.parentId ?? null;
       regrouped = true;
+    }
+    if (old.orderKey !== undefined && is.orderKey !== undefined && old.orderKey !== is.orderKey) {
+      change.before.orderKey = old.orderKey;
+      change.after.orderKey = is.orderKey;
     }
     if (Object.keys(change.before).length > 0) changes.push(change);
   }

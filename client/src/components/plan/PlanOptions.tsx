@@ -4,23 +4,32 @@ import { t } from '../../app/strings';
 
 /**
  * The timeline's less used settings behind a gear button (docs/plan/PRD.md FR-156): where
- * activity names are shown, and whether done activities are hidden (FR-162). A small panel below the button; Escape, the button or a click
- * outside close it.
+ * activity names are shown, whether done activities are hidden (FR-162), and sorting the rows
+ * by start date: once (**Sort activities**) or after every change (**Auto sort**, docs/plan-sort
+ * FR-189, FR-193). A small panel below the button; Escape, the button or a click outside
+ * close it.
  */
 export function PlanOptions({
   nameMode,
   onNameMode,
   hideDone,
   onHideDone,
+  autoSort,
+  onAutoSort,
+  onSort,
 }: {
   nameMode: NameMode;
   onNameMode: (mode: NameMode) => void;
   hideDone: boolean;
   onHideDone: (hide: boolean) => void;
+  autoSort: boolean;
+  onAutoSort: (on: boolean) => void;
+  onSort: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const hideId = useId();
+  const autoId = useId();
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
 
@@ -93,6 +102,23 @@ export function PlanOptions({
               onChange={(e) => onHideDone(e.target.checked)}
             />
           </span>
+        </div>
+        <div className="plan-options-sort">
+          <button type="button" onClick={onSort}>
+            {t.plan.sort}
+          </button>
+          <div className="plan-options-switch">
+            <label htmlFor={autoId}>{t.plan.autoSort}</label>
+            <span className="switch">
+              <input
+                id={autoId}
+                type="checkbox"
+                role="switch"
+                checked={autoSort}
+                onChange={(e) => onAutoSort(e.target.checked)}
+              />
+            </span>
+          </div>
         </div>
       </div>
     </div>
