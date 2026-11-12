@@ -92,7 +92,7 @@ function PublicNoteCard({
         onSave={onSave}
       />
       <div className="note-foot">
-        <span className="hint">{t.notes.changed(formatChanged(note.updatedAt))}</span>
+        <span className="hint note-changed">{t.notes.changed(formatChanged(note.updatedAt))}</span>
       </div>
     </li>
   );
