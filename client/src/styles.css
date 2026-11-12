@@ -1214,14 +1214,18 @@ h2.nav-heading {
 
 .note-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.4rem 0.75rem;
 }
 
-.note-head .hint,
-.note-foot .hint {
+.note-head .note-public {
+  margin-left: auto;
+}
+
+.note-changed {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.75rem;
 }
 
 .note-foot .hint {

@@ -164,27 +164,7 @@ function NoteCard({
             />
           </svg>
         </button>
-        <span className="hint">{t.notes.changed(formatChanged(note.updatedAt))}</span>
-      </div>
-      <NoteEditor
-        stored={note.text}
-        label={t.notes.noteLabel(position)}
-        onSave={async (text) => {
-          try {
-            await repo.updateNoteText(note.id, text);
-            setError(null);
-          } catch {
-            setError(t.notes.saveFailed); // deleted meanwhile, or too long
-          }
-        }}
-      />
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-      <div className="note-foot">
-        <label className="switch" title={t.notes.publicHint}>
+        <label className="switch note-public" title={t.notes.publicHint}>
           <input
             type="checkbox"
             role="switch"
@@ -206,6 +186,24 @@ function NoteCard({
           {t.notes.delete}
         </button>
       </div>
+      <NoteEditor
+        stored={note.text}
+        label={t.notes.noteLabel(position)}
+        onSave={async (text) => {
+          try {
+            await repo.updateNoteText(note.id, text);
+            setError(null);
+          } catch {
+            setError(t.notes.saveFailed); // deleted meanwhile, or too long
+          }
+        }}
+      />
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      <p className="hint note-changed">{t.notes.changed(formatChanged(note.updatedAt))}</p>
     </li>
   );
 }

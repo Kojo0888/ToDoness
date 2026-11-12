@@ -173,6 +173,31 @@ describe('my notes (FR-88 – FR-93)', () => {
     expect(await noteTexts(page)).toEqual(['Second note', 'Shopping: milk, eggs']);
   });
 
+  it('shows the public switch and Delete above the text, the change date small below it', async () => {
+    const { page } = await newUser('layout');
+    await openNotes(page);
+    await addNote(page, 'Layout note');
+    const layout = await page
+      .locator('.notes .note')
+      .first()
+      .evaluate((card) => {
+        const top = (sel: string) => card.querySelector(sel)!.getBoundingClientRect().top;
+        const head = card.querySelector('.note-head')!;
+        const changed = card.querySelector('.note-changed')!;
+        return {
+          switchInHead: head.contains(card.querySelector('[role="switch"]')),
+          deleteInHead: head.contains(card.querySelector('button.danger')),
+          changedBelowText: top('.note-changed') > top('.note-text'),
+          changedFont: parseFloat(getComputedStyle(changed).fontSize),
+          textFont: parseFloat(getComputedStyle(card.querySelector('.note-text')!).fontSize),
+        };
+      });
+    expect(layout.switchInHead).toBe(true);
+    expect(layout.deleteInHead).toBe(true);
+    expect(layout.changedBelowText).toBe(true);
+    expect(layout.changedFont).toBeLessThan(layout.textFont * 0.85);
+  });
+
   it('works offline and reaches a second device once the connection is back', async () => {
     const { email, context, page } = await newUser('offline');
     await openNotes(page);
