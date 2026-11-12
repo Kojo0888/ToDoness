@@ -72,7 +72,7 @@ through `useLiveQuery`.
 | `components/layout/`  | `Shell.tsx` (**routes**), `Sidebar.tsx`, `ModuleSwitch.tsx`, sync badge / diagnostics (`syncSummary.ts`: which status wins)                                                                                                                                                                                    |
 | `components/common/`  | Reusable controls: `ConfirmDialog`, `Toast` (Undo messages), `InfoTip`, `SettingRow`, `ManageItems` (every Manage screen), `icons.tsx` (grip, back, lock icons, sub-page `AppBar`), drag and drop                                                                                                              |
 | `components/lists/`   | Tasks module: `ListPage`, `TodoRow`, `TaskDetail`, `QuickAdd`, `ManageLists` (task and note lists, over `ManageItems`), `ListMenu`                                                                                                                                                                             |
-| `components/notes/`   | Notes module: `NotesPage`, `NoteEditor`, `NoteSearch`, `PublicNotesPage`                                                                                                                                                                                                                                       |
+| `components/notes/`   | Notes module: `NotesPage` (cards: text left, controls column right), `NoteDetailPage` (`/notes/n/:id`), `NoteEditor`, `NoteSearch`, `PublicNotesPage`                                                                                                                                                          |
 | `components/plan/`    | Plan module: `PlansHome`, `PlanPage` (toolbar, undo), `Timeline` (grid, blocks, drag, arrows), `ActivityPage` (details view), `PlanOptions` (gear panel), `ManagePlans`                                                                                                                                        |
 | `components/public/`  | Other users' public lists                                                                                                                                                                                                                                                                                      |
 | `components/account/` | Login, settings, admin, reminders, ntfy, recovery dialog                                                                                                                                                                                                                                                       |
@@ -91,8 +91,8 @@ sign-up rate limit (≈ 20 per test file).
 
 `docs/<feature>/PRD.md` (requirements FR-n, decisions) and `ImplementationPlan.md` (design,
 steps, "changed on the way"): `mvp`, `v1` (+ `Decisions.md`, `TechStack.md`), `notes`,
-`note-lists`, `ui-refresh`, `plan`, `recovery-upload`, `plan-sort`. Requirement numbers continue across documents
-(latest: `docs/recovery-upload/PRD.md`). Older docs may name file paths from before the current layout.
+`note-lists`, `ui-refresh`, `plan`, `recovery-upload`, `plan-sort`, `notes-details`. Requirement numbers continue across documents
+(latest: `docs/notes-details/PRD.md`, FR-195 – FR-200). Older docs may name file paths from before the current layout.
 
 ## 3. Recipes: which files a typical change touches
 

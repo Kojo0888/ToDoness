@@ -1203,6 +1203,59 @@ h2.nav-heading {
   background: var(--surface);
 }
 
+/* My notes: the text on the left, every control in one column on the right (FR-195). */
+.note.has-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.note-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.note-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.note-controls .icon-btn.danger {
+  margin-top: auto; /* the trash can sits at the bottom of the column */
+  color: var(--danger);
+  border-color: var(--danger);
+  background: transparent;
+}
+
+.note-detail {
+  max-width: 48rem;
+}
+
+.note-detail .note-text {
+  display: block;
+  width: 100%;
+  min-height: 55vh;
+  max-height: none;
+}
+
+.note-detail-side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.note-detail-side .note-changed {
+  flex: 1 1 100%;
+  font-size: 0.9rem;
+}
+
 .note.is-public {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
@@ -1346,6 +1399,10 @@ h2.nav-heading {
 
   .notes {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .note-detail .note-text {
+    min-height: 40vh;
   }
 
   .menu-button {

@@ -62,6 +62,15 @@ async function addNote(page: Page, text: string) {
   );
 }
 
+/** Flips the Public switch on the details page of note `n`, then goes back to the list. */
+async function togglePublic(page: Page, n: number) {
+  await page.getByRole('link', { name: `Open details of note ${n}` }).click();
+  await page.getByRole('switch', { name: 'Public' }).click();
+  await waitSaved(page);
+  await page.getByRole('link', { name: 'Back to notes' }).click();
+  await myNotesHeading(page).waitFor();
+}
+
 async function newUser(name: string, viewport?: { width: number; height: number }) {
   const email = uniqueEmail(name);
   const context = await newDevice(browser, app, viewport);
@@ -173,7 +182,7 @@ describe('my notes (FR-88 – FR-93)', () => {
     expect(await noteTexts(page)).toEqual(['Second note', 'Shopping: milk, eggs']);
   });
 
-  it('shows the public switch and Delete above the text, the change date small below it', async () => {
+  it('has the text on the left and every control in a column on the right (FR-195 – FR-198)', async () => {
     const { page } = await newUser('layout');
     await openNotes(page);
     await addNote(page, 'Layout note');
@@ -181,21 +190,37 @@ describe('my notes (FR-88 – FR-93)', () => {
       .locator('.notes .note')
       .first()
       .evaluate((card) => {
-        const top = (sel: string) => card.querySelector(sel)!.getBoundingClientRect().top;
-        const head = card.querySelector('.note-head')!;
-        const changed = card.querySelector('.note-changed')!;
+        const rect = (sel: string) => card.querySelector(sel)!.getBoundingClientRect();
+        const grip = rect('.drag-handle');
+        const details = rect('a[aria-label^="Open details"]');
+        const trash = rect('button.danger');
+        const text = rect('.note-text');
+        const box = card.getBoundingClientRect();
         return {
-          switchInHead: head.contains(card.querySelector('[role="switch"]')),
-          deleteInHead: head.contains(card.querySelector('button.danger')),
-          changedBelowText: top('.note-changed') > top('.note-text'),
-          changedFont: parseFloat(getComputedStyle(changed).fontSize),
-          textFont: parseFloat(getComputedStyle(card.querySelector('.note-text')!).fontSize),
+          // The text starts at the top of the card and ends before the controls.
+          textAtTop: text.top - box.top < 24,
+          textLeftOfControls: text.right <= Math.min(grip.left, details.left, trash.left) + 1,
+          // Grip above Details above the trash can, one column.
+          order: grip.bottom <= details.top + 1 && details.bottom <= trash.top + 1,
+          sameColumn:
+            Math.abs(grip.left - trash.left) < 8 && Math.abs(details.left - trash.left) < 8,
+          trashAtBottom: box.bottom - trash.bottom < 24,
+          // Nothing else: no Public switch, no change date.
+          switches: card.querySelectorAll('[role="switch"]').length,
+          changed: card.textContent!.includes('Changed'),
+          trashRed: getComputedStyle(card.querySelector('button.danger')!).color,
         };
       });
-    expect(layout.switchInHead).toBe(true);
-    expect(layout.deleteInHead).toBe(true);
-    expect(layout.changedBelowText).toBe(true);
-    expect(layout.changedFont).toBeLessThan(layout.textFont * 0.85);
+    expect(layout).toMatchObject({
+      textAtTop: true,
+      textLeftOfControls: true,
+      order: true,
+      sameColumn: true,
+      trashAtBottom: true,
+      switches: 0,
+      changed: false,
+    });
+    expect(layout.trashRed).not.toBe('');
   });
 
   it('works offline and reaches a second device once the connection is back', async () => {
@@ -234,7 +259,7 @@ describe('public notes (FR-94 – FR-97)', () => {
 
     await openNotes(ann.page);
     await addNote(ann.page, 'Team lunch: Friday');
-    await ann.page.getByRole('switch', { name: 'Public' }).click();
+    await togglePublic(ann.page, 1);
     await waitSaved(ann.page);
 
     await openNotes(bob.page);
@@ -263,7 +288,7 @@ describe('public notes (FR-94 – FR-97)', () => {
     );
 
     // Private again: gone for Bob at the next refresh.
-    await ann.page.getByRole('switch', { name: 'Public' }).click();
+    await togglePublic(ann.page, 1);
     await waitSaved(ann.page);
     await bob.page.getByText('Nobody has made a note public yet.').waitFor({ timeout: 15_000 });
   });
@@ -283,7 +308,7 @@ describe('public lists and notes offline (FR-106 – FR-111)', () => {
     await ann.page.getByRole('switch', { name: /Public list/ }).click();
     await openNotes(ann.page);
     await addNote(ann.page, 'Shared note');
-    await ann.page.getByRole('switch', { name: 'Public' }).click();
+    await togglePublic(ann.page, 1);
     await waitSaved(ann.page);
 
     await syncNow(bob.page);

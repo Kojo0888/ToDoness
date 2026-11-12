@@ -9,6 +9,7 @@ import { t } from '../../app/strings';
 import { Admin } from '../account/Admin';
 import { DragAndDrop } from '../common/DragAndDrop';
 import { ListPage } from '../lists/ListPage';
+import { NoteDetailPage } from '../notes/NoteDetailPage';
 import { NotesPage } from '../notes/NotesPage';
 import { PublicNotesPage } from '../notes/PublicNotesPage';
 import { ManagePlans } from '../plan/ManagePlans';
@@ -109,6 +110,9 @@ export function Shell({ user }: { user: StoredUser }) {
               </Route>
               <Route path="/notes/l/:listId">
                 {(p) => <NotesPage key={p.listId} listId={p.listId} />}
+              </Route>
+              <Route path="/notes/n/:noteId">
+                {(p) => <NoteDetailPage key={p.noteId} noteId={p.noteId} />}
               </Route>
               <Route path="/notes">
                 <NotesPage key="mine" />

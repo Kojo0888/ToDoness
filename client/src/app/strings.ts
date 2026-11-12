@@ -216,6 +216,13 @@ export const t = {
     delete: 'Delete',
     deleteLabel: (n: number) => `Delete note ${n}`,
     deleted: 'Note deleted.',
+    openDetails: (n: number) => `Open details of note ${n}`,
+    backToNotes: 'Back to notes',
+    detail: {
+      title: 'Note',
+      textLabel: 'Note text',
+      lastModified: (when: string) => `Last modified ${when}`,
+    },
     drag: (n: number) => `Drag to reorder note ${n}`,
     search: 'Search notes',
     searchPlaceholder: 'Search notes',

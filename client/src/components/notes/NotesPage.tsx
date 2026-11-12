@@ -2,6 +2,7 @@ import { rectSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sort
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useDropOrder } from '../../app/hooks';
 import { dropScope } from '../../lib/dropOrder';
+import { Link } from 'wouter';
 import { useState, type CSSProperties, type FormEvent } from 'react';
 import { NOTE_TEXT_MAX, type Note } from '@todoness/shared';
 import { getNoteLists, getNotesOfList } from '../../data/queries';
@@ -13,7 +14,10 @@ import { useUndoToast } from '../common/Toast';
 import { InfoTip } from '../common/InfoTip';
 import { NoteEditor } from './NoteEditor';
 import { NoteSearch } from './NoteSearch';
-import { GripIcon } from '../common/icons';
+import { DetailsIcon, GripIcon, TrashIcon } from '../common/icons';
+
+/** The address of a note's details page. */
+export const notePath = (id: string) => `/notes/n/${id}`;
 
 export const formatChanged = (ms: number) =>
   new Date(ms).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -117,7 +121,6 @@ function NoteCard({
 }) {
   const showUndo = useUndoToast();
   const [error, setError] = useState<string | null>(null);
-  const hintId = `note-public-hint-${note.id}`;
   const data: NoteDragData = { kind: 'note', title: firstLine(note.text), openIds: ids };
   const {
     setNodeRef,
@@ -142,9 +145,28 @@ function NoteCard({
     <li
       ref={setNodeRef}
       style={style}
-      className={`note${note.isPublic ? ' is-public' : ''}${isDragging ? ' is-dragging' : ''}`}
+      className={`note has-controls${note.isPublic ? ' is-public' : ''}${isDragging ? ' is-dragging' : ''}`}
     >
-      <div className="note-head">
+      <div className="note-body">
+        <NoteEditor
+          stored={note.text}
+          label={t.notes.noteLabel(position)}
+          onSave={async (text) => {
+            try {
+              await repo.updateNoteText(note.id, text);
+              setError(null);
+            } catch {
+              setError(t.notes.saveFailed); // deleted meanwhile, or too long
+            }
+          }}
+        />
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+      <div className="note-controls">
         <button
           type="button"
           ref={setActivatorNodeRef}
@@ -157,46 +179,24 @@ function NoteCard({
         >
           <GripIcon />
         </button>
-        <label className="switch note-public" title={t.notes.publicHint}>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={note.isPublic}
-            aria-describedby={hintId}
-            onChange={(e) => void repo.setNotePublic(note.id, e.target.checked)}
-          />
-          {t.notes.public}
-        </label>
-        <span id={hintId} className="sr-only">
-          {t.notes.publicHint}
-        </span>
+        <Link
+          href={notePath(note.id)}
+          className="icon-btn"
+          aria-label={t.notes.openDetails(position)}
+          title={t.notes.openDetails(position)}
+        >
+          <DetailsIcon />
+        </Link>
         <button
           type="button"
-          className="danger"
+          className="icon-btn danger"
           aria-label={t.notes.deleteLabel(position)}
+          title={t.notes.deleteLabel(position)}
           onClick={() => void remove()}
         >
-          {t.notes.delete}
+          <TrashIcon />
         </button>
       </div>
-      <NoteEditor
-        stored={note.text}
-        label={t.notes.noteLabel(position)}
-        onSave={async (text) => {
-          try {
-            await repo.updateNoteText(note.id, text);
-            setError(null);
-          } catch {
-            setError(t.notes.saveFailed); // deleted meanwhile, or too long
-          }
-        }}
-      />
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-      <p className="hint note-changed">{t.notes.changed(formatChanged(note.updatedAt))}</p>
     </li>
   );
 }

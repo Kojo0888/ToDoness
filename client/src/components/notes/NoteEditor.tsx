@@ -8,13 +8,15 @@ interface Props {
   /** The text as stored (local database, or the kept copy of public notes). */
   stored: string;
   label: string;
+  /** More rows: the text box of the details page. */
+  rows?: number;
   disabled?: boolean;
   /** Saves the text; called about a second after typing stops, and on leaving the box. */
   onSave: (text: string) => Promise<void> | void;
 }
 
 /** A note's text box that saves itself; the rules are in `noteTextSync.ts`. */
-export function NoteEditor({ stored, label, disabled, onSave }: Props) {
+export function NoteEditor({ stored, label, rows = 4, disabled, onSave }: Props) {
   const [text, setText] = useState(stored);
   const save = useRef(onSave);
   const sync = useRef<NoteTextSync | null>(null);
@@ -50,7 +52,7 @@ export function NoteEditor({ stored, label, disabled, onSave }: Props) {
       className="note-text"
       aria-label={label}
       value={text}
-      rows={4}
+      rows={rows}
       maxLength={NOTE_TEXT_MAX}
       disabled={disabled}
       onFocus={() => sync.current?.focus()}
