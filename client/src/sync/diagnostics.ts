@@ -38,7 +38,8 @@ export interface SyncDiagnostics {
   log(kind: string, detail?: string): void;
   requestStart(what: string): number;
   requestEnd(id: number, outcome: string): void;
-  browserOnline(online: boolean): void;
+  /** `isEvent`: false when only reading the current flag (no `online`/`offline` event happened). */
+  browserOnline(online: boolean, isEvent?: boolean): void;
   retryScheduled(delayMs: number, attempt: number): void;
   /** The planned retry was cancelled (or is starting now). */
   retryCleared(): void;
@@ -108,10 +109,12 @@ export function createSyncDiagnostics(now: () => number = Date.now): SyncDiagnos
       add('request', `${s.what} ${outcome} after ${ms} ms`);
       emit();
     },
-    browserOnline(online) {
+    browserOnline(online, isEvent = true) {
       set({ browserOnline: online });
-      if (online) reconnectFrom = now();
-      add(online ? 'browser' : 'browser', online ? 'online event' : 'offline event');
+      if (isEvent) {
+        if (online) reconnectFrom = now();
+        add('browser', online ? 'online event' : 'offline event');
+      }
       emit();
     },
     probe(ok, ms) {

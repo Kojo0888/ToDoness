@@ -17,6 +17,8 @@ import {
 } from '../services/reminders';
 import { createRecovery } from '../services/recovery';
 import { createSession } from '../services/session';
+import { browserStorage } from '../lib/modules';
+import { localNotificationsOn } from '../lib/notifyPref';
 
 const request = (url: string, init?: RequestInit) => fetch(url, init);
 
@@ -66,6 +68,9 @@ export const reminderFeed = createReminderFeed();
 export const reminders = createReminderScheduler({
   db,
   notify(reminder) {
+    // Switched off on this device (FR-120): the reminder counts as handled, so turning
+    // notifications on again does not bring back a burst of old ones.
+    if (!localNotificationsOn(browserStorage())) return;
     const { title, body } = reminderText(reminder, Date.now());
     reminderFeed.push({
       key: reminder.key,

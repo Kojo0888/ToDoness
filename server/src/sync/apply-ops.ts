@@ -83,6 +83,12 @@ export function applyPush(
     );
   }
 
+  /** Is this a list of the row owner in that module? */
+  function ownList(id: string, module: 'tasks' | 'notes'): boolean {
+    const l = listOwner(db, id);
+    return l !== undefined && l.userId === userId && l.module === module;
+  }
+
   function applyTodo(op: Extract<SyncOp, { entity: 'todo' }>): Outcome {
     const existing = getTodo(db, op.entityId);
     if (existing && existing.userId !== userId) return { ok: false, reason: 'not_found' };
@@ -101,7 +107,7 @@ export function applyPush(
         return { ok: false, reason: 'list_not_found' };
       }
     }
-    if (targetList !== undefined && listOwner(db, targetList) !== userId) {
+    if (targetList !== undefined && !ownList(targetList, 'tasks')) {
       return { ok: false, reason: 'list_not_found' };
     }
 
@@ -119,8 +125,13 @@ export function applyPush(
     const existing = getList(db, op.entityId);
     if (existing && existing.userId !== userId) return { ok: false, reason: 'not_found' };
 
+    // A list never moves to another module (docs/note-lists, decision L1).
+    if (existing && 'module' in op.patch && op.patch.module !== existing.row.module) {
+      return { ok: false, reason: 'invalid_operation' };
+    }
     if (existing?.row.isInbox) {
-      const renames = op.type === 'update' && 'name' in op.patch;
+      // The task Inbox keeps its name; "My notes" may be renamed (FR-129). Neither is deleted.
+      const renames = op.type === 'update' && 'name' in op.patch && existing.row.module === 'tasks';
       if (op.type === 'delete' || renames) return { ok: false, reason: 'inbox_protected' };
     }
 
@@ -137,6 +148,11 @@ export function applyPush(
   function applyNote(op: Extract<SyncOp, { entity: 'note' }>): Outcome {
     const existing = getNote(db, op.entityId);
     if (existing && existing.userId !== userId) return { ok: false, reason: 'not_found' };
+
+    const targetList = 'listId' in op.patch ? op.patch.listId : undefined;
+    if (targetList != null && !ownList(targetList, 'notes')) {
+      return { ok: false, reason: 'list_not_found' };
+    }
 
     const r = applyOp<Note>(existing?.row, op);
     if (!r.ok)

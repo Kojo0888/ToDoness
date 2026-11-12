@@ -14,8 +14,8 @@ Status legend: ☐ not started · ◐ in progress · ☑ done
 | Step | Content                                                                                             | Status |
 | ---- | --------------------------------------------------------------------------------------------------- | ------ |
 | 1    | Shared: days, `plan` and `activity` entities (schemas, operations, merge defaults), scheduling rules | ☑      |
-| 2    | Server: migration 007, rows, push / pull of plans and activities, pull for older apps               | ☑      |
-| 3    | Client data: Dexie version 6, repo operations with the automatic shift, queries, pulled changes     | ☑      |
+| 2    | Server: migration 008, rows, push / pull of plans and activities, pull for older apps               | ☑      |
+| 3    | Client data: Dexie version 7, repo operations with the automatic shift, queries, pulled changes     | ☑      |
 | 4    | Recovery: plans and activities in the snapshot and the restore                                      | ☑      |
 | 5    | Client lib: timeline geometry (range, day ↔ pixel, arrow paths), name position setting, module      | ☑      |
 | 6    | UI: module switch, sidebar, plan page, timeline, drag, links, edit bar, texts, styles               | ☑      |
@@ -41,12 +41,12 @@ Activity = { id, planId, name, start, days, dependsOn, orderKey, fieldHlc, creat
 - Sync operations: `entity: 'plan' | 'activity'` with `create | update | delete | restore`;
   strict patch schemas as for the other entities.
 
-**Server** – migration `007_plans.sql`: tables `plans` and `activities` (owner column,
+**Server** – migration `008_plans.sql`: tables `plans` and `activities` (owner column,
 `ON DELETE CASCADE` from `users`; `activities.plan_id` references `plans`), and `change_log`
 is rebuilt once more because its `CHECK (entity IN …)` must learn the two entities (same
 method as migration 004: every row keeps its `server_seq`, the counter carries over).
 
-**Client** – Dexie version 6 adds `plans: 'id, orderKey'` and
+**Client** – Dexie version 7 adds `plans: 'id, orderKey'` and
 `activities: 'id, planId, [planId+orderKey]'`; `clearAll` clears them.
 
 ### Shared rules (`shared/src/plan.ts`, pure)
@@ -72,7 +72,7 @@ cannot stop it: `liveLinks` drops, in a fixed order (by id), every link that wou
   against the entities it knows and would refuse the whole answer. So the pull only contains
   plan and activity changes when the app asks with `plans=1`; without it they are left out,
   and the cursor (`nextSeq`) still moves past them, so the old app keeps syncing everything
-  else. When such a device updates, the Dexie upgrade to version 6 **resets the pull cursor**:
+  else. When such a device updates, the Dexie upgrade to version 7 **resets the pull cursor**:
   the next sync reads the whole change log again (merging is idempotent) and so receives the
   plans it skipped.
 
@@ -138,7 +138,7 @@ terminates on a loop; `brokenLinks`.
 
 ## Step 2 – Server
 
-**Tests first** (`server/test/plans.test.ts`, `migrate.test.ts`): migration from version 6
+**Tests first** (`server/test/plans.test.ts`, `migrate.test.ts`): migration from version 7
 keeps `change_log` rows and `server_seq` and accepts the new entities; push create / update /
 delete / restore of a plan and an activity, pull (`plans=1`) returns them to another device;
 another user's plan or activity id is refused; an activity for another user's or an unknown
@@ -259,3 +259,12 @@ Nine review comments; each fix has unit tests (named below), two also a browser 
 | 7 | Rename, delete and add had no error handling | All three go through `planChanges.run`, which turns a failure into a message | `plan-changes.test.ts` "turns failures into an error to show" |
 | 8 | A stored link that `liveLinks` ignores could not be re-added | "Already linked" goes by `liveLinks`; such a request is refused as a loop instead of silently doing nothing. `unlinkActivities` also removes the plan's ignored links (`ignoredLinks`), so removing an arrow cannot make a hidden one appear. The "Starts after" list uses `linkCandidates` | `plan.test.ts` (shared) "linkCandidates", "ignoredLinks"; `plans.test.ts` "a stored link that does not count" |
 | 9 | Performance while dragging | `liveLinks` is computed once per saved state (`useMemo`) and passed to `schedulePlan` / `brokenLinks` / `earliestStart`; `linkCandidates` walks the links once; weekends are one CSS background (`weekShift`); the day header is a memoised component | `plan.test.ts` (shared) "links computed once"; `timeline.test.ts` "weekShift" |
+
+## Merge with `main` (note lists)
+
+`main` gained note lists while this branch was open, and used the numbers this branch had
+taken: migration 007 (`007_note_lists.sql`) and Dexie version 6. The Plan module now uses
+**migration 008** and **Dexie version 7**. The pull takes both flags (`lists=modules&plans=1`).
+Manage lists is `main`'s page (with the note-list rows); Manage plans keeps
+`components/common/ManageItems.tsx` with `main`'s app-bar header, and both use `ListMenu`,
+which takes an optional label for its delete item.

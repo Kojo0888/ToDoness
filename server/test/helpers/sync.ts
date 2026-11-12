@@ -53,9 +53,9 @@ export class Device {
   }
 
   async pull(since = 0, limit?: number): Promise<PullResponse> {
-    // `reminders=list` and `plans=1`: like the current app, which understands several
-    // reminders per task and the Plan module.
-    const q = `since=${since}${limit === undefined ? '' : `&limit=${limit}`}&reminders=list&plans=1`;
+    // `reminders=list`, `lists=modules` and `plans=1`: like the current app, which understands
+    // several reminders per task, note lists and the Plan module.
+    const q = `since=${since}${limit === undefined ? '' : `&limit=${limit}`}&reminders=list&lists=modules&plans=1`;
     const res = await this.http.get(`/api/sync/pull?${q}`);
     if (res.status !== 200) throw new Error(`pull failed with ${res.status}`);
     return pullResponseSchema.parse(await res.json());
@@ -69,7 +69,11 @@ export class Device {
   async inboxId(): Promise<string> {
     const changes = await this.pullAll();
     const inbox = changes.find(
-      (c) => c.entity === 'list' && 'isInbox' in c.patch && c.patch.isInbox,
+      (c) =>
+        c.entity === 'list' &&
+        'isInbox' in c.patch &&
+        c.patch.isInbox &&
+        c.patch.module !== 'notes',
     );
     if (!inbox) throw new Error('no inbox');
     return inbox.entityId;

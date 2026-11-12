@@ -188,6 +188,23 @@ describe('migration 002 (v1)', () => {
     ]);
   });
 
+  it('migration 007 allows one default list per user and module, and notes keep a list', () => {
+    const db = new Database(':memory:');
+    migrate(db, MIGRATIONS_DIR);
+    db.exec(`INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
+      INSERT INTO lists (id, user_id, name, is_inbox, order_key, created_at, updated_at) VALUES ('l1','u1','Inbox',1,'a0',1,1);
+      INSERT INTO lists (id, user_id, name, is_inbox, module, order_key, created_at, updated_at) VALUES ('l2','u1','My notes',1,'notes','a0',1,1);
+      INSERT INTO notes (id, user_id, text, list_id, order_key, created_at, updated_at) VALUES ('n1','u1','x','l2','a0',1,1);`);
+    expect(() =>
+      db.exec(`INSERT INTO lists (id, user_id, name, is_inbox, module, order_key, created_at, updated_at)
+        VALUES ('l3','u1','Again',1,'notes','a1',1,1)`),
+    ).toThrow();
+    expect(() => db.exec("UPDATE lists SET module = 'other' WHERE id = 'l1'")).toThrow();
+    expect(db.prepare("SELECT module FROM lists WHERE id = 'l1'").get()).toEqual({
+      module: 'tasks',
+    });
+  });
+
   it('removes attachment rows with their task owner (cascade)', () => {
     const db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
@@ -263,7 +280,7 @@ describe('migration 004 (notes)', () => {
   });
 });
 
-describe('migration 007 (plans)', () => {
+describe('migration 008 (plans)', () => {
   const upTo = (version: number) => {
     const dir = mkdtempSync(join(tmpdir(), 'todoness-mig-'));
     for (const f of readdirSync(MIGRATIONS_DIR)) {
@@ -278,14 +295,14 @@ describe('migration 007 (plans)', () => {
   it('keeps every change-log row and its server_seq, and accepts plans and activities', () => {
     const db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
-    migrate(db, upTo(6));
+    migrate(db, upTo(7));
     db.exec(`INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
       ${LOG} VALUES ('u1','c','list','l1','create','{}','h',1), ('u1','c','note','n1','create','{}','h',1),
                     ('u1','c','todo','t2','create','{}','h',1);
       DELETE FROM change_log WHERE entity_id = 't2';`);
     const before = seq(db);
 
-    expect(migrate(db, upTo(7))).toBe(1); // exactly migration 007
+    expect(migrate(db, upTo(8))).toBe(1); // exactly migration 008
     expect(seq(db)).toEqual(before);
 
     db.exec(

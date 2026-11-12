@@ -30,7 +30,7 @@ export function useReminderMessages() {
 
 /**
  * Can the server be reached? What the app found out itself (a request worked, a check
- * every 3 seconds answered); the browser's own flag is only a hint and can be wrong.
+ * every 5 seconds answered); the browser's own flag is only a hint and can be wrong.
  */
 export function useOnline() {
   return useSyncExternalStore(connectivity.subscribe, () => connectivity.getSnapshot().online);

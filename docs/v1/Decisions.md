@@ -106,9 +106,9 @@
     `online` event may never fire. It had been used in two places that mattered: the runner refused
     to send anything while the flag said offline, and every "needs a connection" part of the UI
     (including both attachment buttons) was disabled by it. Now the runner always tries, a request
-    that works or a check every 3 seconds (`GET /api/health`, 2 s limit) means online, and no answer
+    that works or a check every 5 seconds (`GET /api/health`, 2 s limit) means online, and no answer
     means offline. A server error still counts as reachable. The cost is one tiny request every
-    3 seconds, which is negligible on an intranet. The admin diagnostics show "Browser says" next to
+    5 seconds, which is negligible on an intranet. The admin diagnostics show "Browser says" next to
     "App found" so a wrong flag is visible.
 20. **File picker buttons are labels, and the input is re-created after every pick or cancel.** The
     reported "both buttons stopped working after cancelling" was most likely the false-offline flag
@@ -142,3 +142,13 @@
     (P1 – P9: start + duration instead of start + end, dependencies as a field of the dependent
     activity, no automatic repair after a sync, …) and the "Changed on the way" section of
     [`../plan/ImplementationPlan.md`](../plan/ImplementationPlan.md) (older apps and the pull).
+## Note lists and unified settings (docs/note-lists)
+
+- Notes are grouped in **note lists**, stored as `lists` with `module = 'notes'`; a note's
+  `listId` is `null` for the default list "My notes" (created by the server, renameable, not
+  deletable). Older apps do not see note lists (pull without `lists=modules`). See
+  [`../note-lists/PRD.md`](../note-lists/PRD.md) decisions L1 – L4.
+- "Notifications on this device" can be switched off; it is a device setting, since a page
+  cannot revoke a browser permission (decision S1).
+- UI rule: descriptions go behind an "i" info button; sub-pages use an app bar with a round
+  back button (decision U1).

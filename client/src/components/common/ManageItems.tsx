@@ -22,7 +22,7 @@ import { orderAfterDrop, resolveDrop } from '../../lib/dnd';
 import { dropOrder } from '../../lib/dropOrder';
 import { t } from '../../app/strings';
 import { ConfirmDialog } from './ConfirmDialog';
-import { RowMenu } from './RowMenu';
+import { ListMenu } from '../lists/ListMenu';
 
 const REORDER_ERROR_MS = 6000;
 
@@ -60,8 +60,10 @@ interface Props {
 }
 
 /**
- * Rename, reorder (by dragging) and delete named things in one place: the Manage lists and
- * Manage plans screens. One "⋯" menu per row; no help text (UI_GUIDELINES.md).
+ * Rename, reorder (by dragging) and delete plans in one place (docs/plan/PRD.md FR-121), the
+ * way Manage lists does it: one "⋯" menu per row, no help text (UI_GUIDELINES.md). Kept
+ * generic (texts and actions passed in); Manage lists has its own page because of the
+ * note-list rows (docs/note-lists).
  */
 export function ManageItems({
   items,
@@ -133,12 +135,24 @@ export function ManageItems({
 
   return (
     <section className="manage-lists" aria-label={text.title}>
-      <header className="list-head">
-        <Link href={backHref} className="btn btn-back">
-          <span aria-hidden="true" className="btn-icon">
-            ←
-          </span>
-          {text.back}
+      {/* App bar: round back button + title on one line, as Manage lists (decision U1). */}
+      <header className="list-head app-bar">
+        <Link
+          href={backHref}
+          className="icon-btn btn-back"
+          aria-label={text.back}
+          title={text.back}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+            <path
+              d="M15 5l-7 7 7 7"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </Link>
         <h2>{text.title}</h2>
       </header>
@@ -192,7 +206,7 @@ export function ManageItems({
                   ) : (
                     <>
                       <span className="manage-name">{l.name}</span>
-                      <RowMenu
+                      <ListMenu
                         name={l.name}
                         deleteLabel={text.deleteItem}
                         onRename={() => {

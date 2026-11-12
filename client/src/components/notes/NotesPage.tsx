@@ -4,12 +4,13 @@ import { useDropOrder } from '../../app/hooks';
 import { dropScope } from '../../lib/dropOrder';
 import { useState, type CSSProperties, type FormEvent } from 'react';
 import { NOTE_TEXT_MAX, type Note } from '@todoness/shared';
-import { getNotes } from '../../data/queries';
+import { getNoteLists, getNotesOfList } from '../../data/queries';
 import { matchesSearch } from '../../lib/search';
 import { db, repo } from '../../app/container';
 import { t } from '../../app/strings';
 import type { NoteDragData } from '../common/DragAndDrop';
 import { useUndoToast } from '../common/Toast';
+import { InfoTip } from '../common/InfoTip';
 import { NoteEditor } from './NoteEditor';
 import { NoteSearch } from './NoteSearch';
 
@@ -19,9 +20,14 @@ export const formatChanged = (ms: number) =>
 /** The first line of a note, for drag announcements. */
 const firstLine = (text: string) => text.split('\n', 1)[0]!.slice(0, 80) || '…';
 
-/** My notes (docs/notes/PRD.md section 4.2, 8.1, 8.2): offline-first, like tasks. */
-export function NotesPage() {
-  const notes = useLiveQuery(() => getNotes(db), [], undefined);
+/**
+ * A note list (docs/notes/PRD.md section 4.2, 8.1, 8.2; docs/note-lists FR-127): offline-first,
+ * like tasks. `listId` null is "My notes".
+ */
+export function NotesPage({ listId = null }: { listId?: string | null }) {
+  const notes = useLiveQuery(() => getNotesOfList(db, listId), [listId], undefined);
+  const lists = useLiveQuery(() => getNoteLists(db), [], undefined);
+  const list = lists?.find((l) => (listId === null ? l.isInbox : l.id === listId));
   const [draft, setDraft] = useState('');
   const [query, setQuery] = useState('');
 
@@ -31,7 +37,7 @@ export function NotesPage() {
     const text = draft;
     setDraft('');
     setQuery(''); // the new note must be visible (FR-104)
-    await repo.createNote(text);
+    await repo.createNote(text, listId);
   }
 
   const searching = query.trim() !== '';
@@ -41,10 +47,14 @@ export function NotesPage() {
   );
   const ids = shown.map((n) => n.id);
 
+  if (listId !== null && lists !== undefined && !list) {
+    return <p className="empty">{t.notes.listNotFound}</p>;
+  }
+
   return (
     <section className="notes-page" aria-labelledby="notes-title">
       <header className="list-head">
-        <h2 id="notes-title">{t.notes.title}</h2>
+        <h2 id="notes-title">{list?.name ?? (listId === null ? t.notes.title : '')}</h2>
       </header>
 
       <form className="note-add" onSubmit={(e) => void add(e)}>
@@ -61,9 +71,11 @@ export function NotesPage() {
           }}
         />
         <div className="note-add-actions">
-          <span id="note-add-hint" className="hint">
-            {t.notes.addHint}
-          </span>
+          <InfoTip
+            id="note-add-hint"
+            text={t.notes.addHint}
+            label={t.common.moreInfo(t.notes.addAbout)}
+          />
           <button type="submit" className="primary" disabled={!draft.trim()}>
             {t.notes.add}
           </button>

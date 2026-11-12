@@ -122,6 +122,7 @@ describe('applyOp – notes', () => {
     expect(row).toEqual({
       id: NOTE_ID,
       text: '',
+      listId: null,
       isPublic: false,
       orderKey: 'a0',
       fieldHlc: { orderKey: hlc(T0) },
@@ -162,5 +163,60 @@ describe('applyOp – notes', () => {
     expect(row.deletedAt).toBe(T0 + 5);
     const again = applyOp(row, del);
     expect(again.ok && again.changed).toBe(false);
+  });
+});
+
+describe('note lists (docs/note-lists/PRD.md)', () => {
+  const listId = newId(T0);
+
+  it('a note may name its list, or null for My notes', () => {
+    expect(syncOpSchema.safeParse(op({ patch: { listId } })).success).toBe(true);
+    expect(syncOpSchema.safeParse(op({ patch: { listId: null } })).success).toBe(true);
+    expect(syncOpSchema.safeParse(op({ patch: { listId: 'x' } })).success).toBe(false);
+  });
+
+  it('a new note without a list belongs to My notes', () => {
+    const r = applyOp<Note>(undefined, {
+      entity: 'note',
+      entityId: NOTE_ID,
+      type: 'create',
+      patch: { orderKey: 'a0', text: 'x' },
+      hlc: hlc(T0),
+    });
+    expect(r.ok && r.row.listId).toBe(null);
+  });
+
+  it('a list module is set at creation only, and defaults to tasks', () => {
+    const base = { opId: newId(), entity: 'list', entityId: listId, hlc: hlc(T0) };
+    expect(
+      syncOpSchema.safeParse({
+        ...base,
+        type: 'create',
+        patch: { name: 'N', orderKey: 'a0', module: 'notes' },
+      }).success,
+    ).toBe(true);
+    expect(
+      syncOpSchema.safeParse({ ...base, type: 'update', patch: { module: 'notes' } }).success,
+    ).toBe(false);
+    const r = applyOp(undefined, {
+      entity: 'list',
+      entityId: listId,
+      type: 'create',
+      patch: { name: 'L', orderKey: 'a0' },
+      hlc: hlc(T0),
+    } as ApplyInput);
+    expect(r.ok && (r.row as { module: string }).module).toBe('tasks');
+  });
+
+  it('pulled list changes may carry the module', () => {
+    const ch = {
+      serverSeq: 1,
+      entity: 'list',
+      entityId: listId,
+      type: 'create',
+      hlc: hlc(T0),
+      patch: { name: 'N', orderKey: 'a0', module: 'notes', isInbox: true },
+    };
+    expect(pullChangeSchema.safeParse(ch).success).toBe(true);
   });
 });

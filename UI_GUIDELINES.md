@@ -16,26 +16,29 @@ must read this file first. It is linked from [`AGENTS.md`](./AGENTS.md).
    (`@media (max-width: 760px)`), with at least 8 px between targets.
 3. **Native where the platform does it better.** Use the device's own pickers for date and
    time (`<input type="date">`, `<input type="time">`) so phones show their calendar/clock.
-4. **Calm by default.** No explanatory paragraphs on screens whose controls are
-   self-explanatory; put help in `aria-describedby`, a tooltip (`title`) or a screen-reader
-   only text instead of visible prose.
+4. **Calm by default.** No explanatory paragraphs: a description of a setting or control goes
+   behind an **"i" info button** (`<InfoTip>`), shown as a tooltip on hover, focus and tap and
+   linked with `aria-describedby`. Errors and live status ("Blocked in your browser") stay
+   visible. (docs/note-lists FR-123)
 5. **Accessible.** Real `<button>`/`<a>`/`<input>` elements, visible focus ring
    (`--focus`), state exposed with `aria-pressed` / `aria-checked` / `aria-current`,
    labels for every input, contrast ≥ 4.5:1 in light and dark themes.
 
 ## 2. Building blocks (use these classes, do not invent new one-offs)
 
-| Need                                                       | Use                        | Class / element                                   |
-| ---------------------------------------------------------- | -------------------------- | ------------------------------------------------- |
-| Main action                                                | filled button              | `button.primary`                                  |
-| Secondary action                                           | tonal button               | `button` (default) or `.btn` on a link            |
-| Destructive action                                         | outlined red               | `button.danger`                                   |
-| Navigation that looks like an action (e.g. "Manage lists") | button-like link with icon | `a.btn` (+ `.btn-block` full width)               |
-| Back / close                                               | icon + label pill          | `a.btn.btn-back` / `button.btn-back`              |
-| Pick one of a few, or several of a few                     | chips (toggle buttons)     | `.chip-group` + `button.chip` with `aria-pressed` |
-| On/off                                                     | switch                     | `<input type="checkbox" role="switch">`           |
-| Date / time                                                | native inputs              | `input[type=date]`, `input[type=time]`            |
-| Long list of options (> 6)                                 | `<select>` styled as field | `select`                                          |
+| Need                                                       | Use                        | Class / element                                                       |
+| ---------------------------------------------------------- | -------------------------- | --------------------------------------------------------------------- |
+| Main action                                                | filled button              | `button.primary`                                                      |
+| Secondary action                                           | tonal button               | `button` (default) or `.btn` on a link                                |
+| Destructive action                                         | outlined red               | `button.danger`                                                       |
+| Navigation that looks like an action (e.g. "Manage lists") | button-like link with icon | `a.btn` (+ `.btn-block` full width)                                   |
+| Back (sub-page app bar)                                    | round icon button + title  | `a.icon-btn.btn-back` with `aria-label` + `title` in `header.app-bar` |
+| Description / help text                                    | "i" info button + tooltip  | `<InfoTip text label>` (`.info-tip`)                                  |
+| On/off setting (e.g. a notification channel)               | setting row with switch    | `<SettingRow>` (title, InfoTip, switch, status)                       |
+| Pick one of a few, or several of a few                     | chips (toggle buttons)     | `.chip-group` + `button.chip` with `aria-pressed`                     |
+| On/off                                                     | switch                     | `<input type="checkbox" role="switch">`                               |
+| Date / time                                                | native inputs              | `input[type=date]`, `input[type=time]`                                |
+| Long list of options (> 6)                                 | `<select>` styled as field | `select`                                                              |
 
 - Icons are inline SVG or a single Unicode glyph with `aria-hidden="true"`; the text label
   stays visible (icon-only buttons need an `aria-label`).
@@ -48,7 +51,8 @@ must read this file first. It is linked from [`AGENTS.md`](./AGENTS.md).
 - No `button.link` (underlined text) for primary navigation or actions. It is only for
   inline, in-sentence actions such as "Clear".
 - No multi-select `<select multiple>`; use a chip group.
-- No visible instructional paragraphs on management screens (see principle 4).
+- No visible instructional or descriptive paragraphs (see principle 4): use `<InfoTip>`.
+- No count badges invented per screen: sidebar counts use `.nav-count`.
 - No custom colours, fonts or shadows outside the variables.
 
 ## 4. Checklist before merging a UI change

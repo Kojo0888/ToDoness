@@ -480,6 +480,24 @@ describe('v1: reminders (FR-42 – FR-47)', () => {
     await page.getByRole('region', { name: 'Reminders' }).getByText('Reminder: Dentist').waitFor();
   });
 
+  it('with notifications on this device switched off, a due reminder stays silent (FR-120)', async () => {
+    const page = await newPage(await newDevice(browser, app));
+    await recordNotifications(page);
+    // A new device of an existing user: this file is near the server's sign-up limit.
+    await logIn(page, admin.email);
+    await page.getByRole('link', { name: 'Settings' }).click();
+    await page.getByRole('switch', { name: 'Notifications on this device' }).click();
+    await page.getByText('Off on this device.').first().waitFor();
+    await page.getByRole('navigation').getByRole('link', { name: /Inbox/ }).click();
+    await addTask(page, 'Silent');
+    await openTask(page, 'Silent');
+    await setDue(page, 40);
+    await toggleReminder(page, 'hour');
+    await page.waitForTimeout(1500);
+    expect(await page.getByRole('region', { name: 'Reminders' }).count()).toBe(0);
+    expect(await shown(page)).toEqual([]);
+  });
+
   it('a reminder that is not due yet stays quiet, and completing the task cancels it', async () => {
     const page = await newPage(await newDevice(browser, app));
     await recordNotifications(page);

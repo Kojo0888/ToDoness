@@ -84,8 +84,14 @@ const listFields = {
   isPublic: z.boolean(),
 };
 
+/** Which module a list belongs to (docs/note-lists/PRD.md, decision L1). Set at creation only. */
+export const listModuleSchema = z.enum(['tasks', 'notes']);
+export type ListModule = z.infer<typeof listModuleSchema>;
+
 const noteFields = {
   text: z.string().max(NOTE_TEXT_MAX),
+  /** The note list; `null` = the default note list "My notes" (decision L2). */
+  listId: idSchema.nullable(),
   orderKey: orderKeySchema,
   isPublic: z.boolean(),
 };
@@ -127,7 +133,12 @@ const rowMeta = {
 export const todoSchema = z.object({ ...todoFields, ...rowMeta });
 export type Todo = z.infer<typeof todoSchema>;
 
-export const listSchema = z.object({ ...listFields, isInbox: z.boolean(), ...rowMeta });
+export const listSchema = z.object({
+  ...listFields,
+  isInbox: z.boolean(),
+  module: listModuleSchema,
+  ...rowMeta,
+});
 export type List = z.infer<typeof listSchema>;
 
 /** A note: a simple text box (docs/notes/PRD.md). */
@@ -171,6 +182,7 @@ export type TodoPatch = z.infer<typeof todoUpdatePatchSchema>;
 export const listCreatePatchSchema = z.strictObject({
   ...listFields,
   isPublic: listFields.isPublic.optional(),
+  module: listModuleSchema.optional(),
 });
 export const listUpdatePatchSchema = z
   .strictObject(listFields)
@@ -182,6 +194,7 @@ export const noteCreatePatchSchema = z.strictObject({
   orderKey: noteFields.orderKey,
   text: noteFields.text.optional(),
   isPublic: noteFields.isPublic.optional(),
+  listId: noteFields.listId.optional(),
 });
 export const noteUpdatePatchSchema = z
   .strictObject(noteFields)
@@ -307,7 +320,12 @@ export type PushResponse = z.infer<typeof pushResponseSchema>;
 /** Pulled patches may also contain fields only the server sets. */
 const pulledTodoPatch = z.strictObject({ ...todoFields, deletedAt: nullableEpochMs }).partial();
 const pulledListPatch = z
-  .strictObject({ ...listFields, isInbox: z.boolean(), deletedAt: nullableEpochMs })
+  .strictObject({
+    ...listFields,
+    isInbox: z.boolean(),
+    module: listModuleSchema,
+    deletedAt: nullableEpochMs,
+  })
   .partial();
 const pulledNotePatch = z.strictObject({ ...noteFields, deletedAt: nullableEpochMs }).partial();
 const pulledPlanPatch = z.strictObject({ ...planFields, deletedAt: nullableEpochMs }).partial();

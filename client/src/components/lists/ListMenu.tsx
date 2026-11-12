@@ -6,20 +6,21 @@ import { t } from '../../app/strings';
 const ACTIONS = ['rename', 'delete'] as const;
 
 /**
- * One "⋯" button per row (a list, a plan) instead of a row of buttons: it opens a small
- * menu with its actions. Arrow keys, Home, End, Escape and a click outside work as usual.
+ * One "⋯" button per list instead of a row of buttons: it opens a small menu with the
+ * actions of the list. Arrow keys, Home, End, Escape and a click outside work as usual.
  */
-export function RowMenu({
+export function ListMenu({
   name,
   deleteLabel,
   onRename,
   onDelete,
 }: {
   name: string;
-  /** "Delete list", "Delete plan". */
-  deleteLabel: string;
+  /** The delete item's text; "Delete list" unless given (Manage plans: "Delete plan"). */
+  deleteLabel?: string;
   onRename: () => void;
-  onDelete: () => void;
+  /** Left out for a list that cannot be deleted ("My notes"): the menu only renames. */
+  onDelete?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   /** Which item gets focus when the menu opens (ArrowUp and End open on the last one). */
@@ -102,7 +103,7 @@ export function RowMenu({
       </button>
       {open && (
         <div className="row-menu-popup" role="menu" id={menuId} aria-label={t.manage.actions(name)}>
-          {ACTIONS.map((action) =>
+          {ACTIONS.filter((a) => a !== 'delete' || onDelete).map((action) =>
             action === 'rename' ? (
               <button key={action} type="button" role="menuitem" onClick={choose(onRename)}>
                 {t.list.rename}
@@ -113,9 +114,9 @@ export function RowMenu({
                 type="button"
                 role="menuitem"
                 className="danger"
-                onClick={choose(onDelete)}
+                onClick={choose(onDelete!)}
               >
-                {deleteLabel}
+                {deleteLabel ?? t.list.deleteList}
               </button>
             ),
           )}

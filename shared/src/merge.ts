@@ -42,12 +42,14 @@ const TODO_DEFAULTS = {
 
 const LIST_DEFAULTS = {
   isInbox: false,
+  module: 'tasks',
   isPublic: false,
   deletedAt: null,
 } as const satisfies Partial<List>;
 
 const NOTE_DEFAULTS = {
   text: '',
+  listId: null,
   isPublic: false,
   deletedAt: null,
 } as const satisfies Partial<Note>;
