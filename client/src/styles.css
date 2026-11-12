@@ -2195,6 +2195,14 @@ h2.nav-heading {
   stroke-dasharray: 5 4;
 }
 
+/* A hidden (done) predecessor: a dotted line before the block (FR-173, decision P20). */
+.plan-hidden-pred {
+  stroke: var(--muted);
+  stroke-width: 2px;
+  stroke-dasharray: 2 4;
+  pointer-events: none;
+}
+
 .plan-rubber {
   stroke: var(--accent);
   stroke-width: 2px;

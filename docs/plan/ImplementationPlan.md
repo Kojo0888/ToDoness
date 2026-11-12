@@ -381,3 +381,21 @@ PRD → plan → tests → code.
 | `client/test/lib/timeline.test.ts` | `isOverdue`: ended yesterday, ends today, done |
 | `client/test/lib/planHideDone.test.ts` | the setting: default off, remembered, blocked storage |
 | `e2e/test/plan.test.ts` | PRD 9.3 points 1 – 3 (in the options test, to stay under the sign-up limit) |
+
+## Update 5 – hidden predecessor mark
+
+Requirements: [PRD.md section 10](./PRD.md#10-update-5--a-mark-for-hidden-predecessors)
+(FR-173). Client only, one module (the timeline): no data model, sync or API change.
+
+| Step | Content | Status |
+| ---- | ------- | ------ |
+| 24 | Client lib: `HIDDEN_MARK` (30 px), `hiddenPredecessors(links, shownIds)` and `hiddenMark(box, row)` in `lib/timeline.ts` | ☑ |
+| 25 | UI: `Timeline.tsx` draws a `.plan-hidden-pred` line in the arrows layer for each such activity; style in `styles.css` | ☑ |
+| 26 | Tests: unit tests for the helpers, browser test for PRD 10.3 (in the options test) | ☑ |
+
+### Design
+
+The links are the plan's live links (`liveLinks`, computed from all activities, hidden
+included). An activity is marked when it is drawn and a link points to it from one that is
+not. The line runs from `max(0, left − 30)` to `left` at `row × 44 + 22`, `stroke-dasharray`
+2 4, with `pointer-events: none`.

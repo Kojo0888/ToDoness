@@ -29,6 +29,8 @@ import {
   dayWidth,
   dragResult,
   headerUnits,
+  hiddenMark,
+  hiddenPredecessors,
   isOverdue,
   nudge,
   timelineRange,
@@ -339,6 +341,14 @@ export function Timeline({
       };
     });
 
+  // A shown activity that waits for a hidden one: a dotted mark before its block (FR-173).
+  const marks = hideDone
+    ? [...hiddenPredecessors(links, new Set(rowOf.keys()))].map((id) => ({
+        id,
+        ...hiddenMark(boxOf.get(id)!, rowOf.get(id)!),
+      }))
+    : [];
+
   const todayIndex = daysBetween(range.first, today);
   const dragBox = drag ? boxOf.get(drag.id) : undefined;
 
@@ -444,6 +454,17 @@ export function Timeline({
                     <path className="plan-arrow-line" d={arrow.d} />
                     <path className="plan-arrow-head" d={arrow.head} transform={arrow.turn} />
                   </g>
+                ))}
+                {marks.map((m) => (
+                  <line
+                    key={m.id}
+                    className="plan-hidden-pred"
+                    data-activity-id={m.id}
+                    x1={m.x1}
+                    x2={m.x2}
+                    y1={m.y}
+                    y2={m.y}
+                  />
                 ))}
                 {drag?.linkTo && drag.pointer && dragBox && (
                   <line

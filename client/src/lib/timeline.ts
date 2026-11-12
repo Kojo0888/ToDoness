@@ -258,6 +258,32 @@ export function arrowPath(from: Anchor, to: Anchor): string {
   return `M ${x1} ${y1} L ${x2} ${y2}`;
 }
 
+/** How long the mark of a hidden predecessor is, in pixels, on every scale (FR-173). */
+export const HIDDEN_MARK = 30;
+
+/**
+ * The shown activities that wait for one that is not shown (done and hidden, FR-162): they
+ * get a dotted mark before their block (docs/plan/PRD.md FR-173, decision P20).
+ */
+export function hiddenPredecessors(
+  links: readonly { from: string; to: string }[],
+  shown: ReadonlySet<string>,
+): Set<string> {
+  return new Set(links.filter((l) => shown.has(l.to) && !shown.has(l.from)).map((l) => l.to));
+}
+
+/** The mark of a hidden predecessor: a horizontal line ending where the block starts. */
+export function hiddenMark(
+  box: { left: number; width: number },
+  row: number,
+): { x1: number; x2: number; y: number } {
+  return {
+    x1: Math.max(0, box.left - HIDDEN_MARK),
+    x2: box.left,
+    y: row * ROW_HEIGHT + ROW_HEIGHT / 2,
+  };
+}
+
 /** The months of the range, for the header: where each starts and how many days it shows. */
 export function monthSpans(range: Range): { month: string; index: number; days: number }[] {
   const spans: { month: string; index: number; days: number }[] = [];
