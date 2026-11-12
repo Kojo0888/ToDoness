@@ -142,6 +142,7 @@
     (P1 – P9: start + duration instead of start + end, dependencies as a field of the dependent
     activity, no automatic repair after a sync, …) and the "Changed on the way" section of
     [`../plan/ImplementationPlan.md`](../plan/ImplementationPlan.md) (older apps and the pull).
+    Update 3 (details page, done, scales, straight arrows) adds P12 – P16 in PRD section 8.2.
 ## Note lists and unified settings (docs/note-lists)
 
 - Notes are grouped in **note lists**, stored as `lists` with `module = 'notes'`; a note's

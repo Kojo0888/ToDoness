@@ -17,6 +17,7 @@ async function oldDevice() {
   now.advance(10);
   const build = await repo.createActivity(plan.id, 'Build');
   await repo.linkActivities(design.id, build.id);
+  await repo.updateActivity(design.id, { done: true });
   const dropped = await repo.createActivity(plan.id, 'Dropped');
   await repo.deleteActivity(dropped.id);
   const gonePlan = await repo.createPlan('Gone');
@@ -57,6 +58,7 @@ describe('restoreSnapshot with plans', () => {
     );
     const acts = await getActivities(fresh.db, old.plan.id);
     expect(acts.map((a) => a.name)).toEqual(['Design', 'Build']);
+    expect(acts.map((a) => a.done)).toEqual([true, false]); // Update 3, FR-153
     const before = await old.db.activities.get(old.build.id);
     expect(acts[1]).toMatchObject({
       id: old.build.id,

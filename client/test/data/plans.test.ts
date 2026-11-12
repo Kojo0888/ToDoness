@@ -363,7 +363,13 @@ describe('reorderPlan (Manage plans, FR-121)', () => {
 describe('revertActivities (Undo last change, FR-147)', () => {
   type S = Awaited<ReturnType<typeof setup>>;
   const snapshot = async (s: S) =>
-    (await s.acts()).map(({ id, start, days, dependsOn }) => ({ id, start, days, dependsOn }));
+    (await s.acts()).map(({ id, start, days, dependsOn, done }) => ({
+      id,
+      start,
+      days,
+      dependsOn,
+      done,
+    }));
   /** Runs a change and returns what it did, as the plan page does. */
   async function changed(s: S, run: () => Promise<unknown>) {
     const before = await snapshot(s);
@@ -387,6 +393,15 @@ describe('revertActivities (Undo last change, FR-147)', () => {
     expect(await s.shape()).toEqual(shapeBefore);
     // Only what differed is written: A's duration and the two pushed starts.
     expect(await s.outboxSince(queued)).toBe(3);
+  });
+
+  it('takes back a done toggle (a double click, FR-154)', async () => {
+    const s = await setup();
+    const a = await s.add('A', 0, 2);
+    const diff = await changed(s, () => s.repo.updateActivity(a.id, { done: true }));
+    expect(diff).toEqual([{ id: a.id, before: { done: false }, after: { done: true } }]);
+    await s.repo.revertActivities(diff);
+    expect((await s.acts())[0]!.done).toBe(false);
   });
 
   it('takes a new link away again and brings a removed one back', async () => {
@@ -523,5 +538,28 @@ describe('review fixes – repo', () => {
     const queued = (await expectValidOutbox(s.db)).length;
     await expect(s.repo.linkActivities(a.id, target.id)).rejects.toMatchObject({ code: 'limit' });
     expect(await s.outboxSince(queued)).toBe(0);
+  });
+});
+
+describe('done (docs/plan/PRD.md FR-153)', () => {
+  it('a new activity is not done; done is saved and queued, and moves nothing', async () => {
+    const s = await setup();
+    const a = await s.add('A', 0, 2);
+    const b = await s.add('B', 0, 3);
+    await s.repo.linkActivities(a.id, b.id);
+    expect(a.done).toBe(false);
+    const shapeBefore = await s.shape();
+    const queued = (await expectValidOutbox(s.db)).length;
+    const saved = await s.repo.updateActivity(a.id, { done: true });
+    expect(saved.done).toBe(true);
+    expect(await s.shape()).toEqual(shapeBefore);
+    const ops = await expectValidOutbox(s.db);
+    expect(ops.length - queued).toBe(1);
+    expect(ops.filter((o) => o.type === 'update' && 'done' in o.patch)).toMatchObject([
+      { entity: 'activity', entityId: a.id, patch: { done: true } },
+    ]);
+    // Unchanged: nothing queued.
+    await s.repo.updateActivity(a.id, { done: true });
+    expect((await expectValidOutbox(s.db)).length - queued).toBe(1);
   });
 });

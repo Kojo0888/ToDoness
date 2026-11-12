@@ -7,7 +7,7 @@
 import type { Activity } from '@todoness/shared';
 
 /** What a change on the timeline can alter in an activity. */
-export type ActivityState = Pick<Activity, 'id' | 'start' | 'days' | 'dependsOn'>;
+export type ActivityState = Pick<Activity, 'id' | 'start' | 'days' | 'dependsOn' | 'done'>;
 export type ActivityFields = Partial<Omit<ActivityState, 'id'>>;
 
 export interface ActivityChange {
@@ -37,6 +37,10 @@ export function diffActivities(
     if (was.days !== is.days) {
       change.before.days = was.days;
       change.after.days = is.days;
+    }
+    if (was.done !== is.done) {
+      change.before.done = was.done;
+      change.after.done = is.done;
     }
     if (!sameLinks(was.dependsOn, is.dependsOn)) {
       change.before.dependsOn = was.dependsOn;

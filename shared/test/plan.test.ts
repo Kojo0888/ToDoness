@@ -208,8 +208,32 @@ describe('applyOp – plans and activities', () => {
       start: '2026-03-02',
       days: 1,
       dependsOn: [],
+      done: false,
       deletedAt: null,
     });
+  });
+
+  it('done (Update 3, FR-153): pushed in a create or an update, pulled, a boolean only', () => {
+    expect(ok(op({ patch: { done: true } }))).toBe(true);
+    expect(ok(op({ patch: { done: 'yes' } }))).toBe(false);
+    expect(
+      ok(
+        op({
+          type: 'create',
+          patch: { planId: PLAN_ID, name: 'D', start: '2026-03-02', orderKey: 'a0', done: true },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      pullChangeSchema.safeParse({
+        serverSeq: 1,
+        entityId: ACT_ID,
+        type: 'update',
+        hlc: hlc(T0),
+        entity: 'activity',
+        patch: { done: false },
+      }).success,
+    ).toBe(true);
   });
 
   it('needs plan, name, start and order key to create', () => {

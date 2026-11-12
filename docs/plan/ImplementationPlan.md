@@ -268,3 +268,83 @@ taken: migration 007 (`007_note_lists.sql`) and Dexie version 6. The Plan module
 Manage lists is `main`'s page (with the note-list rows); Manage plans keeps
 `components/common/ManageItems.tsx` with `main`'s app-bar header, and both use `ListMenu`,
 which takes an optional label for its delete item.
+
+## Update 3 – details view, done, scales
+
+Requirements: [PRD.md section 8](./PRD.md#8-update-3--details-view-done-scales) (FR-148 – FR-159).
+A **major** change: it adds a field to the data model (server migration, Dexie version, a
+pull flag), so it follows the full order: PRD → this plan → tests → implementation.
+
+| Step | Content | Status |
+| ---- | ------- | ------ |
+| 14 | Shared: `done` in the activity fields, create / update / pulled patches, merge default `false`  | ☑ |
+| 15 | Server: migration `009_activity_done.sql`, rows, pull flag `activities=done` (FR-159)  | ☑ |
+| 16 | Client data: Dexie version 8 (default `done`, reset the pull cursor), `updateActivity({ done })`, undo diff and `revertActivities` with `done`, recovery copy, engine asks with the flag  | ☑ |
+| 17 | Client lib: straight `arrowPath` / `arrowTip` (FR-148), scales (`SCALES`, `dayWidth`, `timelineRange(…, scale)`, `unitSpans`), `planScale` device setting, double-click detector  | ☑ |
+| 18 | UI: sticky row column with the details button, `ActivityPage` (details view) and its route, `ActivityBar` removed, done look, double click, options popover with the gear, scale chips, Undo below the timeline, texts, styles  | ☑ |
+| 19 | Browser tests for PRD 8.3, decisions, checks  | ☑ |
+
+### Design
+
+- **Data** – `Activity.done: boolean` (`activityFields.done = z.boolean()`), optional in the
+  create patch, default `false` in `merge.ts`. Server column
+  `done INTEGER NOT NULL DEFAULT 0 CHECK (done IN (0, 1))` added with `ALTER TABLE` (no
+  rebuild needed: `change_log` already knows the entity).
+- **Older apps (FR-159)** – the strict pulled-activity patch of an older app refuses
+  `done`. The current app pulls with `&activities=done`; without it the server removes
+  `done` from activity patches (an update that only changed `done` becomes an empty patch,
+  which the old schema accepts and which changes nothing). Dexie version 8 sets
+  `done = false` on stored activities and forgets `lastServerSeq`, as version 7 did.
+- **Undo** – `ActivityState` gains `done`; `diffActivities` and `revertActivities` treat it
+  like `start` and `days`. `planChanges.read` includes it.
+- **Geometry** (`lib/timeline.ts`) – every function that turned days into pixels takes a
+  `Scale` (`'day' | 'week' | 'month' | 'year'`, default `'day'`, so the Days scale is
+  unchanged): `dayWidth(scale)` = 36 / 12 / 4 / 0.6; `timelineRange(spans, today, scale)`
+  pads and aligns per scale; `blockBox(span, range, scale)` keeps at least `MIN_BLOCK` = 12
+  px; `unitSpans(range, unit)` gives the header cells (day, week, month, quarter, year);
+  `headerUnits(scale)` says which two units the two header rows show.
+- **Arrows** – `arrowPath(from, to)` with `from = { x, row }` (end of the source) and
+  `to = { x, row }` (start of the target) is `M x1 y1 L x2 y2` between the corners;
+  `arrowTip` returns the tip and the angle, and the head is a triangle rotated to it.
+- **Double click** – `lib/doubleTap.ts`: `createDoubleTap(ms = 400)` returns
+  `(id, now) => boolean`, true for the second click on the same id within the time. Used
+  in the block's click handler (works for a mouse and for taps; `dblclick` is not fired
+  reliably for touch on an element with `touch-action: none`).
+- **Details view** – `components/plan/ActivityPage.tsx`, route
+  `/plan/:planId/activity/:activityId` (before `/plan/:planId`). Its own `planChanges` for
+  errors. `activityPath(planId, id)` in `PlansHome.tsx` next to `planPath`.
+- **Options** – `components/plan/PlanOptions.tsx`: gear `button.icon-btn` with
+  `aria-expanded` / `aria-controls`, a panel (`.plan-options`) with the name chips; closes on
+  Escape and on a pointer down outside.
+- **Scale setting** – `lib/planScale.ts` (`todoness.plan.scale`), same shape as
+  `planNames.ts`.
+
+### Tests (written before the code)
+
+| Where | What |
+| ----- | ---- |
+| `shared/test/plan.test.ts` | `done` in create / update / pulled patches, rejects a non-boolean, merge default `false` |
+| `server/test/plans.test.ts` | `done` pushed and pulled with `activities=done`; left out without it |
+| `server/test/migrate.test.ts` | migration 009 adds `done` (default 0) and keeps rows |
+| `client/test/data/plans.test.ts` | `updateActivity({ done })` saves, moves nothing; revert restores `done` |
+| `client/test/data/plans-upgrade.test.ts` | version 8 sets `done = false` and resets the cursor |
+| `client/test/lib/planUndo.test.ts` | diff covers `done` |
+| `client/test/lib/timeline.test.ts` | straight arrows, tip angle, scales, ranges, unit spans, min block width |
+| `client/test/lib/planScale.test.ts`, `doubleTap.test.ts` | the setting; double tap timing |
+| `e2e/test/plan.test.ts` | PRD 8.3 points 1 – 7 (the old edit bar and Starts after tests are rewritten for the details page) |
+
+### Changed on the way
+
+1. **Short blocks on coarse scales show their name after the block.** At 4 or 0.6 px per
+   day a block is often 12 – 47 px wide; "On block" then showed "D…". A block narrower than
+   48 px (`NARROW_BLOCK` in `Timeline.tsx`) puts its name after itself and hides its grip
+   marks; the block's inner padding shrinks with it, so 12 px stays 12 px.
+2. **Click selects, it no longer toggles the selection**, so the two clicks of a double
+   click leave the block selected instead of selecting and deselecting it.
+3. **`input[type='number']`** joined the shared field styles (the duration is the app's
+   first number field).
+4. **Browser tests and the sign-up limit.** The server allows 20 sign-ups per hour from one
+   address; one user per test went over it. The checks of the options panel and of Undo's
+   place share a user with a neighbouring test.
+5. **Scrolling keeps its place across scales:** the day at the left edge of the view stays
+   at the left edge when the scale changes (and, as before, when days are added on the left).

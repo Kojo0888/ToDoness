@@ -206,3 +206,42 @@ describe('pull for apps from before the Plan module (FR-143)', () => {
     expect(page.hasMore).toBe(true);
   });
 });
+
+describe('done activities (docs/plan/PRD.md FR-153, FR-159)', () => {
+  it('stores done, and sends it to apps that ask with activities=done', async () => {
+    const r = await c.ann.device.push([
+      op('activity', 'update', c.designId, { done: true }, hlcAt(10)),
+    ]);
+    expect(r.rejected).toEqual([]);
+    expect(row(c, 'activities', c.designId)).toMatchObject({ done: 1 });
+    expect(row(c, 'activities', c.buildId)).toMatchObject({ done: 0 });
+    const changes = await c.ann.device.pullAll();
+    expect(changes.at(-1)).toMatchObject({ entityId: c.designId, patch: { done: true } });
+  });
+
+  it('a create with done keeps it', async () => {
+    const id = newId();
+    await c.ann.device.push([
+      op(
+        'activity',
+        'create',
+        id,
+        { planId: c.planId, name: 'Old', start: '2026-03-01', orderKey: 'a2', done: true },
+        hlcAt(11),
+      ),
+    ]);
+    expect(row(c, 'activities', id)).toMatchObject({ done: 1 });
+  });
+
+  it('leaves done out for apps that do not ask for it (they would refuse the field)', async () => {
+    await c.ann.device.push([op('activity', 'update', c.designId, { done: true }, hlcAt(10))]);
+    const res = await c.ann.device.http.get(
+      '/api/sync/pull?since=0&limit=1000&reminders=list&lists=modules&plans=1',
+    );
+    const body = (await res.json()) as { changes: { entity: string; patch: object }[] };
+    const activities = body.changes.filter((ch) => ch.entity === 'activity');
+    expect(activities.length).toBe(3);
+    expect(activities.some((ch) => 'done' in ch.patch)).toBe(false);
+    expect(activities.at(-1)!.patch).toEqual({});
+  });
+});

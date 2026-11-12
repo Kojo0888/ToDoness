@@ -9,6 +9,11 @@ import {
   arrowTip,
   blockBox,
   dayAtX,
+  dayWidth,
+  headerUnits,
+  MIN_BLOCK,
+  SCALES,
+  unitSpans,
   dragResult,
   monthSpans,
   nudge,
@@ -87,75 +92,133 @@ describe('dragResult (FR-127, FR-128)', () => {
   });
 });
 
-describe('arrowPath and arrowTip (FR-135)', () => {
+describe('arrowPath and arrowTip (FR-148: straight)', () => {
   const top = (row: number) => row * ROW_HEIGHT + BLOCK_INSET;
   const bottom = (row: number) => (row + 1) * ROW_HEIGHT - BLOCK_INSET;
-  const middle = (row: number) => row * ROW_HEIGHT + ROW_HEIGHT / 2;
-  /** The points of a path made of M / H / V commands. */
-  function points(d: string) {
-    const out: [number, number][] = [];
-    let x = 0;
-    let y = 0;
-    for (const [, cmd, args] of d.matchAll(/([MHV])\s*([-\d.\s]+)/g)) {
-      const n = args!.trim().split(/\s+/).map(Number);
-      if (cmd === 'H') x = n[0]!;
-      else if (cmd === 'V') y = n[0]!;
-      else [x, y] = n as [number, number];
-      out.push([x, y]);
-    }
-    return out;
-  }
+  /** The points of a path made of M / L commands. */
+  const points = (d: string) =>
+    [...d.matchAll(/[ML]\s*(-?[\d.]+)\s+(-?[\d.]+)/g)].map((m) => [Number(m[1]), Number(m[2])]);
 
-  it('is one straight vertical line when the next activity starts where this one ends', () => {
-    const down = points(arrowPath({ x: 108, row: 0 }, { x: 108, row: 1 }));
-    expect(down).toEqual([
-      [108, bottom(0)],
-      [108, top(1)],
-    ]);
-    // Also over several rows, and upwards.
-    expect(points(arrowPath({ x: 108, row: 0 }, { x: 108, row: 3 }))).toEqual([
-      [108, bottom(0)],
-      [108, top(3)],
-    ]);
-    expect(points(arrowPath({ x: 108, row: 2 }, { x: 108, row: 0 }))).toEqual([
-      [108, top(2)],
-      [108, bottom(0)],
+  it('is one straight line from the end corner of the source to the start corner of the target', () => {
+    const d = arrowPath({ x: 100, row: 0 }, { x: 280, row: 2 });
+    expect(d).toMatch(/^M [-\d.]+ [-\d.]+ L [-\d.]+ [-\d.]+$/);
+    expect(points(d)).toEqual([
+      [100, bottom(0)],
+      [280, top(2)],
     ]);
   });
 
-  it('goes along its own row and turns down at the start of a later activity', () => {
-    // Through the upper right corner: sideways first, then down into the block.
-    expect(points(arrowPath({ x: 100, row: 0 }, { x: 280, row: 2 }))).toEqual([
-      [100, middle(0)],
-      [280, middle(0)],
-      [280, top(2)],
+  it('is vertical when the next activity starts where this one ends', () => {
+    expect(points(arrowPath({ x: 108, row: 0 }, { x: 108, row: 1 }))).toEqual([
+      [108, bottom(0)],
+      [108, top(1)],
     ]);
+  });
+
+  it('goes up from the top corner into the bottom corner of a target in a row above', () => {
     expect(points(arrowPath({ x: 100, row: 3 }, { x: 280, row: 1 }))).toEqual([
-      [100, middle(3)],
-      [280, middle(3)],
+      [100, top(3)],
       [280, bottom(1)],
     ]);
   });
 
-  it('goes around when the target starts before the source ends (a broken link)', () => {
-    const p = points(arrowPath({ x: 300, row: 0 }, { x: 100, row: 2 }));
-    expect(p[0]).toEqual([300, middle(0)]);
-    expect(p[1]![0]).toBeGreaterThan(300); // leaves to the right
-    expect(p.at(-1)).toEqual([100, top(2)]);
-    expect(p.at(-2)).toEqual([100, 2 * ROW_HEIGHT]); // comes in along the row border
+  it('a broken link is the same straight line, backwards', () => {
+    expect(points(arrowPath({ x: 300, row: 0 }, { x: 100, row: 2 }))).toEqual([
+      [300, bottom(0)],
+      [100, top(2)],
+    ]);
   });
 
-  it('the head sits on the edge of the target block and points into it', () => {
-    expect(arrowTip({ x: 100, row: 0 }, { x: 280, row: 2 })).toEqual({
-      x: 280,
-      y: top(2),
-      down: true,
+  it('the head sits on the target corner and points along the line', () => {
+    expect(arrowTip({ x: 108, row: 0 }, { x: 108, row: 1 })).toEqual({
+      x: 108,
+      y: top(1),
+      angle: 90,
     });
-    expect(arrowTip({ x: 100, row: 3 }, { x: 280, row: 1 })).toEqual({
-      x: 280,
-      y: bottom(1),
-      down: false,
+    expect(arrowTip({ x: 108, row: 2 }, { x: 108, row: 0 }).angle).toBe(-90);
+    const tip = arrowTip({ x: 100, row: 0 }, { x: 100 + (top(1) - bottom(0)), row: 1 });
+    expect(tip.angle).toBeCloseTo(45);
+  });
+});
+
+describe('scales (FR-157)', () => {
+  it('a day is 36, 12, 4 or 0.6 pixels wide', () => {
+    expect(SCALES).toEqual(['day', 'week', 'month', 'year']);
+    expect(dayWidth('day')).toBe(DAY_WIDTH);
+    expect(dayWidth('week')).toBe(12);
+    expect(dayWidth('month')).toBe(4);
+    expect(dayWidth('year')).toBe(0.6);
+  });
+
+  it('the Days range is unchanged', () => {
+    expect(timelineRange([], TODAY, 'day')).toEqual(timelineRange([], TODAY));
+  });
+
+  it('the Weeks range starts on a Monday and holds whole weeks', () => {
+    const r = timelineRange([{ start: '2026-03-10', days: 3 }], TODAY, 'week');
+    expect(weekShift(r.first)).toBe(0);
+    expect(r.first <= '2026-03-03').toBe(true);
+    expect(r.days % 7).toBe(0);
+    expect(r.days).toBeGreaterThanOrEqual(16 * 7);
+  });
+
+  it('the Months range starts on the 1st and ends at the end of a month', () => {
+    const r = timelineRange([{ start: '2026-03-10', days: 3 }], TODAY, 'month');
+    expect(r.first).toBe('2026-02-01');
+    const last = unitSpans(r, 'month').at(-1)!;
+    expect(last.index + last.days).toBe(r.days);
+    expect(unitSpans(r, 'month').length).toBeGreaterThanOrEqual(12);
+  });
+
+  it('the Years range starts on 1 January and covers whole years', () => {
+    const r = timelineRange([{ start: '2027-11-10', days: 100 }], TODAY, 'year');
+    expect(r.first).toBe('2026-01-01');
+    expect(unitSpans(r, 'year').map((u) => u.start)).toEqual([
+      '2026-01-01',
+      '2027-01-01',
+      '2028-01-01',
+    ]);
+  });
+
+  it('blocks scale with the day width, but are never narrower than 12 px', () => {
+    const range = { first: '2026-01-01', days: 365 };
+    expect(blockBox({ start: '2026-01-08', days: 14 }, range, 'week')).toEqual({
+      left: 7 * 12,
+      width: 14 * 12,
     });
+    expect(blockBox({ start: '2026-01-11', days: 3 }, range, 'year')).toEqual({
+      left: 10 * 0.6,
+      width: MIN_BLOCK,
+    });
+    expect(MIN_BLOCK).toBe(12);
+    expect(dayAtX(range, 12 * 7, 'week')).toBe('2026-01-08');
+  });
+
+  it('header cells: two rows of units per scale', () => {
+    expect(headerUnits('day')).toEqual(['month', 'day']);
+    expect(headerUnits('week')).toEqual(['month', 'week']);
+    expect(headerUnits('month')).toEqual(['year', 'month']);
+    expect(headerUnits('year')).toEqual(['year', 'quarter']);
+  });
+
+  it('unitSpans cuts the range into weeks, months, quarters and years', () => {
+    const range = { first: '2026-03-04', days: 14 }; // Wed 4 – Tue 17 March
+    expect(unitSpans(range, 'week')).toEqual([
+      { start: '2026-03-02', index: 0, days: 5 },
+      { start: '2026-03-09', index: 5, days: 7 },
+      { start: '2026-03-16', index: 12, days: 2 },
+    ]);
+    expect(unitSpans({ first: '2026-03-30', days: 3 }, 'day').map((u) => u.start)).toEqual([
+      '2026-03-30',
+      '2026-03-31',
+      '2026-04-01',
+    ]);
+    expect(unitSpans({ first: '2026-01-01', days: 365 }, 'quarter')).toEqual([
+      { start: '2026-01-01', index: 0, days: 90 },
+      { start: '2026-04-01', index: 90, days: 91 },
+      { start: '2026-07-01', index: 181, days: 92 },
+      { start: '2026-10-01', index: 273, days: 92 },
+    ]);
   });
 });
 

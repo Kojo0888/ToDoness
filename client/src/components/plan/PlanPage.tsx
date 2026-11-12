@@ -4,12 +4,14 @@ import { Redirect } from 'wouter';
 import { ACTIVITY_NAME_MAX } from '@todoness/shared';
 import { getActivities, getPlanById } from '../../data/queries';
 import { browserStorage } from '../../lib/modules';
-import { NAME_MODES, readNameMode, saveNameMode, type NameMode } from '../../lib/planNames';
+import { readNameMode, saveNameMode, type NameMode } from '../../lib/planNames';
+import { readScale, saveScale } from '../../lib/planScale';
+import { SCALES, type Scale } from '../../lib/timeline';
 import { createPlanChanges, type PlanError } from '../../services/planChanges';
 import { db, repo } from '../../app/container';
 import { t } from '../../app/strings';
 import { useUndoToast } from '../common/Toast';
-import { ActivityBar } from './ActivityBar';
+import { PlanOptions } from './PlanOptions';
 import { Timeline } from './Timeline';
 
 const ERRORS: Record<PlanError, string> = {
@@ -19,8 +21,9 @@ const ERRORS: Record<PlanError, string> = {
 };
 
 /**
- * One plan: its name, a field for new activities and the timeline (docs/plan/PRD.md).
- * Plans are renamed and deleted on the Manage plans page, as lists are.
+ * One plan: its name, a field for new activities, the scale and the options, the timeline
+ * and Undo last change below it (docs/plan/PRD.md). Plans are renamed and deleted on the
+ * Manage plans page, as lists are; an activity's details have their own page.
  */
 export function PlanPage({ planId }: { planId: string }) {
   // `undefined` = loading, `null` = no such plan (or it was deleted).
@@ -29,6 +32,7 @@ export function PlanPage({ planId }: { planId: string }) {
   const toast = useUndoToast();
 
   const [nameMode, setNameMode] = useState<NameMode>(() => readNameMode(browserStorage()));
+  const [scale, setScale] = useState<Scale>(() => readScale(browserStorage()));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   // Every change of this page goes through here: one at a time, undoable where it alters
@@ -77,6 +81,11 @@ export function PlanPage({ planId }: { planId: string }) {
     setNameMode(mode);
   }
 
+  function chooseScale(next: Scale) {
+    saveScale(browserStorage(), next);
+    setScale(next);
+  }
+
   async function addActivity(e: FormEvent) {
     e.preventDefault();
     const trimmed = newName.trim();
@@ -106,30 +115,20 @@ export function PlanPage({ planId }: { planId: string }) {
           </button>
         </form>
         <div className="plan-view">
-          <button
-            type="button"
-            className="plan-undo"
-            disabled={!canUndo}
-            onClick={() => void changes.undo()}
-          >
-            <span aria-hidden="true" className="btn-icon">
-              ↶
-            </span>
-            {t.plan.undo}
-          </button>
-          <div className="chip-group" role="group" aria-label={t.plan.names}>
-            {NAME_MODES.map((mode) => (
+          <div className="chip-group" role="group" aria-label={t.plan.scale}>
+            {SCALES.map((option) => (
               <button
-                key={mode}
+                key={option}
                 type="button"
-                className={`chip${mode === nameMode ? ' is-selected' : ''}`}
-                aria-pressed={mode === nameMode}
-                onClick={() => chooseNames(mode)}
+                className={`chip${option === scale ? ' is-selected' : ''}`}
+                aria-pressed={option === scale}
+                onClick={() => chooseScale(option)}
               >
-                {t.plan.nameModes[mode]}
+                {t.plan.scales[option]}
               </button>
             ))}
           </div>
+          <PlanOptions nameMode={nameMode} onNameMode={chooseNames} />
         </div>
       </div>
 
@@ -139,27 +138,33 @@ export function PlanPage({ planId }: { planId: string }) {
         </p>
       )}
 
-      {selected && (
-        <ActivityBar
-          key={selected.id}
-          activity={selected}
-          others={activities}
-          change={(run) => void changes.run(run)}
-          onDelete={() => deleteActivity(selected.id)}
-          onClose={() => setSelectedId(null)}
-        />
-      )}
-
       {activities.length === 0 && <p className="empty">{t.plan.noActivities}</p>}
 
       <Timeline
         activities={activities}
         nameMode={nameMode}
+        scale={scale}
+        planId={planId}
         selectedId={selected?.id ?? null}
         onSelect={setSelectedId}
         onDelete={deleteActivity}
         change={changes.run}
       />
+
+      {/* At the bottom of the plan (FR-158); Ctrl / ⌘ + Z works anywhere on the page. */}
+      <div className="plan-foot">
+        <button
+          type="button"
+          className="plan-undo"
+          disabled={!canUndo}
+          onClick={() => void changes.undo()}
+        >
+          <span aria-hidden="true" className="btn-icon">
+            ↶
+          </span>
+          {t.plan.undo}
+        </button>
+      </div>
     </section>
   );
 }

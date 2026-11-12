@@ -59,6 +59,7 @@ const PLAN_DEFAULTS = { deletedAt: null } as const satisfies Partial<Plan>;
 const ACTIVITY_DEFAULTS = {
   days: 1,
   dependsOn: [] as string[],
+  done: false,
   deletedAt: null,
 } as const satisfies Partial<Activity>;
 

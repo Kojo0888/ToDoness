@@ -11,10 +11,12 @@ connection returns.
   last on that device.
 - Tasks and lists that keep working **offline**; changes sync automatically.
 - **Plan**: several plans, each a **timeline** (Gantt chart) of activities with a name, a
-  start day and an end day. Drag the beginning of a block to move it and its end to change the
-  duration; link the end of one block to the start of another to make a **dependency** (drawn
-  as an arrow) that pushes dependent activities later automatically. Names can be shown on the
-  block, after it, or in a column. Plans work offline and sync like tasks.
+  start day and a duration. Drag the beginning of a block to move it and its end to change the
+  duration; drop the end of one block on another to make a **dependency** (a straight arrow)
+  that pushes dependent activities later automatically. Double-click a block to mark it
+  **done**; the button on its row opens its **details**. The timeline shows **days, weeks,
+  months or years**; names can be shown on the block, after it, or in a column (under the gear).
+  Plans work offline and sync like tasks.
 - **Notes**: simple text boxes, newest on top, saved automatically while you type, **reordered
   by drag and drop** and **searchable** (every word, ignoring case and accents). They work
   offline and sync like tasks, can be made **public** (every user can read and edit the text;

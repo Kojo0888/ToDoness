@@ -1,3 +1,4 @@
+import { Link } from 'wouter';
 import {
   memo,
   useEffect,
@@ -12,34 +13,40 @@ import {
   daysBetween,
   earliestStart,
   endDay,
-  addDays,
   liveLinks,
   localDay,
   schedulePlan,
   type Activity,
 } from '@todoness/shared';
 import { formatDay, formatMonth, weekdayOf } from '../../lib/dates';
+import { createDoubleTap } from '../../lib/doubleTap';
 import type { NameMode } from '../../lib/planNames';
 import {
-  DAY_WIDTH,
   ROW_HEIGHT,
   arrowPath,
   arrowTip,
   blockBox,
+  dayWidth,
   dragResult,
-  monthSpans,
+  headerUnits,
   nudge,
   timelineRange,
+  unitSpans,
   weekShift,
   type DragKind,
+  type Scale,
   type Span,
+  type Unit,
 } from '../../lib/timeline';
+import { activityPath } from './ActivityPage';
 import { repo } from '../../app/container';
 import { t } from '../../app/strings';
 
 interface Props {
   activities: Activity[];
   nameMode: NameMode;
+  scale: Scale;
+  planId: string;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onDelete: (id: string) => void;
@@ -70,6 +77,9 @@ interface Drag {
   settling: boolean;
 }
 
+/** Narrower than this, a block shows no grip marks and its name goes after it. */
+const NARROW_BLOCK = 48;
+
 const sameSpan = (a: Span, b: Span) => a.start === b.start && a.days === b.days;
 
 /**
@@ -80,7 +90,16 @@ const sameSpan = (a: Span, b: Span) => a.start === b.start && a.days === b.days;
  * An end of a block does two things, by where it is dragged: along its own row it changes
  * the activity (start or duration), onto the block of another row it links the two.
  */
-export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete, change }: Props) {
+export function Timeline({
+  activities,
+  nameMode,
+  scale,
+  planId,
+  selectedId,
+  onSelect,
+  onDelete,
+  change,
+}: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const rowsRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -89,6 +108,9 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
   /** Escape was pressed while the pointer was down: releasing it must not count as a click. */
   const cancelled = useRef(false);
   const pointerDown = useRef(false);
+  /** A second click on the same block soon after the first: done / not done (FR-154). */
+  const [doubleTap] = useState(() => createDoubleTap());
+  const w = dayWidth(scale);
 
   // The saved activity changed after a drop: the preview has done its job.
   const dragged = drag ? activities.find((a) => a.id === drag.id) : undefined;
@@ -111,17 +133,21 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
   // Read once: the grid must not shift at midnight in the middle of a drag.
   const [today] = useState(() => localDay(Date.now()));
   // The grid follows the saved days, not the preview: it must not move under the pointer.
-  const range = timelineRange(activities, today);
-  const gridWidth = range.days * DAY_WIDTH;
+  const range = timelineRange(activities, today, scale);
+  const gridWidth = range.days * w;
   const rowsHeight = (shown.length + 1) * ROW_HEIGHT;
 
-  // When days are added on the left, keep what the user looks at where it is.
-  const previousFirst = useRef(range.first);
+  // When days are added on the left or the scale changes, keep the day at the left edge
+  // of the view where it is.
+  const previous = useRef({ first: range.first, w });
   useLayoutEffect(() => {
-    const added = daysBetween(range.first, previousFirst.current);
-    previousFirst.current = range.first;
-    if (added !== 0 && scroller.current) scroller.current.scrollLeft += added * DAY_WIDTH;
-  }, [range.first]);
+    const was = previous.current;
+    previous.current = { first: range.first, w };
+    const el = scroller.current;
+    if (!el || (was.first === range.first && was.w === w)) return;
+    const leftDay = daysBetween(range.first, was.first) + el.scrollLeft / was.w;
+    el.scrollLeft = Math.max(0, leftDay * w);
+  }, [range.first, w]);
 
   // Escape cancels a drag (FR-129).
   const busy = drag !== null;
@@ -140,6 +166,7 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
 
   /** The click that follows a drag on the same element is swallowed. */
   function afterDrag() {
+    doubleTap.reset();
     suppressClick.current = true;
     setTimeout(() => (suppressClick.current = false), 0);
   }
@@ -195,7 +222,7 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
       const pointer = { x: e.clientX - box.left, y: e.clientY - box.top };
       return setDrag({ ...drag, linkTo, pointer, preview: drag.origin, moved: true });
     }
-    const delta = Math.round((e.clientX - drag.startX) / DAY_WIDTH);
+    const delta = Math.round((e.clientX - drag.startX) / w);
     const preview = dragResult(drag.kind, drag.origin, delta, drag.earliest);
     if (drag.linkTo || !sameSpan(preview, drag.preview)) {
       setDrag({ ...drag, linkTo: null, pointer: null, preview, moved: true });
@@ -247,7 +274,16 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
 
   function choose(id: string) {
     if (suppressClick.current) return;
-    onSelect(selectedId === id ? null : id);
+    onSelect(id);
+  }
+
+  /** A click on a block selects it; a second one right after toggles done (FR-154). */
+  function clickBlock(id: string, at: number) {
+    if (suppressClick.current) return;
+    onSelect(id);
+    if (doubleTap(id, at)) {
+      void change(() => repo.updateActivity(id, (now) => ({ done: !now.done })));
+    }
   }
 
   function onBlockKey(e: React.KeyboardEvent, a: Activity) {
@@ -270,7 +306,7 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
   // ---- what to draw --------------------------------------------------------
 
   const rowOf = new Map(shown.map((a, i) => [a.id, i]));
-  const boxOf = new Map(shown.map((a) => [a.id, blockBox(a, range)]));
+  const boxOf = new Map(shown.map((a) => [a.id, blockBox(a, range, scale)]));
   const broken = new Set(brokenLinks(shown, links).map((l) => `${l.from}>${l.to}`));
   const arrows = links.map((l) => {
     const from = boxOf.get(l.from)!;
@@ -282,8 +318,9 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
       ...l,
       key: `${l.from}>${l.to}`,
       d: arrowPath(source, target),
-      // A small triangle on the edge of the target block, pointing into it.
-      head: `M ${tip.x} ${tip.y} l -5 ${tip.down ? -8 : 8} h 10 z`,
+      // A small triangle on the corner of the target block, pointing along the line.
+      head: `M ${tip.x} ${tip.y} l -9 -5 v 10 z`,
+      turn: `rotate(${tip.angle} ${tip.x} ${tip.y})`,
     };
   });
 
@@ -298,31 +335,61 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
       <div
         className={`plan-timeline${drag?.linkTo ? ' is-linking' : ''}${drag ? ' is-dragging' : ''}`}
         data-names={nameMode}
+        data-scale={scale}
+        // The width of a day on this scale, for the grid lines and today's line (FR-157).
+        style={{ '--plan-day': `${w}px` } as CSSProperties}
         ref={scroller}
         role="group"
         aria-label={t.plan.timeline}
       >
         <div className="plan-canvas">
-          {nameMode === 'column' && (
-            <div className="plan-name-col">
-              <div className="plan-name-head">{t.plan.activityColumn}</div>
-              {shown.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  className={`plan-name${a.id === selectedId ? ' is-selected' : ''}`}
-                  data-activity-id={a.id}
-                  title={a.name}
-                  onClick={() => choose(a.id)}
-                >
-                  {a.name}
-                </button>
-              ))}
+          {/* The row's details button, and in the Column mode its name (FR-149, FR-140). */}
+          <div className={`plan-side${nameMode === 'column' ? ' plan-name-col' : ''}`}>
+            <div className="plan-name-head">
+              {nameMode === 'column' ? t.plan.activityColumn : ''}
             </div>
-          )}
+            {shown.map((a) => (
+              <div key={a.id} className={`plan-side-row${a.done ? ' is-done' : ''}`}>
+                <Link
+                  href={activityPath(planId, a.id)}
+                  className="icon-btn plan-details-btn"
+                  aria-label={t.plan.details(a.name)}
+                  title={t.plan.details(a.name)}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="18"
+                    height="18"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <path
+                      d="M5 7h14M5 12h14M5 17h9"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </Link>
+                {nameMode === 'column' && (
+                  <button
+                    type="button"
+                    className={`plan-name${a.id === selectedId ? ' is-selected' : ''}`}
+                    data-activity-id={a.id}
+                    title={a.name}
+                    onClick={() => choose(a.id)}
+                  >
+                    {a.done && <span aria-hidden="true">✓ </span>}
+                    {a.name}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
 
           <div className="plan-grid" style={{ width: gridWidth }}>
-            <TimelineHeader first={range.first} days={range.days} today={today} />
+            <TimelineHeader first={range.first} days={range.days} today={today} scale={scale} />
 
             <div
               className="plan-rows"
@@ -331,7 +398,7 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
               style={
                 {
                   height: rowsHeight,
-                  '--plan-week-shift': `${-weekShift(range.first) * DAY_WIDTH}px`,
+                  '--plan-week-shift': `${-weekShift(range.first) * w}px`,
                 } as CSSProperties
               }
               onClick={(e) => {
@@ -340,7 +407,8 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
                 onSelect(null);
               }}
             >
-              <div className="plan-today" style={{ left: todayIndex * DAY_WIDTH }} />
+              {scale !== 'day' && <UnitLines first={range.first} days={range.days} scale={scale} />}
+              <div className="plan-today" style={{ left: todayIndex * w }} />
 
               <svg className="plan-arrows" width={gridWidth} height={rowsHeight}>
                 {arrows.map((arrow) => (
@@ -359,7 +427,7 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
                   >
                     <path className="plan-arrow-hit" d={arrow.d} />
                     <path className="plan-arrow-line" d={arrow.d} />
-                    <path className="plan-arrow-head" d={arrow.head} />
+                    <path className="plan-arrow-head" d={arrow.head} transform={arrow.turn} />
                   </g>
                 ))}
                 {drag?.linkTo && drag.pointer && dragBox && (
@@ -375,6 +443,10 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
 
               {shown.map((a, row) => {
                 const box = boxOf.get(a.id)!;
+                // Too narrow for its name (coarse scales): the name goes after the block.
+                const narrow = box.width < NARROW_BLOCK;
+                const nameOn = nameMode === 'on' && !narrow;
+                const nameAfter = nameMode === 'after' || (nameMode === 'on' && narrow);
                 const end = endDay(a.start, a.days);
                 const style: CSSProperties = {
                   left: box.left,
@@ -383,9 +455,11 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
                 };
                 const classes = [
                   'plan-bar',
+                  narrow && 'is-narrow',
                   a.id === selectedId && 'is-selected',
                   a.id === drag?.id && 'is-dragged',
                   a.id === drag?.linkTo && 'is-link-target',
+                  a.done && 'is-done',
                 ];
                 return (
                   <div
@@ -399,15 +473,20 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
                       className="plan-block"
                       data-start={a.start}
                       data-end={end}
-                      aria-label={t.plan.block(a.name, formatDay(a.start), formatDay(end))}
+                      aria-label={t.plan.block(a.name, formatDay(a.start), formatDay(end), a.done)}
                       aria-pressed={a.id === selectedId}
                       aria-describedby="plan-block-help"
                       title={`${a.name}: ${formatDay(a.start)} – ${formatDay(end)}`}
-                      onClick={() => choose(a.id)}
+                      onClick={(e) => clickBlock(a.id, e.timeStamp)}
                       onKeyDown={(e) => onBlockKey(e, a)}
                       {...dragHandlers(a, null)}
                     >
-                      {nameMode === 'on' && <span className="plan-block-name">{a.name}</span>}
+                      {nameOn && (
+                        <span className="plan-block-name">
+                          {a.done && <span aria-hidden="true">✓ </span>}
+                          {a.name}
+                        </span>
+                      )}
                     </button>
                     {/* The two ends: dragged along the row they move the activity or change
                         its duration, dropped on another block they link the two. Mouse and
@@ -427,7 +506,12 @@ export function Timeline({ activities, nameMode, selectedId, onSelect, onDelete,
                       aria-label={t.plan.endHandle(a.name)}
                       {...dragHandlers(a, 'end')}
                     />
-                    {nameMode === 'after' && <span className="plan-after-name">{a.name}</span>}
+                    {nameAfter && (
+                      <span className="plan-after-name">
+                        {a.done && <span aria-hidden="true">✓ </span>}
+                        {a.name}
+                      </span>
+                    )}
                   </div>
                 );
               })}
@@ -452,47 +536,108 @@ const isWeekend = (day: string) => {
   return weekday === 0 || weekday === 6;
 };
 
+const quarterOf = (day: string) => `Q${Math.floor((Number(day.slice(5, 7)) - 1) / 3) + 1}`;
+
+/** The text of a header cell: a group above (top) or a column (bottom). */
+function unitLabel(start: string, unit: Unit, top: boolean): string {
+  switch (unit) {
+    case 'day':
+      return String(Number(start.slice(8)));
+    case 'week':
+      return String(Number(start.slice(8))); // the day of its Monday
+    case 'month':
+      return top
+        ? formatMonth(start.slice(0, 7))
+        : new Date(Number(start.slice(0, 4)), Number(start.slice(5, 7)) - 1, 1).toLocaleDateString(
+            undefined,
+            { month: 'short' },
+          );
+    case 'quarter':
+      return quarterOf(start);
+    case 'year':
+      return start.slice(0, 4);
+  }
+}
+
 /**
- * Months and day numbers. Its own memoised component: it only depends on the range, so the
- * (possibly thousands of) day cells are not rendered again while a block is dragged.
+ * The two header rows: groups (months or years) and columns (days, weeks, months or
+ * quarters, FR-157). Its own memoised component: it only depends on the range, so the
+ * (possibly thousands of) cells are not rendered again while a block is dragged.
  */
 const TimelineHeader = memo(function TimelineHeader({
   first,
   days,
   today,
+  scale,
 }: {
   first: string;
   days: number;
   today: string;
+  scale: Scale;
 }) {
+  const w = dayWidth(scale);
+  const [top, bottom] = headerUnits(scale);
+  const range = { first, days };
   const todayIndex = daysBetween(first, today);
   return (
     <>
       <div className="plan-months" aria-hidden="true">
-        {monthSpans({ first, days }).map((m) => (
+        {unitSpans(range, top).map((m) => (
           <div
-            key={m.month}
+            key={m.start}
             className="plan-month"
-            style={{ left: m.index * DAY_WIDTH, width: m.days * DAY_WIDTH }}
+            style={{ left: m.index * w, width: m.days * w }}
           >
-            <span>{formatMonth(m.month)}</span>
+            <span>{unitLabel(m.start, top, true)}</span>
           </div>
         ))}
       </div>
       <div className="plan-days" aria-hidden="true">
-        {Array.from({ length: days }, (_, i) => {
-          const day = addDays(first, i);
+        {unitSpans(range, bottom).map((u) => {
+          const isToday = bottom === 'day' && u.start === today;
+          const hasToday =
+            bottom !== 'day' && todayIndex >= u.index && todayIndex < u.index + u.days;
+          const classes = [
+            'plan-day',
+            'plan-head-unit',
+            bottom === 'day' && isWeekend(u.start) && 'is-weekend',
+            isToday && 'is-today',
+            hasToday && 'has-today',
+          ];
           return (
             <div
-              key={day}
-              className={`plan-day${isWeekend(day) ? ' is-weekend' : ''}${i === todayIndex ? ' is-today' : ''}`}
-              title={i === todayIndex ? t.plan.today : undefined}
+              key={u.start}
+              className={classes.filter(Boolean).join(' ')}
+              style={{ left: u.index * w, width: u.days * w }}
+              title={isToday ? t.plan.today : undefined}
             >
-              {Number(day.slice(8))}
+              {unitLabel(u.start, bottom, false)}
             </div>
           );
         })}
       </div>
+    </>
+  );
+});
+
+/** A line at the start of every column on the coarse scales (the Days grid is a background). */
+const UnitLines = memo(function UnitLines({
+  first,
+  days,
+  scale,
+}: {
+  first: string;
+  days: number;
+  scale: Scale;
+}) {
+  const w = dayWidth(scale);
+  return (
+    <>
+      {unitSpans({ first, days }, headerUnits(scale)[1])
+        .slice(1)
+        .map((u) => (
+          <div key={u.start} className="plan-unit-line" style={{ left: u.index * w }} />
+        ))}
     </>
   );
 });

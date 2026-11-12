@@ -2,7 +2,7 @@
 
 |                  |                                                                                                  |
 | ---------------- | ------------------------------------------------------------------------------------------------ |
-| **Status**       | v1.0 – built (see [ImplementationPlan.md](./ImplementationPlan.md))                              |
+| **Status**       | v1.0 – built; **Update 3** (section 8) – built (see [ImplementationPlan.md](./ImplementationPlan.md)) |
 | **Builds on**    | Notes ([`../notes/PRD.md`](../notes/PRD.md)), v1 ([`../v1/PRD.md`](../v1/PRD.md)) and the MVP    |
 | **Related docs** | [ImplementationPlan.md](./ImplementationPlan.md) (plan, design, decisions taken on the way)      |
 
@@ -46,12 +46,13 @@ Plans are ordinary synced data: they work offline and appear on all devices of t
 **Non-goals (for this first version)**
 
 - A details view of an activity; descriptions, assignees, progress, colours, attachments.
+  *(Update 3: an activity now has a details view and a done state, section 8.)*
 - Hours and minutes: the smallest step is one day **[Answered]**.
 - Other kinds of links than end → start (start → start, end → end, start → end), and lag
   or lead time on a link **[Answered]**.
 - Skipping weekends or holidays: every calendar day counts.
 - Reordering the activity rows by hand (a new activity goes to the bottom; the order key is stored,
-  so this can come later), grouping, milestones, zoom levels (week / month columns).
+  so this can come later), grouping, milestones, zoom levels (week / month columns). *(Update 3: zoom levels are in, FR-157.)*
 - Public (shared) plans, links between activities and tasks, reminders for activities.
 - Printing or exporting a plan.
 
@@ -178,3 +179,59 @@ Activity = { id, planId, name, start, days, dependsOn, orderKey,
 7. On block / After block / Column changes where names are, and survives a reload.
 8. A plan made offline on one device appears on another after sync.
 9. An old app version still pulls tasks while plans exist, and gets the plans after updating.
+
+## 8. Update 3 – details view, done, scales
+
+Requested by the product owner after using the module (nine points, quoted in short):
+
+1. Dependency arrows should be **straight**: the end of a block points straight at the
+   beginning of the next one.
+2. All details of an activity go to a **separate view**, opened with a button on its row.
+3. The **Starts after** field does not work well and is not needed: remove or change it.
+4. The details show the **duration** instead of the end day.
+5. A **done** activity looks different on the timeline.
+6. The name position (**On block / After block / Column**) moves to an **options view**
+   behind a gear button.
+7. **Double-clicking** a block marks the activity done, or not done when it already is.
+8. **Undo last change** moves to the bottom of the plan.
+9. The timeline can show **days, weeks, months or years**.
+
+Requirements in this section replace the ones they name; everything else stays.
+
+### 8.1 Requirements
+
+| ID     | Requirement | Priority |
+| ------ | ----------- | -------- |
+| FR-148 | **Straight arrows** (replaces the route of FR-135). A dependency A → B is drawn as **one straight line** from the end of A to the start of B: from the bottom right corner of A's block to the top left corner of B's block (top right of A to bottom left of B when B is in a row above). The arrow head sits on B's corner and points along the line. When B starts the day after A ends, the line is vertical, as before. A broken link (FR-139) is the same line, dashed in the warning colour. **[Decision P12]** | Must |
+| FR-149 | **Details view.** Every row of the timeline has a **details button** (an icon button named "Details of ‹name›"), in a narrow column at the left that stays visible while scrolling sideways (next to the name in the Column mode). It opens the activity's own page (`/plan/‹plan›/activity/‹activity›`) with an app bar (back button to the plan, title) and the fields **Name, Start, Duration, Done**, the activity's dependencies (FR-151) and **Delete activity**. The edit bar of FR-130 is removed; selecting a block only highlights it (for the keyboard of FR-132). **[Decision P13]** | Must |
+| FR-150 | Changes on the details page are saved at once (the name on Enter or when the field is left), go through the same rules as on the timeline (the automatic shift of FR-136, the earliest start of predecessors) and show a message when refused. Delete goes back to the plan and shows the usual Undo message (FR-131). An activity that does not exist (any more) leads back to its plan. | Must |
+| FR-151 | **Starts after** (replaces the field of FR-133). The details page lists the activities this one **starts after** – its live predecessors – each with a **remove** button (removing moves nothing, as FR-138). Without predecessors the list is not shown. New dependencies are made on the timeline by dragging (FR-133). **[Decision P14]** | Must |
+| FR-152 | **Duration** (replaces the End field). The details page shows the **duration in days** (a number field, 1 – 3660) instead of the end day; the end day is shown next to it as a hint ("ends ‹day›"). Changing the duration keeps the start (as dragging the end does). | Must |
+| FR-153 | **Done.** An activity can be **done** (a new field, `done`, default not done). It is set and cleared with a switch on the details page and by FR-154; it syncs like every other field and is part of the recovery copy. Done changes nothing in the schedule. | Must |
+| FR-154 | **Double click** (or double tap) on a block toggles done. It is a timeline change, so **Undo last change** takes it back (FR-147 now also covers `done`). A double click does not move the block. | Must |
+| FR-155 | On the timeline a **done block** is drawn differently: a light (surface) fill with an accent outline instead of the solid accent fill, a ✓ before the name and the name struck through (on the block, after it and in the column). Its accessible name ends with ", done". | Must |
+| FR-156 | **Options.** The name position switch (FR-140, FR-141) moves into an **options panel** opened by a **gear button** (named "Timeline options") above the timeline. The panel opens below the button, closes with the button, Escape or a click outside, and holds the three chips as before. | Must |
+| FR-157 | **Scale.** A chip group **Days · Weeks · Months · Years** above the timeline sets how much time a column shows: one day (as before), one week, one month or one quarter of a year (with years above). Blocks, arrows, today's line and dragging work the same on every scale; a drag still moves by whole days. The grid starts at the beginning of a column unit (Monday, the 1st of a month, 1 January) and keeps spare room around the activities that fits the scale. The choice is a **device setting** like the name position, first **Days**. **[Decision P15]** | Must |
+| FR-158 | **Undo last change** (FR-147) sits **below the timeline**, at the bottom of the plan, on the left. Ctrl / ⌘ + Z keeps working. | Must |
+| FR-159 | **Older apps.** Apps from before this update keep syncing plans: the server leaves `done` out of what it sends to them (they would refuse the unknown field). Once updated, the app reads all changes again and so gets the done states it skipped. | Must |
+
+### 8.2 Decisions
+
+| ID  | Decision |
+| --- | -------- |
+| P12 | **Corner to corner.** "The end pointing straight to the beginning" is read as one straight segment between the two points where the blocks end and begin. Using the corners (not the middle of the block's ends) keeps the line off both blocks when they overlap in time less than a row's height of slope, keeps the vertical line of Update 1 for activities that follow directly, and makes the line the same on every scale. |
+| P13 | **A page, not a dialog.** "A separate view" with an app bar matches the task details on a phone and the Manage pages; it has an address, so Back works. The button is in a narrow sticky column so that it is on the row in every name mode and never hides under a block. The old edit bar goes away: having two places to edit the same fields was the clutter the request asks to remove. |
+| P14 | **Starts after becomes a list, not a picker.** The product owner did not need to *add* dependencies from a field; dragging does that. What a details page should still say is what the activity waits for, and a remove button there is the phone-friendly way to delete a link (arrows are thin targets on a touch screen). |
+| P15 | **Scales are pixel widths of a day, drags stay in days.** Days 36 px, weeks 12 px, months 4 px and years 0.6 px per day. Columns are labelled by unit (day number; the week's Monday; the month; the quarter, with the year above). Moving by whole weeks or months on the coarse scales would make exact days impossible there; the details page is the exact way. A block is never drawn narrower than 12 px, so a short activity stays visible and grabbable on the Years scale. |
+| P16 | **Done is a field of the activity** (`done: boolean`) and not a progress percentage: the request is a yes / no, and a boolean merges per field like every other one. A double click is an undoable timeline change, because a double click on a dragging surface is easy to make by accident. |
+
+### 8.3 Acceptance (tested)
+
+1. An arrow is one straight line from the end of its source block to the start of its target block.
+2. The details button of a row opens the details page; it renames, sets the start and the duration, marks done, lists and removes a predecessor, and deletes with Undo.
+3. There is no Starts after picker and no End field.
+4. A double click marks an activity done (drawn differently), a second one clears it; Undo last change takes a double click back.
+5. The gear opens the options with the name chips; the choice still survives a reload.
+6. Days / Weeks / Months / Years change the column width and header; the choice survives a reload; dragging works on the Weeks scale.
+7. Undo last change is below the timeline.
+8. An app without the `done` flag gets activity changes without `done`.

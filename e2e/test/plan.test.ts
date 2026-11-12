@@ -36,8 +36,17 @@ const modules = (page: Page) => page.getByRole('group', { name: 'Modules' });
 const heading = (page: Page, name: string) => page.getByRole('heading', { level: 2, name });
 const block = (page: Page, name: string) => page.locator(`.plan-block[aria-label^="${name}, "]`);
 const arrows = (page: Page) => page.locator('.plan-arrow');
-const chip = (page: Page, name: string) =>
-  page.getByRole('group', { name: 'Activity names' }).getByRole('button', { name, exact: true });
+const optionsButton = (page: Page) => page.getByRole('button', { name: 'Timeline options' });
+/** A name chip: in the options panel behind the gear (Update 3, FR-156), opened if needed. */
+async function chip(page: Page, name: string) {
+  const group = page.getByRole('group', { name: 'Activity names' });
+  if (!(await group.isVisible())) await optionsButton(page).click();
+  return group.getByRole('button', { name, exact: true });
+}
+const scaleChip = (page: Page, name: string) =>
+  page.getByRole('group', { name: 'Timeline scale' }).getByRole('button', { name, exact: true });
+const detailsLink = (page: Page, name: string) =>
+  page.getByRole('link', { name: `Details of ${name}` });
 
 /** Today on the page's own calendar, and days counted from it. */
 const today = (page: Page) =>
@@ -322,30 +331,75 @@ describe('activities on the timeline (FR-123 – FR-131)', () => {
     await waitDays(page, 'Design', plus(t0, 1), plus(t0, 3));
   });
 
-  it('the edit bar renames, sets dates and deletes with Undo; the keyboard moves a block', async () => {
-    const { page, t0 } = await withPlan('bar');
+  it('the details view renames, sets start and duration and deletes with Undo (FR-149 – FR-152)', async () => {
+    const { page, t0 } = await withPlan('details');
     await addActivity(page, 'Design');
+    // The old edit bar is gone: a click only selects.
     await block(page, 'Design').click();
-    const bar = page.getByRole('group', { name: 'Selected activity' });
-    await bar.getByLabel('Activity name').fill('Sketch');
-    await bar.getByLabel('Activity name').press('Enter');
-    await block(page, 'Sketch').waitFor();
+    expect(await page.getByRole('group', { name: 'Selected activity' }).count()).toBe(0);
 
-    await bar.getByLabel('Start', { exact: true }).fill(plus(t0, 5));
-    await waitDays(page, 'Sketch', plus(t0, 5), plus(t0, 7));
-    await bar.getByLabel('End').fill(plus(t0, 5));
+    await detailsLink(page, 'Design').click();
+    await page.waitForURL(/\/plan\/[^/]+\/activity\/[^/]+$/);
+    const view = page.getByRole('region', { name: 'Activity details' });
+    await view.getByLabel('Activity name').fill('Sketch');
+    await view.getByLabel('Activity name').press('Enter');
+    await heading(page, 'Sketch').waitFor();
+    expect(await view.getByLabel('End', { exact: true }).count()).toBe(0); // FR-152
+    expect(await view.getByLabel('Starts after').count()).toBe(0); // no picker (FR-151)
+
+    await view.getByLabel('Start', { exact: true }).fill(plus(t0, 5));
+    await view.getByText(`ends`).waitFor();
+    await view.getByLabel('Duration (days)').fill('1');
+    await view.getByLabel('Duration (days)').press('Enter');
+    await page.getByRole('link', { name: 'Back to Launch' }).click();
     await waitDays(page, 'Sketch', plus(t0, 5), plus(t0, 5));
 
+    // The keyboard still moves and resizes a block.
     await block(page, 'Sketch').focus();
     await page.keyboard.press('ArrowRight');
     await waitDays(page, 'Sketch', plus(t0, 6), plus(t0, 6));
     await page.keyboard.press('Shift+ArrowRight');
     await waitDays(page, 'Sketch', plus(t0, 6), plus(t0, 7));
 
-    await bar.getByRole('button', { name: 'Delete activity' }).click();
+    await detailsLink(page, 'Sketch').click();
+    await page.getByRole('button', { name: 'Delete activity' }).click();
+    await heading(page, 'Launch').waitFor();
     await block(page, 'Sketch').waitFor({ state: 'detached' });
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await waitDays(page, 'Sketch', plus(t0, 6), plus(t0, 7));
+  });
+
+  it('a double click marks done and draws it differently; again clears it; Undo (below the timeline) takes it back (FR-153 – FR-155, FR-158)', async () => {
+    const { page, t0 } = await withPlan('done');
+    await addActivity(page, 'Design');
+    // Undo last change is at the bottom of the plan (FR-158). Sign-ups are limited per hour,
+    // so this shares the user of this test.
+    const timeline = (await page.locator('.plan-timeline').boundingBox())!;
+    expect((await undo(page).boundingBox())!.y).toBeGreaterThanOrEqual(
+      timeline.y + timeline.height,
+    );
+    await block(page, 'Design').dblclick();
+    await block(page, 'Design').and(page.locator('[aria-label$=", done"]')).waitFor();
+    expect(await page.locator('.plan-bar.is-done').count()).toBe(1);
+    expect(await days(page, 'Design')).toEqual([t0, plus(t0, 2)]); // did not move
+
+    await undo(page).click();
+    await page.locator('.plan-bar.is-done').waitFor({ state: 'detached' });
+    await block(page, 'Design').dblclick();
+    await page.locator('.plan-bar.is-done').waitFor();
+    await block(page, 'Design').dblclick();
+    await page.locator('.plan-bar.is-done').waitFor({ state: 'detached' });
+
+    // The details switch, and it survives a reload.
+    await detailsLink(page, 'Design').click();
+    const done = page.getByRole('switch', { name: 'Done' });
+    await done.click(); // saved, then shown: not instant, so not `check()`
+    await page.getByRole('switch', { name: 'Done', checked: true }).waitFor();
+    await waitSaved(page);
+    await page.reload();
+    await expect(page.getByRole('switch', { name: 'Done' }).isChecked()).resolves.toBe(true);
+    await page.getByRole('link', { name: 'Back to Launch' }).click();
+    await page.locator('.plan-bar.is-done').waitFor();
   });
 });
 
@@ -383,7 +437,7 @@ describe('dependencies (FR-133 – FR-138) and undo (FR-147)', () => {
     expect(await days(page, 'Test')).toEqual([plus(t0, 10), plus(t0, 12)]);
   });
 
-  it('an activity that follows directly is joined by one straight vertical line', async () => {
+  it('an arrow is one straight line from the end of a block to the start of the next (FR-148)', async () => {
     const { page } = await withPlan('straight');
     await addActivity(page, 'Design');
     await addActivity(page, 'Build');
@@ -391,18 +445,20 @@ describe('dependencies (FR-133 – FR-138) and undo (FR-147)', () => {
     await link(page, 'Design', 'Build');
     const line = (from: string, to: string) =>
       arrow(page, from, to).locator('.plan-arrow-line').getAttribute('d');
-    expect(await line('Design', 'Build')).toMatch(/^M [\d.]+ [\d.]+ V [\d.]+$/);
+    const straight = /^M [\d.]+ [\d.]+ L [\d.]+ [\d.]+$/;
+    expect(await line('Design', 'Build')).toMatch(straight);
 
-    // With a gap it runs along its own row, then straight down into the start of the block.
+    // With a gap: still one straight line, from Design's end corner to Test's start corner.
     await drag(page, block(page, 'Test'), { dx: 3 * DAY });
     await link(page, 'Design', 'Test');
-    expect(await line('Design', 'Test')).toMatch(/^M [\d.]+ [\d.]+ H [\d.]+ V [\d.]+$/);
+    expect(await line('Design', 'Test')).toMatch(straight);
     const d = (await block(page, 'Design').boundingBox())!;
     const t = (await block(page, 'Test').boundingBox())!;
     const box = (await arrow(page, 'Design', 'Test').locator('.plan-arrow-line').boundingBox())!;
     expect(Math.abs(box.x - (d.x + d.width))).toBeLessThanOrEqual(2);
     expect(Math.abs(box.x + box.width - t.x)).toBeLessThanOrEqual(2);
-    expect(box.y + box.height).toBeLessThanOrEqual(t.y + 2);
+    expect(Math.abs(box.y - (d.y + d.height))).toBeLessThanOrEqual(2);
+    expect(Math.abs(box.y + box.height - t.y)).toBeLessThanOrEqual(2);
   });
 
   it('Undo last change reverts a drag with what it pushed, a link and a removed link', async () => {
@@ -439,7 +495,7 @@ describe('dependencies (FR-133 – FR-138) and undo (FR-147)', () => {
     await waitDays(page, 'Test', plus(t0, 2), plus(t0, 4));
   });
 
-  it('refuses a loop; the edit bar links without dragging', async () => {
+  it('refuses a loop; the details view lists what an activity starts after and removes it', async () => {
     const { page, t0 } = await withPlan('loop');
     await addActivity(page, 'Design');
     await addActivity(page, 'Build');
@@ -451,13 +507,22 @@ describe('dependencies (FR-133 – FR-138) and undo (FR-147)', () => {
     expect(await arrows(page).count()).toBe(1);
     expect(await days(page, 'Build')).toEqual([plus(t0, 3), plus(t0, 5)]);
 
-    await block(page, 'Test').click();
-    const after = page.getByRole('group', { name: 'Selected activity' }).getByLabel('Starts after');
-    await after.selectOption({ label: 'Build' });
-    await arrow(page, 'Build', 'Test').waitFor({ state: 'attached' });
-    // Activities that would close a loop, or are linked already, are not offered.
-    await block(page, 'Design').click();
-    expect(await after.locator('option').allTextContents()).toEqual(['Add…']);
+    // Nothing to list for an activity without predecessors.
+    await detailsLink(page, 'Test').click();
+    expect(await page.getByRole('list', { name: 'Starts after' }).count()).toBe(0);
+    await page.getByRole('link', { name: 'Back to Launch' }).click();
+
+    await detailsLink(page, 'Build').click();
+    const after = page.getByRole('list', { name: 'Starts after' });
+    await after.waitFor();
+    expect(await after.getByRole('listitem').allTextContents()).toEqual([
+      expect.stringContaining('Design'),
+    ]);
+    await after.getByRole('button', { name: 'Remove link from Design' }).click();
+    await after.waitFor({ state: 'detached' });
+    await page.getByRole('link', { name: 'Back to Launch' }).click();
+    await block(page, 'Build').waitFor();
+    expect(await arrows(page).count()).toBe(0);
   });
 });
 
@@ -467,12 +532,12 @@ describe('where the name is shown (FR-140, FR-141)', () => {
     await addActivity(page, 'Design');
     const timeline = page.locator('.plan-timeline');
 
-    await expect(chip(page, 'On block').getAttribute('aria-pressed')).resolves.toBe('true');
+    await expect((await chip(page, 'On block')).getAttribute('aria-pressed')).resolves.toBe('true');
     expect(await block(page, 'Design').locator('.plan-block-name').textContent()).toBe('Design');
     expect(await page.locator('.plan-after-name').count()).toBe(0);
     expect(await page.locator('.plan-name-col').count()).toBe(0);
 
-    await chip(page, 'After block').click();
+    await (await chip(page, 'After block')).click();
     await expect(timeline.getAttribute('data-names')).resolves.toBe('after');
     expect(await page.locator('.plan-after-name').textContent()).toBe('Design');
     expect(await block(page, 'Design').locator('.plan-block-name').count()).toBe(0);
@@ -480,7 +545,7 @@ describe('where the name is shown (FR-140, FR-141)', () => {
     const label = (await page.locator('.plan-after-name').boundingBox())!;
     expect(label.x).toBeGreaterThanOrEqual(b.x + b.width);
 
-    await chip(page, 'Column').click();
+    await (await chip(page, 'Column')).click();
     const col = page.locator('.plan-name-col');
     await col.getByRole('button', { name: 'Design' }).waitFor();
     expect(await page.locator('.plan-after-name').count()).toBe(0);
@@ -489,8 +554,44 @@ describe('where the name is shown (FR-140, FR-141)', () => {
 
     await page.reload();
     await block(page, 'Design').waitFor();
-    await expect(chip(page, 'Column').getAttribute('aria-pressed')).resolves.toBe('true');
+    await expect((await chip(page, 'Column')).getAttribute('aria-pressed')).resolves.toBe('true');
     await page.locator('.plan-name-col').getByRole('button', { name: 'Design' }).waitFor();
+  });
+});
+
+describe('options and scale (FR-156, FR-157)', () => {
+  it('the gear opens the options; Days / Weeks / Months / Years change the columns; the choice survives a reload; drags work', async () => {
+    const { page, t0 } = await withPlan('scale');
+    await addActivity(page, 'Design'); // 3 days
+
+    // The gear opens the options (FR-156); Escape closes them.
+    const group = page.getByRole('group', { name: 'Activity names' });
+    expect(await group.isVisible()).toBe(false);
+    await optionsButton(page).click();
+    await expect(optionsButton(page).getAttribute('aria-expanded')).resolves.toBe('true');
+    await group.waitFor();
+    await page.keyboard.press('Escape');
+    await group.waitFor({ state: 'hidden' });
+
+    await expect(scaleChip(page, 'Days').getAttribute('aria-pressed')).resolves.toBe('true');
+    const width = async () => Math.round((await block(page, 'Design').boundingBox())!.width);
+    expect(await width()).toBe(3 * DAY);
+
+    await scaleChip(page, 'Weeks').click();
+    await expect(page.locator('.plan-timeline').getAttribute('data-scale')).resolves.toBe('week');
+    expect(await width()).toBe(3 * 12);
+    // A drag of a week's width moves the activity by 7 days.
+    await drag(page, block(page, 'Design'), { dx: 7 * 12 });
+    await waitDays(page, 'Design', plus(t0, 7), plus(t0, 9));
+
+    await scaleChip(page, 'Months').click();
+    expect(await width()).toBe(12); // never narrower than 12 px
+    await scaleChip(page, 'Years').click();
+    await page.locator('.plan-head-unit', { hasText: 'Q1' }).first().waitFor();
+
+    await page.reload();
+    await block(page, 'Design').waitFor();
+    await expect(scaleChip(page, 'Years').getAttribute('aria-pressed')).resolves.toBe('true');
   });
 });
 

@@ -51,11 +51,12 @@ export function createPlanChanges(deps: {
   }
 
   const read = async (): Promise<ActivityState[]> =>
-    (await getActivities(db, planId)).map(({ id, start, days, dependsOn }) => ({
+    (await getActivities(db, planId)).map(({ id, start, days, dependsOn, done }) => ({
       id,
       start,
       days,
       dependsOn,
+      done,
     }));
 
   return {

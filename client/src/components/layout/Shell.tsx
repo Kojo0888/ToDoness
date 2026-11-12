@@ -12,6 +12,7 @@ import { ListPage } from '../lists/ListPage';
 import { NotesPage } from '../notes/NotesPage';
 import { PublicNotesPage } from '../notes/PublicNotesPage';
 import { ManagePlans } from '../plan/ManagePlans';
+import { ActivityPage } from '../plan/ActivityPage';
 import { PlanPage } from '../plan/PlanPage';
 import { PlansHome } from '../plan/PlansHome';
 import { PublicListPage } from '../public/PublicListPage';
@@ -111,6 +112,11 @@ export function Shell({ user }: { user: StoredUser }) {
               </Route>
               <Route path="/notes">
                 <NotesPage key="mine" />
+              </Route>
+              <Route path="/plan/:planId/activity/:activityId">
+                {(p) => (
+                  <ActivityPage key={p.activityId} planId={p.planId} activityId={p.activityId} />
+                )}
               </Route>
               <Route path="/plan/:planId">
                 {(p) => <PlanPage key={p.planId} planId={p.planId} />}

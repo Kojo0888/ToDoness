@@ -116,6 +116,8 @@ const activityFields = {
   /** The activities that must end before this one starts (decision P3). */
   dependsOn: z.array(idSchema).max(ACTIVITY_LINKS_MAX),
   orderKey: orderKeySchema,
+  /** Finished (docs/plan/PRD.md FR-153). Changes nothing in the schedule. */
+  done: z.boolean(),
 };
 
 const rowMeta = {
@@ -213,6 +215,7 @@ export const activityCreatePatchSchema = z.strictObject({
   ...activityFields,
   days: activityFields.days.optional(),
   dependsOn: activityFields.dependsOn.optional(),
+  done: activityFields.done.optional(),
 });
 export const activityUpdatePatchSchema = z
   .strictObject(activityFields)

@@ -46,6 +46,7 @@ export interface ActivityEdit {
   name?: string;
   start?: string;
   days?: number;
+  done?: boolean;
 }
 
 /** How long a new activity lasts (docs/plan/PRD.md FR-124). */
@@ -531,6 +532,7 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
           changes.name = patch.name;
         }
         if (patch.days !== undefined && patch.days !== activity.days) changes.days = patch.days;
+        if (patch.done !== undefined && patch.done !== activity.done) changes.done = patch.done;
         if (patch.start !== undefined) {
           // Not before its predecessors have ended (days compare as text).
           const earliest = earliestStart(await activitiesOfPlan(activity.planId), id);
@@ -539,7 +541,7 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         }
         if (Object.keys(changes).length === 0) return activity;
         const saved = await commit<Activity>('activity', 'update', id, changes);
-        // A rename must not move anything (and has no undo point): only dates do.
+        // A rename or done must not move anything: only dates do.
         if (!('start' in changes) && !('days' in changes)) return saved;
         await reschedule(activity.planId);
         return liveActivity(id);
@@ -617,6 +619,7 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
           const patch: Record<string, unknown> = {};
           if (before.start !== undefined && now.start === after.start) patch.start = before.start;
           if (before.days !== undefined && now.days === after.days) patch.days = before.days;
+          if (before.done !== undefined && now.done === after.done) patch.done = before.done;
           if (
             before.dependsOn !== undefined &&
             after.dependsOn !== undefined &&
@@ -717,6 +720,7 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
             start: a.start,
             days: a.days,
             dependsOn: a.dependsOn,
+            done: a.done ?? false, // missing in a copy kept before done activities
             orderKey: a.orderKey,
           });
         }
