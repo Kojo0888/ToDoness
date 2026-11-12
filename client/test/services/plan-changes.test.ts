@@ -132,4 +132,50 @@ describe('plan changes', () => {
     await s.changes.undo();
     expect((await s.get(a.id)).days).toBe(2);
   });
+
+  describe('auto sort (docs/plan-sort FR-193)', () => {
+    it('sorts after a change, in the same undo step', async () => {
+      const s = await setup();
+      const a = await s.add('A', 0, 2);
+      await s.add('B', 5, 1);
+      let on = true;
+      const changes = createPlanChanges({
+        db: s.db,
+        repo: s.repo,
+        planId: s.plan.id,
+        autoSort: () => on,
+      });
+      const names = async () => (await getActivities(s.db, s.plan.id)).map((x) => x.name);
+      expect(await names()).toEqual(['A', 'B']);
+
+      // A moves behind B: the rows follow by themselves.
+      await changes.run(() => s.repo.updateActivity(a.id, { start: addDays(TODAY, 9) }));
+      expect(await names()).toEqual(['B', 'A']);
+
+      await changes.undo(); // one step takes back the move and the new order
+      expect(await names()).toEqual(['A', 'B']);
+      expect((await s.get(a.id)).start).toBe(TODAY);
+
+      on = false;
+      await changes.run(() => s.repo.updateActivity(a.id, { start: addDays(TODAY, 9) }));
+      expect(await names()).toEqual(['A', 'B']); // off: no sorting
+    });
+
+    it('does not sort after a failed change or after undo', async () => {
+      const s = await setup();
+      const a = await s.add('A', 0, 2);
+      await s.add('B', 5, 1);
+      const changes = createPlanChanges({
+        db: s.db,
+        repo: s.repo,
+        planId: s.plan.id,
+        autoSort: () => true,
+      });
+      await changes.run(() => s.repo.updateActivity(a.id, { start: addDays(TODAY, 9) }));
+      const keys = (await getActivities(s.db, s.plan.id)).map((x) => x.orderKey);
+      await changes.run(() => Promise.reject(new Error('boom')));
+      expect((await getActivities(s.db, s.plan.id)).map((x) => x.orderKey)).toEqual(keys);
+      expect(changes.getState().error).toBe('failed');
+    });
+  });
 });

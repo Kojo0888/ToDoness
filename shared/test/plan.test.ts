@@ -17,6 +17,7 @@ import {
   liveLinks,
   localDay,
   schedulePlan,
+  sortedActivityIds,
   wouldLoop,
   type Scheduled,
 } from '../src/plan';
@@ -440,5 +441,100 @@ describe('ignoredLinks', () => {
       { from: 'a', to: 'b' },
     ]);
     expect(ignoredLinks([act('a', 1, 1), act('b', 2, 1, ['a'])])).toEqual([]);
+  });
+});
+
+describe('sortedActivityIds (docs/plan-sort FR-189 – FR-191)', () => {
+  const inGroup = (a: Scheduled, parentId: string): Scheduled => ({ ...a, parentId });
+
+  it('sorts by start day; same-day activities keep their row order', () => {
+    const rows = [act('c', 9, 1), act('a', 1, 1), act('b', 5, 1), act('d', 5, 2)];
+    expect(sortedActivityIds(rows)).toEqual(['a', 'b', 'd', 'c']);
+    expect(sortedActivityIds([act('x', 5, 1), act('y', 5, 1), act('z', 1, 1)])).toEqual([
+      'z',
+      'x',
+      'y',
+    ]);
+  });
+
+  it('ignores deleted activities', () => {
+    const rows = [act('b', 5, 1), { ...act('gone', 1, 1), deletedAt: 1 }, act('a', 2, 1)];
+    expect(sortedActivityIds(rows)).toEqual(['a', 'b']);
+  });
+
+  it('puts a predecessor above its successor even when the dates say otherwise', () => {
+    // b is linked after a, but still starts earlier (a broken link).
+    const rows = [act('b', 1, 1, ['a']), act('a', 5, 1)];
+    expect(sortedActivityIds(rows)).toEqual(['a', 'b']);
+    // also through a third activity, and without disturbing the others
+    const chain = [act('c', 1, 1, ['b']), act('b', 2, 1, ['a']), act('a', 9, 1), act('x', 3, 1)];
+    expect(sortedActivityIds(chain)).toEqual(['x', 'a', 'b', 'c']);
+  });
+
+  it('sorts the top level first and then the children inside every group', () => {
+    const rows = [
+      act('late', 20, 1),
+      act('g2', 1, 1),
+      inGroup(act('g2b', 12, 1), 'g2'),
+      inGroup(act('g2a', 10, 1), 'g2'),
+      act('g1', 1, 1),
+      inGroup(act('g1b', 6, 1), 'g1'),
+      inGroup(act('g1a', 5, 1), 'g1'),
+      act('solo', 8, 1),
+    ];
+    // g1 starts day 5, solo day 8, g2 day 10, late day 20; children stay under their group.
+    expect(sortedActivityIds(rows)).toEqual([
+      'g1',
+      'g1a',
+      'g1b',
+      'solo',
+      'g2',
+      'g2a',
+      'g2b',
+      'late',
+    ]);
+  });
+
+  it('sorts nested groups at every depth', () => {
+    const rows = [
+      act('top', 1, 1),
+      inGroup(act('mid', 1, 1), 'top'),
+      inGroup(act('m2', 9, 1), 'top'),
+      inGroup(act('deep2', 7, 1), 'mid'),
+      inGroup(act('deep1', 3, 1), 'mid'),
+    ];
+    expect(sortedActivityIds(rows)).toEqual(['top', 'mid', 'deep1', 'deep2', 'm2']);
+  });
+
+  it('treats a link between activities of different groups as a link of their groups', () => {
+    // inside g2, y must come after x which is in g1; g2 starts earlier than g1 by dates
+    const rows = [
+      act('g2', 1, 1),
+      inGroup(act('y', 1, 1, ['x']), 'g2'),
+      act('g1', 1, 1),
+      inGroup(act('x', 4, 1), 'g1'),
+    ];
+    const order = sortedActivityIds(rows);
+    expect(order.indexOf('g1')).toBeLessThan(order.indexOf('g2'));
+  });
+
+  it('does not fail on a loop between groups: it falls back to the dates', () => {
+    const rows = [
+      act('g1', 1, 1),
+      inGroup(act('a1', 1, 1, []), 'g1'),
+      inGroup(act('a2', 2, 1, ['b1']), 'g1'),
+      act('g2', 1, 1),
+      inGroup(act('b1', 3, 1, ['a1']), 'g2'),
+      inGroup(act('b2', 4, 1), 'g2'),
+    ];
+    // a1 → b1 and b1 → a2 make g1 → g2 → g1 at group level
+    expect(sortedActivityIds(rows).sort()).toEqual(['a1', 'a2', 'b1', 'b2', 'g1', 'g2']);
+  });
+
+  it('is the same when run again on its own result', () => {
+    const rows = [act('c', 9, 1), act('a', 1, 1, ['c']), act('b', 5, 1)];
+    const first = sortedActivityIds(rows);
+    const again = sortedActivityIds(first.map((id) => rows.find((r) => r.id === id)!));
+    expect(again).toEqual(first);
   });
 });

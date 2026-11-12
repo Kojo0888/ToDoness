@@ -409,3 +409,67 @@ export function ignoredLinks(
   }
   return ignored;
 }
+
+/**
+ * The row order that sorts a plan (docs/plan-sort FR-189 – FR-191): the ids of the live
+ * activities, top level first, every group followed by its own children, each set of siblings
+ * sorted by start day (a group by its first activity). Ties keep the present row order. An
+ * activity never comes before one it starts after, as far as they are siblings: a link
+ * between leaves counts for the siblings that contain them (decision P24). Siblings that wait
+ * for each other through groups (a loop that only exists between the groups) are broken at
+ * the earliest start. Pure; `activities` are in their present row order.
+ */
+export function sortedActivityIds(
+  activities: readonly Scheduled[],
+  links: readonly Link[] = liveLinks(activities),
+): string[] {
+  const tree = planTree(activities);
+  const live = activities.filter((a) => a.deletedAt === null);
+  const row = new Map(live.map((a, i) => [a.id, i]));
+  const spans = spansOf(activities, tree);
+  const leafNext = leafGraph(links, tree);
+
+  const orderSiblings = (ids: readonly string[]): string[] => {
+    if (ids.length < 2) return [...ids];
+    const owner = new Map<string, string>(); // leaf -> the sibling it is in
+    for (const id of ids) for (const leaf of leavesOf(tree, id)) owner.set(leaf, id);
+    // preds.get(y) = the siblings that have to come before y
+    const preds = new Map<string, Set<string>>(ids.map((id) => [id, new Set()]));
+    for (const x of ids) {
+      const seen = new Set<string>();
+      const todo = leavesOf(tree, x);
+      while (todo.length > 0) {
+        const leaf = todo.pop()!;
+        for (const next of leafNext.get(leaf) ?? []) {
+          if (seen.has(next)) continue;
+          seen.add(next);
+          todo.push(next);
+          const y = owner.get(next);
+          if (y !== undefined && y !== x) preds.get(y)!.add(x);
+        }
+      }
+    }
+    const better = (a: string, b: string) =>
+      dayNumber(spans.get(a)!.start) - dayNumber(spans.get(b)!.start) || row.get(a)! - row.get(b)!;
+    const remaining = new Set(ids);
+    const result: string[] = [];
+    while (remaining.size > 0) {
+      const all = [...remaining];
+      const ready = all.filter((id) => [...preds.get(id)!].every((p) => !remaining.has(p)));
+      const pick = (ready.length > 0 ? ready : all).sort(better)[0]!;
+      remaining.delete(pick);
+      result.push(pick);
+    }
+    return result;
+  };
+
+  const out: string[] = [];
+  const visit = (ids: readonly string[]) => {
+    for (const id of orderSiblings(ids)) {
+      out.push(id);
+      visit(tree.children.get(id) ?? []);
+    }
+  };
+  visit(live.filter((a) => !tree.parent.has(a.id)).map((a) => a.id));
+  return out;
+}

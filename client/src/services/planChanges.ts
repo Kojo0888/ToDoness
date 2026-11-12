@@ -44,8 +44,10 @@ export function createPlanChanges(deps: {
   db: TodonessDB;
   repo: Repo;
   planId: string;
+  /** Asked after every successful change: sort the rows too (docs/plan-sort FR-193). */
+  autoSort?: () => boolean;
 }): PlanChanges {
-  const { db, repo, planId } = deps;
+  const { db, repo, planId, autoSort } = deps;
   const inOrder = createSerialQueue();
   const listeners = new Set<() => void>();
   let state: PlanChangesState = { undo: null, error: null };
@@ -56,14 +58,17 @@ export function createPlanChanges(deps: {
   }
 
   const read = async (): Promise<ActivityState[]> =>
-    (await getActivities(db, planId)).map(({ id, start, days, dependsOn, done, parentId }) => ({
-      id,
-      start,
-      days,
-      dependsOn,
-      done,
-      parentId,
-    }));
+    (await getActivities(db, planId)).map(
+      ({ id, start, days, dependsOn, done, parentId, orderKey }) => ({
+        id,
+        start,
+        days,
+        dependsOn,
+        done,
+        parentId,
+        orderKey,
+      }),
+    );
 
   return {
     run: (change) =>
@@ -71,6 +76,11 @@ export function createPlanChanges(deps: {
         try {
           const before = await read();
           const result = await change();
+          if (autoSort?.()) {
+            // Part of the same undo step. The change itself worked, so a failure here (the
+            // plan was deleted meanwhile) is not reported as its failure.
+            await repo.sortActivities(planId).catch(() => false);
+          }
           const did = diffActivities(before, await read());
           set(did.length > 0 ? { undo: did, error: null } : { error: null });
           return result;

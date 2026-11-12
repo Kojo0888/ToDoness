@@ -1866,6 +1866,12 @@ h2.nav-heading {
   min-height: 44px;
 }
 
+.plan-options-sort {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 .plan-options-label {
   color: var(--muted);
   font-size: 0.8rem;
