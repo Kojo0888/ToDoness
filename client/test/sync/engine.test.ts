@@ -156,12 +156,12 @@ describe('pull', () => {
     expect(await db.todos.get(todo.entityId as string)).toMatchObject({ title: 'From server' });
     expect(await db.getMeta('lastServerSeq')).toBe(todo.serverSeq);
     expect(f.calls[0]!.url).toBe(
-      '/api/sync/pull?since=0&limit=500&reminders=list&lists=modules&plans=1',
+      '/api/sync/pull?since=0&limit=500&reminders=list&lists=modules&plans=1&activities=done',
     );
 
     await engine.pull();
     expect(f.calls[1]!.url).toBe(
-      `/api/sync/pull?since=${todo.serverSeq}&limit=500&reminders=list&lists=modules&plans=1`,
+      `/api/sync/pull?since=${todo.serverSeq}&limit=500&reminders=list&lists=modules&plans=1&activities=done`,
     );
   });
 

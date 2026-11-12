@@ -339,3 +339,30 @@ describe('migration 008 (plans)', () => {
     expect((db.prepare('SELECT COUNT(*) n FROM activities').get() as { n: number }).n).toBe(0);
   });
 });
+
+describe('migration 009 (done activities)', () => {
+  const upTo = (version: number) => {
+    const dir = mkdtempSync(join(tmpdir(), 'todoness-mig-'));
+    for (const f of readdirSync(MIGRATIONS_DIR)) {
+      if (Number(f.slice(0, 3)) <= version) copyFileSync(join(MIGRATIONS_DIR, f), join(dir, f));
+    }
+    return dir;
+  };
+
+  it('adds done (0 for existing activities) and accepts only 0 and 1', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, upTo(8));
+    db.exec(`INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
+      INSERT INTO plans (id, user_id, name, order_key, created_at, updated_at) VALUES ('p1','u1','P','a0',1,1);
+      INSERT INTO activities (id, user_id, plan_id, name, start_day, order_key, created_at, updated_at)
+        VALUES ('a1','u1','p1','A','2026-03-02','a0',1,1);`);
+    expect(migrate(db, upTo(9))).toBe(1);
+    expect(db.prepare("SELECT name, done FROM activities WHERE id = 'a1'").get()).toEqual({
+      name: 'A',
+      done: 0,
+    });
+    db.exec("UPDATE activities SET done = 1 WHERE id = 'a1'");
+    expect(() => db.exec("UPDATE activities SET done = 2 WHERE id = 'a1'")).toThrow();
+  });
+});

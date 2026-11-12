@@ -2,8 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { diffActivities } from '../../src/lib/planUndo';
 
-const a = { id: 'a', start: '2026-03-01', days: 2, dependsOn: [] as string[] };
-const b = { id: 'b', start: '2026-03-03', days: 3, dependsOn: ['a'] };
+const a = { id: 'a', start: '2026-03-01', days: 2, dependsOn: [] as string[], done: false };
+const b = { id: 'b', start: '2026-03-03', days: 3, dependsOn: ['a'], done: false };
 
 describe('diffActivities', () => {
   it('is empty when nothing changed', () => {
@@ -26,7 +26,13 @@ describe('diffActivities', () => {
   });
 
   it('ignores activities that were added or went away', () => {
-    const c = { id: 'c', start: '2026-03-09', days: 1, dependsOn: [] };
+    const c = { id: 'c', start: '2026-03-09', days: 1, dependsOn: [], done: false };
     expect(diffActivities([a, b], [a, c])).toEqual([]);
+  });
+
+  it('covers done (a double click, PRD FR-154)', () => {
+    expect(diffActivities([a, b], [{ ...a, done: true }, b])).toEqual([
+      { id: 'a', before: { done: false }, after: { done: true } },
+    ]);
   });
 });

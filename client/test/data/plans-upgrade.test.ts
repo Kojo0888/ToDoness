@@ -38,3 +38,35 @@ describe('local database version 6 (Plan module, docs/plan)', () => {
     db.close();
   });
 });
+
+describe('local database version 8 (done activities, docs/plan Update 3)', () => {
+  it('marks stored activities not done and resets the pull cursor (FR-159)', async () => {
+    const name = `upgrade8-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const old = new Dexie(name);
+    old.version(7).stores({
+      lists: 'id, orderKey',
+      todos: 'id, listId, [listId+orderKey]',
+      notes: 'id, orderKey',
+      outbox: 'opId, hlc, entityId',
+      deadLetter: 'opId, failedAt',
+      meta: 'key',
+      notified: 'key',
+      publicOutbox: 'opId, hlc, targetId',
+      publicCache: 'key',
+      plans: 'id, orderKey',
+      activities: 'id, planId, [planId+orderKey]',
+    });
+    await old.table('activities').put({ id: 'a1', planId: 'p1', orderKey: 'a0', name: 'A' });
+    await old.table('meta').bulkPut([
+      { key: 'lastServerSeq', value: 42 },
+      { key: 'clientId', value: 'abcd' },
+    ]);
+    old.close();
+
+    const db = new TodonessDB(name);
+    expect(await db.activities.get('a1')).toMatchObject({ name: 'A', done: false });
+    expect(await db.getMeta('lastServerSeq')).toBeUndefined();
+    expect(await db.getMeta('clientId')).toBe('abcd');
+    db.close();
+  });
+});
