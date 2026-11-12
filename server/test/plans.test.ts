@@ -265,7 +265,13 @@ describe('activity groups (docs/plan/PRD.md FR-174, FR-188)', () => {
         'activity',
         'create',
         id,
-        { planId: c.planId, name: 'Child', start: '2026-03-01', orderKey: 'a2', parentId: c.designId },
+        {
+          planId: c.planId,
+          name: 'Child',
+          start: '2026-03-01',
+          orderKey: 'a2',
+          parentId: c.designId,
+        },
         hlcAt(11),
       ),
     ]);

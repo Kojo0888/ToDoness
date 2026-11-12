@@ -132,7 +132,7 @@ describe('activity groups', () => {
     // The middle of Forms onto Pages (another row): a new group with both.
     await drag(page, block(page, 'Forms'), { onto: block(page, 'Pages') });
     await groupHead(page, 'Pages & Forms').waitFor();
-    expect(await rowNames(page)).toEqual(['Pages & Forms', 'Pages', 'Forms', 'Tests']);
+    await expect.poll(() => rowNames(page)).toEqual(['Pages & Forms', 'Pages', 'Forms', 'Tests']);
     // The group covers its children (FR-175).
     await waitGroupDays(page, 'Pages & Forms', t0, plus(t0, 5));
     const box = (await groupBox(page, 'Pages & Forms').boundingBox())!;
@@ -147,14 +147,14 @@ describe('activity groups', () => {
     // Undo last change takes the grouping back, with the group it made (FR-187).
     await undo(page).click();
     await groupHead(page, 'Pages & Forms').waitFor({ state: 'detached' });
-    expect(await rowNames(page)).toEqual(['Pages', 'Forms', 'Tests']);
+    await expect.poll(() => rowNames(page)).toEqual(['Pages', 'Forms', 'Tests']);
     await drag(page, block(page, 'Forms'), { onto: block(page, 'Pages') });
     await groupHead(page, 'Pages & Forms').waitFor();
 
     // Tests onto the group's box: it joins as the last child.
     await drag(page, block(page, 'Tests'), { onto: groupHead(page, 'Pages & Forms') });
     await page.waitForFunction(
-      () => document.querySelectorAll('.plan-group-box .plan-bar').length === 3,
+      () => document.querySelectorAll('.plan-bar[data-parent-id]').length === 3,
     );
     await waitGroupDays(page, 'Pages & Forms', t0, plus(t0, 8));
 
@@ -172,9 +172,9 @@ describe('activity groups', () => {
       y: rows.y + rows.height - 10,
     });
     await page.waitForFunction(
-      () => document.querySelectorAll('.plan-group-box .plan-bar').length === 2,
+      () => document.querySelectorAll('.plan-bar[data-parent-id]').length === 2,
     );
-    expect(await rowNames(page)).toEqual(['Pages & Forms', 'Pages', 'Forms', 'Tests']);
+    await expect.poll(() => rowNames(page)).toEqual(['Pages & Forms', 'Pages', 'Forms', 'Tests']);
     await waitGroupDays(page, 'Pages & Forms', plus(t0, 2), plus(t0, 7));
   });
 
@@ -189,7 +189,7 @@ describe('activity groups', () => {
     await collapseButton(page, 'Pages & Forms').click();
     const g = block(page, 'Pages & Forms');
     await g.waitFor();
-    expect(await rowNames(page)).toEqual(['Pages & Forms', 'Tests']);
+    await expect.poll(() => rowNames(page)).toEqual(['Pages & Forms', 'Tests']);
     expect(await block(page, 'Pages').count()).toBe(0);
     const bar = page.locator('.plan-bar.is-group');
     expect((await bar.locator('.plan-brace').allTextContents()).join('')).toBe('{}');
@@ -205,17 +205,20 @@ describe('activity groups', () => {
     await page.locator('.plan-bar.is-group.is-done').waitFor();
     await expandButton(page, 'Pages & Forms').click();
     await page.locator('.plan-bar.is-done .plan-block[aria-label^="Forms, "]').waitFor();
-    expect(await page.locator('.plan-group-box .plan-bar.is-done').count()).toBe(2);
+    expect(await page.locator('.plan-bar[data-parent-id].is-done').count()).toBe(2);
 
     // Hide done: the whole group goes (FR-162, FR-184).
     await optionsButton(page).click();
     await page.getByRole('switch', { name: 'Hide done activities' }).click();
     await groupHead(page, 'Pages & Forms').waitFor({ state: 'detached' });
-    expect(await rowNames(page)).toEqual(['Tests']);
+    await expect.poll(() => rowNames(page)).toEqual(['Tests']);
     await page.getByRole('switch', { name: 'Hide done activities' }).click();
 
     // The Column mode shows a tree (FR-185).
-    await page.getByRole('group', { name: 'Activity names' }).getByRole('button', { name: 'Column', exact: true }).click();
+    await page
+      .getByRole('group', { name: 'Activity names' })
+      .getByRole('button', { name: 'Column', exact: true })
+      .click();
     const col = page.locator('.plan-name-col');
     const groupName = col.locator('.plan-side-row.is-group');
     await groupName.getByRole('button', { name: 'Collapse Pages & Forms' }).waitFor();
@@ -265,7 +268,10 @@ describe('activity groups', () => {
     // Part of: a new group with another activity.
     await detailsLink(page, 'Forms').click();
     await page.getByLabel('Part of').selectOption({ label: 'New group with Pages' });
-    await page.getByLabel('Part of').locator('option:checked', { hasText: 'Pages & Forms' }).waitFor();
+    await page
+      .getByLabel('Part of')
+      .locator('option:checked', { hasText: 'Pages & Forms' })
+      .waitFor({ state: 'attached' });
     await page.getByRole('link', { name: 'Back to Launch' }).click();
     await groupHead(page, 'Pages & Forms').waitFor();
 
@@ -273,15 +279,15 @@ describe('activity groups', () => {
     await detailsLink(page, 'Tests').click();
     await page.getByLabel('Part of').selectOption({ label: 'Pages & Forms' });
     await page.getByRole('link', { name: 'Back to Launch' }).click();
-    expect(await rowNames(page)).toEqual(['Pages & Forms', 'Pages', 'Forms', 'Tests']);
+    await expect.poll(() => rowNames(page)).toEqual(['Pages & Forms', 'Pages', 'Forms', 'Tests']);
     await page.waitForFunction(
-      () => document.querySelectorAll('.plan-group-box .plan-bar').length === 3,
+      () => document.querySelectorAll('.plan-bar[data-parent-id]').length === 3,
     );
     await detailsLink(page, 'Tests').click();
     await page.getByLabel('Part of').selectOption({ label: 'None' });
     await page.getByRole('link', { name: 'Back to Launch' }).click();
     await page.waitForFunction(
-      () => document.querySelectorAll('.plan-group-box .plan-bar').length === 2,
+      () => document.querySelectorAll('.plan-bar[data-parent-id]').length === 2,
     );
 
     // A group's details: dates are read-only; Ungroup with Undo.
@@ -290,7 +296,7 @@ describe('activity groups', () => {
     await page.getByRole('button', { name: 'Ungroup' }).click();
     await heading(page, 'Launch').waitFor();
     await groupHead(page, 'Pages & Forms').waitFor({ state: 'detached' });
-    expect(await rowNames(page)).toEqual(['Pages', 'Forms', 'Tests']);
+    await expect.poll(() => rowNames(page)).toEqual(['Pages', 'Forms', 'Tests']);
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await groupHead(page, 'Pages & Forms').waitFor();
 
@@ -298,9 +304,9 @@ describe('activity groups', () => {
     await detailsLink(page, 'Pages & Forms').click();
     await page.getByRole('button', { name: 'Delete group and 2 activities' }).click();
     await heading(page, 'Launch').waitFor();
-    expect(await rowNames(page)).toEqual(['Tests']);
+    await expect.poll(() => rowNames(page)).toEqual(['Tests']);
     await page.getByRole('button', { name: 'Undo', exact: true }).click();
     await groupHead(page, 'Pages & Forms').waitFor();
-    expect(await rowNames(page)).toEqual(['Pages & Forms', 'Pages', 'Forms', 'Tests']);
+    await expect.poll(() => rowNames(page)).toEqual(['Pages & Forms', 'Pages', 'Forms', 'Tests']);
   });
 });

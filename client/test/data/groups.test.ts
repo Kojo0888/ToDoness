@@ -1,6 +1,6 @@
 /** Activity groups in the local database (docs/plan/PRD.md section 11). */
 import { describe, expect, it } from 'vitest';
-import { addDays, localDay, spansOf } from '@todoness/shared';
+import { addDays, localDay, planTree, spansOf } from '@todoness/shared';
 import { diffActivities } from '../../src/lib/planUndo';
 import { RepoError } from '../../src/data/repo';
 import { getActivities } from '../../src/data/queries';
@@ -15,12 +15,20 @@ async function setup() {
   const plan = await t.repo.createPlan('Launch');
   const acts = async () => getActivities(t.db, plan.id);
   const byName = async (name: string) => (await acts()).find((a) => a.name === name)!;
-  /** Names in row order, with the name of the parent: `Pages<Front`. */
-  const rows = async () =>
-    (await acts()).map((a, _, all) => {
-      const p = all.find((x) => x.id === a.parentId);
-      return p ? `${a.name}<${p.name}` : a.name;
-    });
+  /** Names in the timeline's row order (a group, then its children), with the parent: `Pages<Front`. */
+  const rows = async () => {
+    const all = await acts();
+    const tree = planTree(all);
+    const name = (id: string) => all.find((a) => a.id === id)!.name;
+    const out: string[] = [];
+    const walk = (id: string) => {
+      const p = tree.parent.get(id);
+      out.push(p ? `${name(id)}<${name(p)}` : name(id));
+      for (const k of tree.children.get(id) ?? []) walk(k);
+    };
+    for (const a of all) if (!tree.parent.has(a.id)) walk(a.id);
+    return out;
+  };
   const add = async (name: string, offset: number, days: number) => {
     now.advance(10);
     const a = await t.repo.createActivity(plan.id, name);
@@ -38,7 +46,12 @@ describe('groups – repo (FR-174 – FR-178)', () => {
     await s.add('Tests', 6, 1);
     const g = await s.repo.groupActivities(a.id, b.id);
     expect(g.name).toBe('Pages & Forms');
-    expect(await s.rows()).toEqual(['Pages & Forms', 'Pages<Pages & Forms', 'Forms<Pages & Forms', 'Tests']);
+    expect(await s.rows()).toEqual([
+      'Pages & Forms',
+      'Pages<Pages & Forms',
+      'Forms<Pages & Forms',
+      'Tests',
+    ]);
     // Its stored dates are its children's (FR-188).
     expect(g).toMatchObject({ start: day(0), days: 4 });
     expect(await s.span('Pages & Forms')).toEqual({ start: day(0), days: 4 });
@@ -123,7 +136,12 @@ describe('groups – repo (FR-174 – FR-178)', () => {
     const b = await s.add('B', 1, 1);
     const g = await s.repo.groupActivities(a.id, b.id);
     await s.repo.updateActivity(g.id, { done: true });
-    expect((await s.acts()).filter((x) => x.done).map((x) => x.name).sort()).toEqual(['A', 'B']);
+    expect(
+      (await s.acts())
+        .filter((x) => x.done)
+        .map((x) => x.name)
+        .sort(),
+    ).toEqual(['A', 'B']);
     await s.repo.updateActivity(g.id, (now) => ({ done: !now.done }));
     expect((await s.acts()).some((x) => x.done)).toBe(false);
   });

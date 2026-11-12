@@ -73,7 +73,12 @@ describe('parentId on activities (FR-174)', () => {
 
 describe('planTree', () => {
   it('gives parents and children in the given order', () => {
-    const tree = planTree([act('g', 1, 1), act('b', 2, 1, 'g'), act('a', 1, 1, 'g'), act('c', 1, 1)]);
+    const tree = planTree([
+      act('g', 1, 1),
+      act('b', 2, 1, 'g'),
+      act('a', 1, 1, 'g'),
+      act('c', 1, 1),
+    ]);
     expect(tree.parent.get('a')).toBe('g');
     expect(tree.parent.has('c')).toBe(false);
     expect(tree.children.get('g')).toEqual(['b', 'a']);
@@ -112,7 +117,7 @@ describe('planTree', () => {
 });
 
 describe('spansOf (FR-175)', () => {
-  it("runs a group from its earliest child start to its latest child end, whatever it stores", () => {
+  it('runs a group from its earliest child start to its latest child end, whatever it stores', () => {
     const list = [
       act('g', 20, 1),
       act('h', 25, 9, 'g'),

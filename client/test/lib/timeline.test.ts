@@ -319,19 +319,80 @@ describe('hidden predecessor mark (FR-173)', () => {
 describe('planRows (docs/plan/PRD.md FR-179 – FR-181, FR-184)', () => {
   // g: { a, h: { b, c } }, d
   const list = [
-    { id: 'g', planId: 'p', start: '2026-03-01', days: 1, dependsOn: [], parentId: null, deletedAt: null, done: false },
-    { id: 'a', planId: 'p', start: '2026-03-01', days: 2, dependsOn: [], parentId: 'g', deletedAt: null, done: true },
-    { id: 'h', planId: 'p', start: '2026-03-01', days: 1, dependsOn: [], parentId: 'g', deletedAt: null, done: false },
-    { id: 'b', planId: 'p', start: '2026-03-03', days: 2, dependsOn: [], parentId: 'h', deletedAt: null, done: true },
-    { id: 'c', planId: 'p', start: '2026-03-04', days: 3, dependsOn: [], parentId: 'h', deletedAt: null, done: true },
-    { id: 'd', planId: 'p', start: '2026-03-09', days: 1, dependsOn: [], parentId: null, deletedAt: null, done: false },
+    {
+      id: 'g',
+      planId: 'p',
+      start: '2026-03-01',
+      days: 1,
+      dependsOn: [],
+      parentId: null,
+      deletedAt: null,
+      done: false,
+    },
+    {
+      id: 'a',
+      planId: 'p',
+      start: '2026-03-01',
+      days: 2,
+      dependsOn: [],
+      parentId: 'g',
+      deletedAt: null,
+      done: true,
+    },
+    {
+      id: 'h',
+      planId: 'p',
+      start: '2026-03-01',
+      days: 1,
+      dependsOn: [],
+      parentId: 'g',
+      deletedAt: null,
+      done: false,
+    },
+    {
+      id: 'b',
+      planId: 'p',
+      start: '2026-03-03',
+      days: 2,
+      dependsOn: [],
+      parentId: 'h',
+      deletedAt: null,
+      done: true,
+    },
+    {
+      id: 'c',
+      planId: 'p',
+      start: '2026-03-04',
+      days: 3,
+      dependsOn: [],
+      parentId: 'h',
+      deletedAt: null,
+      done: true,
+    },
+    {
+      id: 'd',
+      planId: 'p',
+      start: '2026-03-09',
+      days: 1,
+      dependsOn: [],
+      parentId: null,
+      deletedAt: null,
+      done: false,
+    },
   ];
   const tree = planTree(list);
   const ids = (r: ReturnType<typeof planRows>) => r.rows.map((x) => `${x.id}:${x.kind}:${x.depth}`);
 
   it('lists an expanded group as a header row followed by its children, with a box over them', () => {
     const r = planRows(list, tree, new Set(), false);
-    expect(ids(r)).toEqual(['g:open:0', 'a:leaf:1', 'h:open:1', 'b:leaf:2', 'c:leaf:2', 'd:leaf:0']);
+    expect(ids(r)).toEqual([
+      'g:open:0',
+      'a:leaf:1',
+      'h:open:1',
+      'b:leaf:2',
+      'c:leaf:2',
+      'd:leaf:0',
+    ]);
     expect(r.boxes).toEqual([
       { id: 'g', depth: 0, first: 0, last: 4, levels: 2 },
       { id: 'h', depth: 1, first: 2, last: 4, levels: 1 },
@@ -352,10 +413,12 @@ describe('planRows (docs/plan/PRD.md FR-179 – FR-181, FR-184)', () => {
   });
 
   it('hiding done hides done activities and groups whose activities are all done', () => {
-    const r = planRows(list, tree, new Set(), true);
-    expect(ids(r)).toEqual(['g:open:0', 'd:leaf:0']);
+    expect(ids(planRows(list, tree, new Set(), true))).toEqual(['d:leaf:0']);
+    const open = list.map((a) => (a.id === 'c' ? { ...a, done: false } : a));
+    const r = planRows(open, planTree(open), new Set(), true);
+    expect(ids(r)).toEqual(['g:open:0', 'h:open:1', 'c:leaf:2', 'd:leaf:0']);
     expect(r.rowOf.has('a')).toBe(false);
-    expect(r.rowOf.has('h')).toBe(false);
+    expect(r.rowOf.has('b')).toBe(false);
   });
 });
 

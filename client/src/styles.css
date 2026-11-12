@@ -1942,7 +1942,21 @@ h2.nav-heading {
 
 .plan-details-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-top: 1.5rem;
+}
+
+/* Part of (FR-177): a field of its own line, wide enough for "New group with …". */
+.plan-part-of {
+  flex: 1 1 100%;
+}
+
+.plan-part-of select {
+  display: block;
+  width: 100%;
+  max-width: 24rem;
+  margin-top: 0.25rem;
 }
 
 /* The chart: scrolls sideways; the header and the name column stay in place. */
@@ -2334,6 +2348,230 @@ h2.nav-heading {
   outline-offset: 2px;
 }
 
+/* ---------- Activity groups (docs/plan/PRD.md section 11) ---------- */
+
+/* The name column as a tree (FR-185): indented by level, group names in bold. */
+.plan-indent {
+  flex: none;
+  width: calc(var(--plan-indent, 0) * 0.9rem);
+}
+
+.plan-chev-gap {
+  flex: none;
+  width: 1.5rem;
+}
+
+.plan-side-row.is-group .plan-name {
+  font-weight: 700;
+}
+
+/* The ▸ / ▾ button of a group (FR-181). */
+.plan-chev {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--fg);
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.plan-chev:hover {
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* An expanded group (FR-179): a light box over its header row and its children. Nested
+   boxes add their tint to their parent's, so each level is a little darker. */
+.plan-group-box {
+  position: absolute;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.plan-group-box.is-selected {
+  outline: 3px solid var(--fg);
+  outline-offset: 1px;
+}
+
+.plan-group-box.is-link-target {
+  outline: 3px dashed var(--fg);
+  outline-offset: 2px;
+}
+
+.plan-group-box.is-dragged {
+  opacity: 0.85;
+}
+
+.plan-group-top {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: calc(var(--plan-row) - 6px);
+  padding: 0 0.3rem;
+}
+
+.plan-group-head {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  padding: 0 0.25rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font-size: 0.82rem;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.plan-group-name {
+  flex: none;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+.plan-group-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* A collapsed group (FR-180): one row, a lighter block with bold { } instead of the grips. */
+.plan-bar.is-group .plan-block {
+  gap: 0.35rem;
+  padding: 0 1.1rem 0 2.6rem;
+  overflow: hidden;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--bg));
+  color: var(--fg);
+}
+
+.plan-bar.is-group .plan-block-name {
+  font-weight: 800;
+}
+
+.plan-bar.is-group .plan-handle {
+  width: 1rem;
+}
+
+.plan-bar.is-group .plan-handle::after {
+  display: none;
+}
+
+.plan-brace {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  transform: translateY(-55%);
+  color: var(--accent);
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  pointer-events: none;
+}
+
+.plan-chev-bar {
+  position: absolute;
+  top: 50%;
+  left: 1rem;
+  transform: translateY(-50%);
+}
+
+.plan-group-count {
+  flex: none;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.plan-group-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: var(--accent);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.plan-bar.is-group.is-done .plan-block {
+  border-color: var(--accent);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.plan-bar.is-group.is-done .plan-block-name {
+  text-decoration: line-through;
+}
+
+.plan-bar.is-group.is-overdue .plan-block {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 18%, var(--bg));
+}
+
+.plan-bar.is-group.is-narrow .plan-group-count {
+  display: none;
+}
+
+/* Releasing takes the activity out of its group (FR-176). */
+.plan-rows.is-drop-target {
+  outline: 3px dashed var(--muted);
+  outline-offset: -4px;
+}
+
+/* The details of a group: its dates as text (FR-175). */
+.plan-group-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.plan-field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.plan-group-span {
+  min-height: 2.5rem;
+  display: flex;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 760px) {
   /* Three modules in the top bar: the icons make room for the names. */
   .topbar .module-switch svg {
@@ -2384,5 +2622,16 @@ h2.nav-heading {
 
   .plan-handle::after {
     left: 6px;
+  }
+
+  /* The name column's ▸ / ▾ is full size; the one on a block or a box header is an
+     exception like the grips (a block is 30 px high): the Column mode has the full-size one. */
+  .plan-chev-side {
+    width: 44px;
+    height: 44px;
+  }
+
+  .plan-part-of select {
+    min-height: 44px;
   }
 }

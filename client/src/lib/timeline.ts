@@ -3,7 +3,16 @@
  * shown, where a block sits, what a drag means and how an arrow runs. Pure functions; the
  * component only turns them into elements.
  */
-import { ACTIVITY_DAYS_MAX, addDays, dayNumber, daysBetween, endDay } from '@todoness/shared';
+import {
+  ACTIVITY_DAYS_MAX,
+  addDays,
+  dayNumber,
+  daysBetween,
+  endDay,
+  isGroup,
+  leavesOf,
+  type PlanTree,
+} from '@todoness/shared';
 
 /** Pixels per day (on the Days scale) and per row. A row is 44 px so that blocks are easy to hit by touch. */
 export const DAY_WIDTH = 36;
@@ -294,4 +303,106 @@ export function monthSpans(range: Range): { month: string; index: number; days: 
     else spans.push({ month, index: i, days: 1 });
   }
   return spans;
+}
+
+// ---------------------------------------------------------------------------
+// Groups (docs/plan/PRD.md section 11)
+// ---------------------------------------------------------------------------
+
+/** One row of the timeline: an activity, an expanded group's header, or a collapsed group. */
+export interface PlanRow {
+  id: string;
+  /** 0 at the top level. */
+  depth: number;
+  kind: 'leaf' | 'open' | 'closed';
+}
+
+/** The rows an expanded group's box covers, and how many expanded levels it holds. */
+export interface GroupRows {
+  id: string;
+  depth: number;
+  first: number;
+  last: number;
+  /** 1 for a box without expanded groups inside, 2 with one level inside, … */
+  levels: number;
+}
+
+/**
+ * The rows of a plan (FR-179 – FR-181): depth first in row order; an expanded group is its
+ * header row followed by its children, a collapsed group one row. With `hideDone` (FR-162,
+ * FR-184) done activities and groups whose activities are all done get no row. `rowOf` says
+ * where each activity is drawn: a child of a collapsed group at that group's row (the
+ * outermost one), so that arrows to it end at the group (FR-180).
+ */
+export function planRows(
+  activities: readonly { id: string; done: boolean }[],
+  tree: PlanTree,
+  collapsed: ReadonlySet<string>,
+  hideDone: boolean,
+): { rows: PlanRow[]; boxes: GroupRows[]; rowOf: Map<string, number> } {
+  const done = new Map(activities.map((a) => [a.id, a.done]));
+  const hidden = (id: string) => hideDone && leavesOf(tree, id).every((l) => done.get(l));
+  const rows: PlanRow[] = [];
+  const boxes: GroupRows[] = [];
+  const rowOf = new Map<string, number>();
+
+  const inside = (id: string, row: number) => {
+    for (const k of tree.children.get(id) ?? []) {
+      if (hidden(k)) continue;
+      rowOf.set(k, row);
+      inside(k, row);
+    }
+  };
+
+  /** Adds the rows of `id`; returns the expanded levels it takes (0 when not expanded). */
+  const walk = (id: string, depth: number): number => {
+    if (hidden(id)) return 0;
+    const row = rows.length;
+    rowOf.set(id, row);
+    if (!isGroup(tree, id)) {
+      rows.push({ id, depth, kind: 'leaf' });
+      return 0;
+    }
+    if (collapsed.has(id)) {
+      rows.push({ id, depth, kind: 'closed' });
+      inside(id, row);
+      return 0;
+    }
+    rows.push({ id, depth, kind: 'open' });
+    const box: GroupRows = { id, depth, first: row, last: row, levels: 1 };
+    boxes.push(box); // outer boxes first: they are drawn below the inner ones
+    let deepest = 0;
+    for (const k of tree.children.get(id) ?? []) deepest = Math.max(deepest, walk(k, depth + 1));
+    box.last = rows.length - 1;
+    box.levels = deepest + 1;
+    return box.levels;
+  };
+
+  for (const a of activities) if (!tree.parent.has(a.id)) walk(a.id, 0);
+  return { rows, boxes, rowOf };
+}
+
+/** How much wider than its children an expanded group's box is on each side, per level. */
+export const GROUP_PAD = 8;
+export const GROUP_PAD_STEP = 6;
+/** The box leaves this much of its first and last row free. */
+export const GROUP_INSET = 3;
+
+/**
+ * The box of an expanded group (FR-179): over the days of its children (`box`), a little
+ * wider for every expanded level it holds, from its header row to its last row.
+ */
+export function groupBox(
+  box: { left: number; width: number },
+  first: number,
+  last: number,
+  levels: number,
+): { left: number; width: number; top: number; height: number } {
+  const pad = GROUP_PAD + GROUP_PAD_STEP * (levels - 1);
+  return {
+    left: box.left - pad,
+    width: box.width + 2 * pad,
+    top: first * ROW_HEIGHT + GROUP_INSET,
+    height: (last - first + 1) * ROW_HEIGHT - 2 * GROUP_INSET,
+  };
 }

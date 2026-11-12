@@ -243,6 +243,7 @@ interface ActivityDb {
   days: number;
   depends_on: string;
   done: number;
+  parent_id: string | null;
   order_key: string;
   field_hlc: string;
   created_at: number;
@@ -263,6 +264,7 @@ export function getActivity(db: Database.Database, id: string): Owned<Activity> 
       days: r.days,
       dependsOn: JSON.parse(r.depends_on),
       done: r.done === 1,
+      parentId: r.parent_id,
       orderKey: r.order_key,
       fieldHlc: JSON.parse(r.field_hlc),
       createdAt: r.created_at,
@@ -275,13 +277,13 @@ export function getActivity(db: Database.Database, id: string): Owned<Activity> 
 export function saveActivity(db: Database.Database, userId: string, a: Activity): void {
   db.prepare(
     `INSERT INTO activities (id, user_id, plan_id, name, start_day, days, depends_on, done,
-                             order_key, field_hlc, created_at, updated_at, deleted_at)
-     VALUES (@id, @userId, @planId, @name, @start, @days, @dependsOn, @done, @orderKey,
-             @fieldHlc, @createdAt, @updatedAt, @deletedAt)
+                             parent_id, order_key, field_hlc, created_at, updated_at, deleted_at)
+     VALUES (@id, @userId, @planId, @name, @start, @days, @dependsOn, @done, @parentId,
+             @orderKey, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
      ON CONFLICT(id) DO UPDATE SET
        plan_id = excluded.plan_id, name = excluded.name, start_day = excluded.start_day,
        days = excluded.days, depends_on = excluded.depends_on, done = excluded.done,
-       order_key = excluded.order_key,
+       parent_id = excluded.parent_id, order_key = excluded.order_key,
        field_hlc = excluded.field_hlc, updated_at = excluded.updated_at,
        deleted_at = excluded.deleted_at`,
   ).run({
@@ -289,6 +291,7 @@ export function saveActivity(db: Database.Database, userId: string, a: Activity)
     userId,
     dependsOn: JSON.stringify(a.dependsOn),
     done: a.done ? 1 : 0,
+    parentId: a.parentId ?? null,
     fieldHlc: JSON.stringify(a.fieldHlc),
   });
 }

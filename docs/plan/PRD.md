@@ -143,7 +143,7 @@ Priority: **Must** = part of this version, **Should** = included unless it endan
 
 ```text
 Plan     = { id, name, orderKey, fieldHlc, createdAt, updatedAt, deletedAt }
-Activity = { id, planId, name, start, days, dependsOn, orderKey,
+Activity = { id, planId, name, start, days, dependsOn, done, parentId, orderKey,
              fieldHlc, createdAt, updatedAt, deletedAt }
 ```
 
@@ -151,6 +151,7 @@ Activity = { id, planId, name, start, days, dependsOn, orderKey,
   everywhere. `days` is the duration (1 – 3660); the **end day** is `start + days − 1`.
 - `dependsOn` is the list of ids of the activities that must end before this one starts
   (at most 50).
+- `done` (Update 3) and `parentId` (Update 6, the group the activity is part of, or `null`).
 
 ## 6. Decisions
 

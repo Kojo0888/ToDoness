@@ -14,8 +14,12 @@ function memoryStorage(initial: Record<string, string> = {}) {
 describe('collapsed groups', () => {
   it('none the first time, for a broken stored value and with blocked storage', () => {
     expect(readCollapsed(memoryStorage(), 'p1').size).toBe(0);
-    expect(readCollapsed(memoryStorage({ 'todoness.plan.collapsed.p1': '{nope' }), 'p1').size).toBe(0);
-    expect(readCollapsed(memoryStorage({ 'todoness.plan.collapsed.p1': '[1,2]' }), 'p1').size).toBe(0);
+    expect(readCollapsed(memoryStorage({ 'todoness.plan.collapsed.p1': '{nope' }), 'p1').size).toBe(
+      0,
+    );
+    expect(readCollapsed(memoryStorage({ 'todoness.plan.collapsed.p1': '[1,2]' }), 'p1').size).toBe(
+      0,
+    );
     expect(readCollapsed(undefined, 'p1').size).toBe(0);
     expect(
       readCollapsed(

@@ -458,3 +458,19 @@ major-change order: PRD → plan → tests → code.
 | `client/test/lib/timeline.test.ts` | `planRows` with expanded, collapsed and nested groups and hidden done |
 | `client/test/lib/planCollapsed.test.ts` | the setting: per plan, remembered, blocked storage |
 | `e2e/test/plan-groups.test.ts` | PRD 11.3 points 1 – 7 |
+
+### Changed on the way
+
+1. **Rows in tree order.** The repo keeps sibling order with `orderKey` only; a group's
+   children can have keys after the group's next sibling. The timeline (and the repo tests)
+   list rows depth first through the tree, not by raw key.
+2. **Linking onto an expanded group** uses its header row (`.plan-group-top`), not the whole
+   box: the box also covers the rows of its children, which are link targets of their own.
+   Grouping (the middle of a block) uses the whole box.
+3. **`data-parent-id` on blocks.** Blocks are not DOM children of a group's box (the box is a
+   layer below them), so a block carries the id of its group for tests and styles.
+4. **A link into a group pushes each of its activities to the first day it may start**, as
+   for any link (FR-136); the group's shape is not kept. Moving the group itself keeps it.
+5. **Undo of grouping** (FR-187) restores emptied groups and deletes created ones only when
+   the change also changed a `parentId`, so adding and deleting activities keep their own
+   Undo message (FR-131).

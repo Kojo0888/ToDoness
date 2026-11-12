@@ -157,6 +157,17 @@ export class TodonessDB extends Dexie {
         });
       await tx.table('meta').delete('lastServerSeq');
     });
+    // Activity groups (docs/plan, Update 6). The server leaves `parentId` out for apps that do
+    // not ask for it, so the cursor is reset again to read the groups skipped (FR-188).
+    this.version(9).upgrade(async (tx) => {
+      await tx
+        .table('activities')
+        .toCollection()
+        .modify((a) => {
+          a.parentId ??= null;
+        });
+      await tx.table('meta').delete('lastServerSeq');
+    });
   }
 
   async getMeta<T>(key: string): Promise<T | undefined> {
