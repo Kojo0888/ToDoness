@@ -125,7 +125,7 @@ export function PlanPage({ planId }: { planId: string }) {
   }
 
   function sortNow() {
-    void changes.run(() => repo.sortActivities(planId));
+    void changes.sort();
   }
 
   function chooseScale(next: Scale) {

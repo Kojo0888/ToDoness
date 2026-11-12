@@ -135,11 +135,16 @@ describe('groups – repo (FR-174 – FR-178)', () => {
     const a = await s.add('A', 0, 1);
     const b = await s.add('B', 1, 1);
     const g = await s.repo.groupActivities(a.id, b.id);
-    await s.repo.updateActivity(g.id, { done: true });
-    await s.repo.updateActivity(g.id, (now) => ({ done: !now.done }));
+    // refused loudly, so no caller believes it worked
+    await expect(s.repo.updateActivity(g.id, { done: true })).rejects.toMatchObject({
+      code: 'invalid',
+    });
+    await expect(s.repo.updateActivity(g.id, (now) => ({ done: !now.done }))).rejects.toMatchObject(
+      { code: 'invalid' },
+    );
     expect((await s.acts()).some((x) => x.done)).toBe(false);
     // a rename still works, and the group is done once every activity is
-    await s.repo.updateActivity(g.id, { name: 'Both', done: true });
+    await s.repo.updateActivity(g.id, { name: 'Both' });
     expect((await s.acts()).find((x) => x.id === g.id)?.name).toBe('Both');
     expect((await s.acts()).some((x) => x.done)).toBe(false);
     await s.repo.updateActivity(a.id, { done: true });

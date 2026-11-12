@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { addDays, localDay, newId } from '@todoness/shared';
 import { getActivities } from '../../src/data/queries';
+import { RepoError } from '../../src/data/repo';
 import { createPlanChanges } from '../../src/services/planChanges';
 import { fakeNow, T0, testRepo } from '../helpers/db';
 
@@ -159,6 +160,70 @@ describe('plan changes', () => {
       on = false;
       await changes.run(() => s.repo.updateActivity(a.id, { start: addDays(TODAY, 9) }));
       expect(await names()).toEqual(['A', 'B']); // off: no sorting
+    });
+
+    it('sorts only after a change of dates, links, groups or a new activity', async () => {
+      const s = await setup();
+      const a = await s.add('A', 0, 2);
+      await s.add('B', 5, 1);
+      const changes = createPlanChanges({
+        db: s.db,
+        repo: s.repo,
+        planId: s.plan.id,
+        autoSort: () => true,
+      });
+      let sorts = 0;
+      const sort = s.repo.sortActivities;
+      s.repo.sortActivities = (id) => (sorts++, sort(id));
+      await changes.run(() => s.repo.updateActivity(a.id, { name: 'A2' }));
+      await changes.run(() => s.repo.updateActivity(a.id, { days: 4 }));
+      await changes.run(() => s.repo.updateActivity(a.id, { done: true }));
+      expect(sorts).toBe(0);
+      await changes.run(() => s.repo.updateActivity(a.id, { start: addDays(TODAY, 1) }));
+      expect(sorts).toBe(1);
+      await changes.run(() => s.repo.createActivity(s.plan.id, 'New'));
+      expect(sorts).toBe(2);
+    });
+
+    it('reports a real failure of the sort and ignores a plan that is gone', async () => {
+      const s = await setup();
+      const a = await s.add('A', 0, 2);
+      const changes = createPlanChanges({
+        db: s.db,
+        repo: s.repo,
+        planId: s.plan.id,
+        autoSort: () => true,
+      });
+      s.repo.sortActivities = () => Promise.reject(new RepoError('not_found'));
+      await changes.run(() => s.repo.updateActivity(a.id, { start: addDays(TODAY, 3) }));
+      expect(changes.getState().error).toBeNull();
+      s.repo.sortActivities = () => Promise.reject(new Error('quota'));
+      await changes.run(() => s.repo.updateActivity(a.id, { start: addDays(TODAY, 6) }));
+      expect(changes.getState().error).toBe('failed');
+    });
+
+    it('a change of row order alone is an undo point only for a sort (sort())', async () => {
+      const s = await setup();
+      const a = await s.add('A', 0, 2);
+      await s.add('B', 5, 1);
+      const changes = createPlanChanges({ db: s.db, repo: s.repo, planId: s.plan.id });
+      await changes.run(() => s.repo.updateActivity(a.id, { days: 5 }));
+      const point = changes.getState().undo;
+      // a move that only changes the rows leaves the earlier undo point alone
+      await s.repo.updateActivity(a.id, { start: addDays(TODAY, 9) });
+      await changes.run(() => s.repo.sortActivities(s.plan.id));
+      expect(changes.getState().undo).toBe(point);
+      // sort() records the new order as its own undo step
+      await s.repo.updateActivity(a.id, { start: addDays(TODAY, 0) });
+      await changes.sort();
+      expect(changes.getState().undo).not.toBe(point);
+      const names = async () => (await getActivities(s.db, s.plan.id)).map((x) => x.name);
+      expect(await names()).toEqual(['A', 'B']);
+      await s.repo.updateActivity(a.id, { start: addDays(TODAY, 9) });
+      await changes.sort();
+      expect(await names()).toEqual(['B', 'A']);
+      await changes.undo();
+      expect(await names()).toEqual(['A', 'B']);
     });
 
     it('does not sort after a failed change or after undo', async () => {

@@ -372,6 +372,11 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
     const leaves = leavesOf(tree, group.id).map((id) => all.find((a) => a.id === id)!);
     const current = { ...group, ...span, done: leaves.every((l) => l.done) };
     const patch = typeof edit === 'function' ? edit(current) : edit;
+    // A group is done when all its activities are (FR-184): never set by itself, and never
+    // quietly ignored either, so that no caller believes it worked.
+    if (patch.done !== undefined) {
+      throw new RepoError('invalid', 'A group is done when all its activities are');
+    }
     if (patch.name !== undefined && patch.name.trim() !== group.name) {
       await commit<Activity>('activity', 'update', group.id, { name: patch.name.trim() });
     }
@@ -968,7 +973,14 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
             patch.dependsOn = before.dependsOn;
           }
           if (before.orderKey !== undefined && now.orderKey === after.orderKey) {
-            patch.orderKey = before.orderKey;
+            // The key may have been taken since (a row made or synced meanwhile): then the
+            // row goes just before its holder, so two rows never share a key.
+            const holder = (await rowsOfPlan(now.planId).toArray()).find(
+              (r) => r.id !== id && r.orderKey === before.orderKey,
+            );
+            patch.orderKey = holder
+              ? await keyBefore(now.planId, before.orderKey)
+              : before.orderKey;
           }
           if (before.parentId !== undefined && (now.parentId ?? null) === after.parentId) {
             patch.parentId = before.parentId;

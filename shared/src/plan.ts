@@ -451,14 +451,60 @@ export function sortedActivityIds(
     }
     const better = (a: string, b: string) =>
       dayNumber(spans.get(a)!.start) - dayNumber(spans.get(b)!.start) || row.get(a)! - row.get(b)!;
-    const remaining = new Set(ids);
+    // Kahn's algorithm: how many predecessors each sibling still waits for, and a heap of
+    // the ones that wait for none, best first.
+    const succs = new Map<string, string[]>(ids.map((id) => [id, []]));
+    const waiting = new Map<string, number>();
+    for (const [y, ps] of preds) {
+      waiting.set(y, ps.size);
+      for (const x of ps) succs.get(x)!.push(y);
+    }
+    const heap: string[] = [];
+    const push = (id: string) => {
+      heap.push(id);
+      for (let i = heap.length - 1; i > 0;) {
+        const up = (i - 1) >> 1;
+        if (better(heap[i]!, heap[up]!) >= 0) break;
+        [heap[i], heap[up]] = [heap[up]!, heap[i]!];
+        i = up;
+      }
+    };
+    const pop = (): string | undefined => {
+      const top = heap[0];
+      const last = heap.pop();
+      if (heap.length > 0 && last !== undefined) {
+        heap[0] = last;
+        for (let i = 0; ;) {
+          let m = i;
+          for (const c of [2 * i + 1, 2 * i + 2]) {
+            if (c < heap.length && better(heap[c]!, heap[m]!) < 0) m = c;
+          }
+          if (m === i) break;
+          [heap[i], heap[m]] = [heap[m]!, heap[i]!];
+          i = m;
+        }
+      }
+      return top;
+    };
+    for (const id of ids) if (waiting.get(id) === 0) push(id);
+    // Only for a loop between groups: the best of those left, whatever they wait for.
+    const byStart = [...ids].sort(better);
+    let fallback = 0;
+    const placed = new Set<string>();
     const result: string[] = [];
-    while (remaining.size > 0) {
-      const all = [...remaining];
-      const ready = all.filter((id) => [...preds.get(id)!].every((p) => !remaining.has(p)));
-      const pick = (ready.length > 0 ? ready : all).sort(better)[0]!;
-      remaining.delete(pick);
+    while (result.length < ids.length) {
+      let pick = pop();
+      if (pick === undefined) {
+        while (placed.has(byStart[fallback]!)) fallback++;
+        pick = byStart[fallback]!;
+      }
+      placed.add(pick);
       result.push(pick);
+      for (const s of succs.get(pick)!) {
+        const left = waiting.get(s)! - 1;
+        waiting.set(s, left);
+        if (left === 0 && !placed.has(s)) push(s);
+      }
     }
     return result;
   };

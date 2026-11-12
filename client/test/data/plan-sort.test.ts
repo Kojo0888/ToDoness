@@ -126,6 +126,35 @@ describe('sortActivities', () => {
     expect(await s.names()).toEqual(['C', 'A', 'B']);
   });
 
+  it('undo never gives two rows the same key, even if a vacated key was reused', async () => {
+    const s = await setup();
+    await s.add('C', 5);
+    await s.add('A', 1);
+    await s.add('B', 3);
+    const read = async () =>
+      (await getActivities(s.db, s.plan.id)).map(
+        ({ id, start, days, dependsOn, done, parentId, orderKey }) => ({
+          id,
+          start,
+          days,
+          dependsOn,
+          done,
+          parentId,
+          orderKey,
+        }),
+      );
+    const before = await read();
+    await s.repo.sortActivities(s.plan.id);
+    const changes = diffActivities(before, await read());
+    // Another row (say, synced from another device) takes the key a moved row gave up.
+    const moved = changes.find((c) => c.before.orderKey !== undefined)!;
+    const other = (await getActivities(s.db, s.plan.id)).find((a) => a.id !== moved.id)!;
+    await s.db.activities.update(other.id, { orderKey: moved.before.orderKey! });
+    await s.repo.revertActivities(changes);
+    const keys = (await getActivities(s.db, s.plan.id)).map((a) => a.orderKey);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
   it('fails for a plan that does not exist', async () => {
     const s = await setup();
     await expect(s.repo.sortActivities('nope')).rejects.toMatchObject({ code: 'not_found' });
