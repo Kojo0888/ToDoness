@@ -2,9 +2,11 @@
 import type Database from 'better-sqlite3';
 import {
   normalizeRemindBefore,
+  type Activity,
   type List,
   type ListModule,
   type Note,
+  type Plan,
   type Todo,
 } from '@todoness/shared';
 
@@ -184,5 +186,105 @@ export function saveNote(db: Database.Database, userId: string, n: Note): void {
     userId,
     isPublic: n.isPublic ? 1 : 0,
     fieldHlc: JSON.stringify(n.fieldHlc),
+  });
+}
+
+interface PlanDb {
+  id: string;
+  user_id: string;
+  name: string;
+  order_key: string;
+  field_hlc: string;
+  created_at: number;
+  updated_at: number;
+  deleted_at: number | null;
+}
+
+export function getPlan(db: Database.Database, id: string): Owned<Plan> | undefined {
+  const r = db.prepare('SELECT * FROM plans WHERE id = ?').get(id) as PlanDb | undefined;
+  if (!r) return undefined;
+  return {
+    userId: r.user_id,
+    row: {
+      id: r.id,
+      name: r.name,
+      orderKey: r.order_key,
+      fieldHlc: JSON.parse(r.field_hlc),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      deletedAt: r.deleted_at,
+    },
+  };
+}
+
+export function savePlan(db: Database.Database, userId: string, p: Plan): void {
+  db.prepare(
+    `INSERT INTO plans (id, user_id, name, order_key, field_hlc, created_at, updated_at, deleted_at)
+     VALUES (@id, @userId, @name, @orderKey, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
+     ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name, order_key = excluded.order_key, field_hlc = excluded.field_hlc,
+       updated_at = excluded.updated_at, deleted_at = excluded.deleted_at`,
+  ).run({ ...p, userId, fieldHlc: JSON.stringify(p.fieldHlc) });
+}
+
+/** The owner of a plan, if it exists (deleted plans still count). */
+export function planOwner(db: Database.Database, id: string): string | undefined {
+  const r = db.prepare('SELECT user_id FROM plans WHERE id = ?').get(id) as
+    { user_id: string } | undefined;
+  return r?.user_id;
+}
+
+interface ActivityDb {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  name: string;
+  start_day: string;
+  days: number;
+  depends_on: string;
+  order_key: string;
+  field_hlc: string;
+  created_at: number;
+  updated_at: number;
+  deleted_at: number | null;
+}
+
+export function getActivity(db: Database.Database, id: string): Owned<Activity> | undefined {
+  const r = db.prepare('SELECT * FROM activities WHERE id = ?').get(id) as ActivityDb | undefined;
+  if (!r) return undefined;
+  return {
+    userId: r.user_id,
+    row: {
+      id: r.id,
+      planId: r.plan_id,
+      name: r.name,
+      start: r.start_day,
+      days: r.days,
+      dependsOn: JSON.parse(r.depends_on),
+      orderKey: r.order_key,
+      fieldHlc: JSON.parse(r.field_hlc),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      deletedAt: r.deleted_at,
+    },
+  };
+}
+
+export function saveActivity(db: Database.Database, userId: string, a: Activity): void {
+  db.prepare(
+    `INSERT INTO activities (id, user_id, plan_id, name, start_day, days, depends_on, order_key,
+                             field_hlc, created_at, updated_at, deleted_at)
+     VALUES (@id, @userId, @planId, @name, @start, @days, @dependsOn, @orderKey,
+             @fieldHlc, @createdAt, @updatedAt, @deletedAt)
+     ON CONFLICT(id) DO UPDATE SET
+       plan_id = excluded.plan_id, name = excluded.name, start_day = excluded.start_day,
+       days = excluded.days, depends_on = excluded.depends_on, order_key = excluded.order_key,
+       field_hlc = excluded.field_hlc, updated_at = excluded.updated_at,
+       deleted_at = excluded.deleted_at`,
+  ).run({
+    ...a,
+    userId,
+    dependsOn: JSON.stringify(a.dependsOn),
+    fieldHlc: JSON.stringify(a.fieldHlc),
   });
 }

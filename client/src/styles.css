@@ -1086,18 +1086,27 @@ h2.nav-heading {
 }
 
 .module-switch a {
+  /* Three modules share the width of the sidebar: entries may shrink, never widen it. */
   flex: 1 1 0;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
+  gap: 0.3rem;
   min-height: 2.25rem;
-  padding: 0.3rem 0.6rem;
+  padding: 0.3rem 0.25rem;
+  font-size: 0.9rem;
   border-radius: 7px;
   color: inherit;
   font-weight: 600;
   text-decoration: none;
   white-space: nowrap;
+}
+
+.module-switch svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
 }
 
 .module-switch a:hover {
@@ -1727,5 +1736,482 @@ h2.nav-heading {
     right: 0;
     width: auto;
     max-width: none;
+  }
+}
+
+/* ---------- Plan module (docs/plan/PRD.md) ---------- */
+
+.plan-page {
+  min-width: 0;
+}
+
+.plan-first,
+.plan-add {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.plan-first {
+  max-width: 28rem;
+}
+
+.plan-first button,
+.plan-add button {
+  white-space: nowrap;
+}
+
+.plan-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.plan-add {
+  flex: 1 1 18rem;
+  max-width: 32rem;
+}
+
+/* Undo last change and the name position, on the right. */
+.plan-view {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.plan-undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.25rem;
+  padding: 0.3rem 0.8rem;
+  white-space: nowrap;
+}
+
+.plan-message {
+  margin: 0 0 0.75rem;
+  border-color: var(--warn);
+}
+
+/* Takes no room while nothing is being linked. */
+.plan-linking {
+  margin: 0;
+}
+
+.plan-linking:not(:empty) {
+  margin: 0.5rem 0 0;
+}
+
+/* The selected activity's name, start, end and Delete (FR-130). */
+.plan-activity-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem 0.75rem;
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.plan-field {
+  flex: 0 1 9.5rem;
+  min-width: 0; /* a date field's own width must not push the buttons to a new line */
+  margin: 0;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.plan-field .hint {
+  font-weight: 400;
+}
+
+.plan-field-name {
+  flex: 1 1 7rem;
+}
+
+/* One height for text, date and select fields and the buttons, so the row lines up. */
+.plan-activity-bar input,
+.plan-activity-bar select,
+.plan-activity-bar button {
+  height: 2.5rem;
+  font-size: 1rem;
+}
+
+.plan-activity-bar select {
+  display: block;
+  margin-top: 0.25rem;
+  font-weight: 400;
+}
+
+.plan-bar-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+/* The chart: scrolls sideways; the header and the name column stay in place. */
+.plan-timeline {
+  --plan-day: 36px; /* DAY_WIDTH in lib/timeline.ts */
+  --plan-row: 44px; /* ROW_HEIGHT */
+  --plan-head: 28px;
+  --plan-names: 0px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.plan-timeline[data-names='column'] {
+  --plan-names: 11rem;
+}
+
+.plan-canvas {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+}
+
+.plan-name-col {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  flex: none;
+  width: var(--plan-names);
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.plan-name-head {
+  display: flex;
+  align-items: flex-end;
+  height: calc(2 * var(--plan-head));
+  padding: 0 0.6rem 0.3rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.plan-name {
+  display: block;
+  width: 100%;
+  height: var(--plan-row);
+  padding: 0 0.6rem;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-name:hover,
+.plan-name.is-selected {
+  background: var(--border);
+}
+
+.plan-grid {
+  position: relative;
+  flex: none;
+}
+
+.plan-months,
+.plan-days {
+  position: relative;
+  height: var(--plan-head);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.plan-month {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--border);
+}
+
+/* The month's name stays readable while its days scroll by. */
+.plan-month span {
+  position: sticky;
+  left: calc(var(--plan-names) + 0.5rem);
+  display: inline-block;
+  padding: 0 0.5rem;
+  line-height: var(--plan-head);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.plan-days {
+  display: flex;
+}
+
+.plan-day {
+  flex: none;
+  width: var(--plan-day);
+  line-height: var(--plan-head);
+  text-align: center;
+}
+
+.plan-day.is-weekend {
+  background: var(--border);
+}
+
+.plan-day.is-today {
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 700;
+}
+
+/* Rows: a line under every row and after every day, drawn as one background. */
+.plan-rows {
+  position: relative;
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 calc(var(--plan-row) - 1px),
+      var(--border) calc(var(--plan-row) - 1px) var(--plan-row)
+    ),
+    repeating-linear-gradient(
+      to right,
+      transparent 0 calc(var(--plan-day) - 1px),
+      var(--surface) calc(var(--plan-day) - 1px) var(--plan-day)
+    ),
+    /* Weekends: the last two days of a week that starts on Monday, repeated. The grid's
+       first day shifts it (--plan-week-shift, set by the component). */
+    linear-gradient(
+        to right,
+        transparent 0 calc(5 * var(--plan-day)),
+        var(--surface) calc(5 * var(--plan-day)) calc(7 * var(--plan-day))
+      );
+  background-size:
+    auto,
+    auto,
+    calc(7 * var(--plan-day)) 100%;
+  background-position:
+    0 0,
+    0 0,
+    var(--plan-week-shift, 0) 0;
+  background-repeat: repeat, repeat, repeat-x;
+}
+
+.plan-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  width: var(--plan-day);
+  border-left: 2px solid var(--accent);
+}
+
+.plan-arrows {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.plan-arrow {
+  color: var(--muted);
+  cursor: pointer;
+  outline: none;
+}
+
+.plan-arrow-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14px;
+  pointer-events: stroke;
+}
+
+.plan-arrow-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2px;
+  stroke-linejoin: round;
+}
+
+.plan-arrow-head {
+  fill: currentColor;
+}
+
+.plan-arrow:hover,
+.plan-arrow:focus-visible {
+  color: var(--danger);
+}
+
+.plan-arrow:focus-visible .plan-arrow-line {
+  stroke-width: 4px;
+}
+
+/* A dependency that does not hold (after a merge of two devices, FR-139). */
+.plan-arrow.is-broken {
+  color: var(--warn);
+}
+
+.plan-arrow.is-broken .plan-arrow-line {
+  stroke-dasharray: 5 4;
+}
+
+.plan-rubber {
+  stroke: var(--accent);
+  stroke-width: 2px;
+  stroke-dasharray: 5 4;
+}
+
+/* One activity: the block, a grip at each end and a link point outside each end. */
+.plan-bar {
+  position: absolute;
+  height: var(--plan-row);
+}
+
+.plan-bar.is-dragged {
+  z-index: 2;
+}
+
+.plan-block {
+  position: absolute;
+  inset: 7px 0;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.plan-bar.is-selected .plan-block {
+  outline: 3px solid var(--fg);
+  outline-offset: 1px;
+}
+
+.plan-bar.is-dragged .plan-block {
+  cursor: grabbing;
+  opacity: 0.85;
+}
+
+.plan-block-name,
+.plan-after-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.plan-after-name {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 0;
+  max-width: 16rem;
+  line-height: var(--plan-row);
+  font-size: 0.85rem;
+}
+
+/* Grips: the outer 10 px of the block; a short line shows where to grab. */
+.plan-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.plan-handle-start {
+  left: 0;
+}
+
+.plan-handle-end {
+  right: 0;
+}
+
+.plan-handle::after {
+  content: '';
+  position: absolute;
+  top: 15px;
+  bottom: 15px;
+  left: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent-fg);
+  opacity: 0.7;
+}
+
+/* The block an end is being dropped on: releasing links the two (FR-133). */
+.plan-bar.is-link-target .plan-block {
+  outline: 3px dashed var(--fg);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  /* Three modules in the top bar: the icons make room for the names. */
+  .topbar .module-switch svg {
+    display: none;
+  }
+
+  .plan-first input,
+  .plan-add input,
+  .plan-first button,
+  .plan-add button,
+  .plan-activity-bar button,
+  .plan-undo {
+    min-height: 44px;
+  }
+
+  .plan-timeline[data-names='column'] {
+    --plan-names: 7.5rem;
+  }
+
+  .plan-bar-actions {
+    margin-left: 0;
+  }
+
+  .plan-activity-bar input,
+  .plan-activity-bar select,
+  .plan-activity-bar button {
+    height: 44px;
+  }
+
+  /* Start and End share a line; the name gets its own. */
+  .plan-field {
+    flex: 1 1 8.5rem;
+  }
+
+  .plan-field-name {
+    flex-basis: 100%;
+  }
+
+  /*
+   * Exception to the 44 px rule (UI_GUIDELINES.md, docs/plan decision P5): a day is 36 px
+   * wide, so the grips are 44 px high but narrower. The edit bar that opens
+   * when a block is tapped has full-size controls for the same changes.
+   */
+  .plan-handle {
+    width: 14px;
+  }
+
+  .plan-handle::after {
+    left: 6px;
   }
 }

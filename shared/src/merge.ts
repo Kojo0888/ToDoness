@@ -14,7 +14,7 @@
  *  - The input row is never modified; a new object is returned.
  */
 import { compareHlc, hlcWall, type Hlc } from './hlc';
-import type { Entity, List, Note, OpType, Todo } from './schemas';
+import type { Activity, Entity, List, Note, OpType, Plan, Todo } from './schemas';
 
 export interface ApplyInput {
   entity: Entity;
@@ -28,7 +28,7 @@ export type ApplyResult<T> =
   | { ok: true; row: T; accepted: Record<string, unknown>; changed: boolean }
   | { ok: false; reason: 'not_found' | 'missing_fields' };
 
-type Row = Todo | List | Note;
+type Row = Todo | List | Note | Plan | Activity;
 
 const TODO_DEFAULTS = {
   notes: '',
@@ -54,16 +54,28 @@ const NOTE_DEFAULTS = {
   deletedAt: null,
 } as const satisfies Partial<Note>;
 
+const PLAN_DEFAULTS = { deletedAt: null } as const satisfies Partial<Plan>;
+
+const ACTIVITY_DEFAULTS = {
+  days: 1,
+  dependsOn: [] as string[],
+  deletedAt: null,
+} as const satisfies Partial<Activity>;
+
 const DEFAULTS: Record<Entity, object> = {
   todo: TODO_DEFAULTS,
   list: LIST_DEFAULTS,
   note: NOTE_DEFAULTS,
+  plan: PLAN_DEFAULTS,
+  activity: ACTIVITY_DEFAULTS,
 };
 
 const REQUIRED_ON_CREATE: Record<Entity, readonly string[]> = {
   todo: ['listId', 'title', 'orderKey'],
   list: ['name', 'orderKey'],
   note: ['orderKey'],
+  plan: ['name', 'orderKey'],
+  activity: ['planId', 'name', 'start', 'orderKey'],
 };
 
 /** Fields that bookkeeping owns; a patch can never set them directly. */

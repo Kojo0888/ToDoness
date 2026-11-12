@@ -51,3 +51,20 @@ export function formatDue(ms: number): string {
   const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   return `${date}, ${time}`;
 }
+
+/** A calendar day (`YYYY-MM-DD`, docs/plan) as local midnight, for formatting. */
+function dayDate(day: string): Date {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(y!, m! - 1, d!);
+}
+
+/** `5 Mar 2026` in the user's language. */
+export const formatDay = (day: string): string =>
+  dayDate(day).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+/** `March 2026` for a month given as `YYYY-MM`. */
+export const formatMonth = (month: string): string =>
+  dayDate(`${month}-01`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
+/** 0 = Sunday … 6 = Saturday. */
+export const weekdayOf = (day: string): number => dayDate(day).getDay();

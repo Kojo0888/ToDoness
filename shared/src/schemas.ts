@@ -7,12 +7,19 @@
  */
 import { z } from 'zod';
 import { isHlc, isValidClientId } from './hlc';
+import { isDay } from './plan';
 
 export const TITLE_MAX = 500;
 export const NOTES_MAX = 10_000;
 export const LIST_NAME_MAX = 200;
 export const NOTE_TEXT_MAX = 20_000;
 export const ORDER_KEY_MAX = 200;
+export const PLAN_NAME_MAX = 200;
+export const ACTIVITY_NAME_MAX = 200;
+/** The longest activity: ten years. */
+export const ACTIVITY_DAYS_MAX = 3660;
+/** How many activities one activity can depend on. */
+export const ACTIVITY_LINKS_MAX = 50;
 export const PUSH_BATCH_MAX = 500;
 
 // ---------------------------------------------------------------------------
@@ -89,6 +96,28 @@ const noteFields = {
   isPublic: z.boolean(),
 };
 
+const planFields = {
+  name: z.string().trim().min(1).max(PLAN_NAME_MAX),
+  orderKey: orderKeySchema,
+};
+
+/** A calendar day, `YYYY-MM-DD` (docs/plan/PRD.md section 5). */
+export const daySchema = z.string().refine(isDay, { message: 'Invalid day' });
+
+/**
+ * Start and duration, not start and end: every combination is a valid activity, so a merge
+ * of changes from two devices can never give an end before the start (decision P1).
+ */
+const activityFields = {
+  planId: idSchema,
+  name: z.string().trim().min(1).max(ACTIVITY_NAME_MAX),
+  start: daySchema,
+  days: z.number().int().min(1).max(ACTIVITY_DAYS_MAX),
+  /** The activities that must end before this one starts (decision P3). */
+  dependsOn: z.array(idSchema).max(ACTIVITY_LINKS_MAX),
+  orderKey: orderKeySchema,
+};
+
 const rowMeta = {
   id: idSchema,
   fieldHlc: fieldHlcSchema,
@@ -116,7 +145,14 @@ export type List = z.infer<typeof listSchema>;
 export const noteSchema = z.object({ ...noteFields, ...rowMeta });
 export type Note = z.infer<typeof noteSchema>;
 
-export type Entity = 'todo' | 'list' | 'note';
+/** A plan: a timeline of activities (docs/plan/PRD.md). */
+export const planSchema = z.object({ ...planFields, ...rowMeta });
+export type Plan = z.infer<typeof planSchema>;
+
+export const activitySchema = z.object({ ...activityFields, ...rowMeta });
+export type Activity = z.infer<typeof activitySchema>;
+
+export type Entity = 'todo' | 'list' | 'note' | 'plan' | 'activity';
 export type OpType = 'create' | 'update' | 'delete' | 'restore';
 
 // ---------------------------------------------------------------------------
@@ -165,6 +201,24 @@ export const noteUpdatePatchSchema = z
   .partial()
   .refine(notEmpty, NOT_EMPTY);
 export type NotePatch = z.infer<typeof noteUpdatePatchSchema>;
+
+export const planCreatePatchSchema = z.strictObject(planFields);
+export const planUpdatePatchSchema = z
+  .strictObject(planFields)
+  .partial()
+  .refine(notEmpty, NOT_EMPTY);
+export type PlanPatch = z.infer<typeof planUpdatePatchSchema>;
+
+export const activityCreatePatchSchema = z.strictObject({
+  ...activityFields,
+  days: activityFields.days.optional(),
+  dependsOn: activityFields.dependsOn.optional(),
+});
+export const activityUpdatePatchSchema = z
+  .strictObject(activityFields)
+  .partial()
+  .refine(notEmpty, NOT_EMPTY);
+export type ActivityPatch = z.infer<typeof activityUpdatePatchSchema>;
 
 const emptyPatch = z.strictObject({});
 
@@ -215,6 +269,32 @@ export const syncOpSchema = z.union([
     patch: noteUpdatePatchSchema,
   }),
   z.object({ ...opBase, entity: z.literal('note'), type: removeTypes, patch: emptyPatch }),
+  z.object({
+    ...opBase,
+    entity: z.literal('plan'),
+    type: z.literal('create'),
+    patch: planCreatePatchSchema,
+  }),
+  z.object({
+    ...opBase,
+    entity: z.literal('plan'),
+    type: z.literal('update'),
+    patch: planUpdatePatchSchema,
+  }),
+  z.object({ ...opBase, entity: z.literal('plan'), type: removeTypes, patch: emptyPatch }),
+  z.object({
+    ...opBase,
+    entity: z.literal('activity'),
+    type: z.literal('create'),
+    patch: activityCreatePatchSchema,
+  }),
+  z.object({
+    ...opBase,
+    entity: z.literal('activity'),
+    type: z.literal('update'),
+    patch: activityUpdatePatchSchema,
+  }),
+  z.object({ ...opBase, entity: z.literal('activity'), type: removeTypes, patch: emptyPatch }),
 ]);
 export type SyncOp = z.infer<typeof syncOpSchema>;
 
@@ -248,6 +328,10 @@ const pulledListPatch = z
   })
   .partial();
 const pulledNotePatch = z.strictObject({ ...noteFields, deletedAt: nullableEpochMs }).partial();
+const pulledPlanPatch = z.strictObject({ ...planFields, deletedAt: nullableEpochMs }).partial();
+const pulledActivityPatch = z
+  .strictObject({ ...activityFields, deletedAt: nullableEpochMs })
+  .partial();
 const opType = z.enum(['create', 'update', 'delete', 'restore']);
 const changeBase = {
   serverSeq: z.number().int().min(1),
@@ -260,6 +344,8 @@ export const pullChangeSchema = z.union([
   z.object({ ...changeBase, entity: z.literal('todo'), patch: pulledTodoPatch }),
   z.object({ ...changeBase, entity: z.literal('list'), patch: pulledListPatch }),
   z.object({ ...changeBase, entity: z.literal('note'), patch: pulledNotePatch }),
+  z.object({ ...changeBase, entity: z.literal('plan'), patch: pulledPlanPatch }),
+  z.object({ ...changeBase, entity: z.literal('activity'), patch: pulledActivityPatch }),
 ]);
 export type PullChange = z.infer<typeof pullChangeSchema>;
 

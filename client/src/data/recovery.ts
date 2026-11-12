@@ -3,7 +3,7 @@
  * (docs/v1/PRD.md section 4.11). Pure functions on the local database; the
  * restore itself is `Repo.restoreSnapshot`, because only the repo changes data.
  */
-import type { List, Note, Todo } from '@todoness/shared';
+import type { Activity, List, Note, Plan, Todo } from '@todoness/shared';
 import type { TodonessDB } from './db';
 
 /** `meta` key the snapshot is stored under. */
@@ -24,6 +24,12 @@ export interface RecoverySnapshot {
    * so readers use `notes ?? []`.
    */
   notes: Note[];
+  /**
+   * Live plans and the live activities of those plans (docs/plan/PRD.md FR-144). Missing in
+   * a copy kept before the Plan module, so readers use `?? []`.
+   */
+  plans?: Plan[];
+  activities?: Activity[];
 }
 
 /**
@@ -43,6 +49,11 @@ export async function takeSnapshot(
     (t) => t.deletedAt === null && liveListIds.has(t.listId),
   );
   const notes = (await db.notes.toArray()).filter((n) => n.deletedAt === null);
-  if (lists.length === 0 && todos.length === 0 && notes.length === 0) return undefined;
-  return { fromEmail, takenAt: now(), lists, todos, notes };
+  const plans = (await db.plans.toArray()).filter((p) => p.deletedAt === null);
+  const planIds = new Set(plans.map((p) => p.id));
+  const activities = (await db.activities.toArray()).filter(
+    (a) => a.deletedAt === null && planIds.has(a.planId),
+  );
+  if (lists.length + todos.length + notes.length + plans.length === 0) return undefined;
+  return { fromEmail, takenAt: now(), lists, todos, notes, plans, activities };
 }

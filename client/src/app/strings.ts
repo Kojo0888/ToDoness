@@ -9,15 +9,18 @@ interface KeptCounts {
   todos: number;
   lists: number;
   notes: number;
+  plans?: number;
 }
 
-/** What was kept offline; notes are only named when there are some. */
+/** Notes and plans are only named when there are some. */
+const extras = (c: { notes: number; plans?: number }) => [
+  ...(c.notes > 0 ? [count(c.notes, 'note')] : []),
+  ...((c.plans ?? 0) > 0 ? [count(c.plans ?? 0, 'plan')] : []),
+];
+
+/** What was kept offline. */
 const kept = (c: KeptCounts) =>
-  and([
-    count(c.todos, 'task'),
-    `${count(c.lists, 'list')} (besides the Inbox)`,
-    ...(c.notes > 0 ? [count(c.notes, 'note')] : []),
-  ]);
+  and([count(c.todos, 'task'), `${count(c.lists, 'list')} (besides the Inbox)`, ...extras(c)]);
 
 export const t = {
   appName: 'ToDoness',
@@ -76,9 +79,9 @@ export const t = {
     filledAccount: (
       email: string,
       offline: KeptCounts,
-      account: { todos: number; notes: number },
+      account: { todos: number; notes: number; plans?: number },
     ) =>
-      `Your new account already holds ${and([count(account.todos, 'task'), ...(account.notes > 0 ? [count(account.notes, 'note')] : [])])}, and ${kept(offline)} of ${email} are still stored offline on this device.`,
+      `Your new account already holds ${and([count(account.todos, 'task'), ...extras(account)])}, and ${kept(offline)} of ${email} are still stored offline on this device.`,
     question: 'Would you like to push all offline data to the server?',
     attachments: 'Attachments are only stored on the server and cannot be restored.',
     no: 'No, discard it',
@@ -86,7 +89,7 @@ export const t = {
     noWarning: 'The offline data will be deleted from this device.',
     chooseTitle: 'Overwrite or append?',
     chooseText:
-      'Append adds the offline data to what the account already holds. Overwrite deletes all tasks, lists and notes the account holds now (only the empty Inbox list itself stays) and replaces them with the offline data.',
+      'Append adds the offline data to what the account already holds. Overwrite deletes all tasks, lists, notes and plans the account holds now (only the empty Inbox list itself stays) and replaces them with the offline data.',
     append: 'Append',
     overwrite: 'Overwrite',
     back: 'Back',
@@ -101,6 +104,7 @@ export const t = {
     label: 'Modules',
     tasks: 'Tasks',
     notes: 'Notes',
+    plan: 'Plan',
   },
 
   nav: {
@@ -228,6 +232,61 @@ export const t = {
       needsConnection:
         'Public notes are not on this device yet. Open them once while connected to the server.',
     },
+  },
+
+  managePlans: {
+    title: 'Manage plans',
+    empty: 'You have no plans yet.',
+    back: 'Back to plans',
+    drag: (name: string) => `Drag to reorder plan: ${name}`,
+    reorderFailed: 'Could not move the plan: it was changed or deleted meanwhile. Try again.',
+  },
+
+  plan: {
+    plans: 'Plans',
+    managePlans: 'Manage plans',
+    newPlan: 'New plan name',
+    addPlan: 'Add plan',
+    empty: 'No plans yet.',
+    firstPlan: 'Name of your first plan',
+    createPlan: 'Create plan',
+    nameLabel: 'Plan name',
+    deletePlan: 'Delete plan',
+    deletePlanTitle: 'Delete this plan?',
+    deletePlanText: (name: string, n: number) =>
+      n === 0
+        ? `The plan "${name}" will be deleted.`
+        : `The plan "${name}" and its ${n} activit${n === 1 ? 'y' : 'ies'} will be deleted.`,
+    addActivity: 'Add an activity',
+    addActivityPlaceholder: 'Add an activity and press Enter',
+    addActivityButton: 'Add activity',
+    noActivities: 'No activities yet. Add the first one above.',
+    names: 'Activity names',
+    nameModes: { on: 'On block', after: 'After block', column: 'Column' },
+    timeline: 'Timeline',
+    activityColumn: 'Activity',
+    today: 'Today',
+    block: (name: string, start: string, end: string) => `${name}, ${start} – ${end}`,
+    moveHandle: (name: string) => `Move ${name}`,
+    endHandle: (name: string) => `Change the end of ${name}`,
+    arrow: (from: string, to: string) => `${from} → ${to}, remove link`,
+    linking: (from: string, to: string) => `Release to link: ${to} starts after ${from}.`,
+    blockHelp:
+      'Arrow keys move the activity by a day, Shift + arrow keys change its duration, Delete removes it. Dragging an end onto another activity links the two.',
+    undo: 'Undo last change',
+    startsAfter: 'Starts after',
+    startsAfterAdd: 'Add…',
+    selected: 'Selected activity',
+    activityName: 'Activity name',
+    start: 'Start',
+    end: 'End',
+    days: (n: number) => `${n} day${n === 1 ? '' : 's'}`,
+    deleteActivity: 'Delete activity',
+    done: 'Done',
+    activityDeleted: 'Activity deleted.',
+    loop: 'That link would make a loop: the two activities would wait for each other.',
+    tooManyLinks: 'This activity already depends on as many activities as it can (50).',
+    failed: 'That change could not be made.',
   },
 
   todo: {

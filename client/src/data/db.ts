@@ -2,9 +2,11 @@
 import Dexie, { type Table } from 'dexie';
 import {
   normalizeRemindBefore,
+  type Activity,
   type List,
   type Note,
   type OutboxOp,
+  type Plan,
   type Todo,
 } from '@todoness/shared';
 
@@ -62,6 +64,7 @@ export type DeadLetter = OutboxOp & {
  * `notified` remembers which reminders already fired on this device (version 2).
  * `notes` holds the notes module (version 3, docs/notes/PRD.md).
  * `publicOutbox` and `publicCache` make other users' public data work offline (version 4).
+ * `plans` and `activities` hold the Plan module (version 7, docs/plan/PRD.md).
  *
  * Only strings and numbers can be indexed, so `deletedAt` (null) and the
  * booleans have no index; they are filtered in code. The data is small.
@@ -70,6 +73,8 @@ export class TodonessDB extends Dexie {
   lists!: Table<List, string>;
   todos!: Table<Todo, string>;
   notes!: Table<Note, string>;
+  plans!: Table<Plan, string>;
+  activities!: Table<Activity, string>;
   outbox!: Table<OutboxOp, string>;
   publicOutbox!: Table<PublicOp, string>;
   publicCache!: Table<PublicCacheRow, string>;
@@ -132,6 +137,15 @@ export class TodonessDB extends Dexie {
           n.listId ??= null;
         });
     });
+    // Plan module (docs/plan). The server leaves plans out of what it sends to an app from
+    // before this version, and that app's pull cursor moved past them. Forgetting the cursor
+    // makes the next sync read every change again (applying one twice changes nothing), so
+    // plans made on other devices meanwhile arrive here too (FR-143).
+    this.version(7)
+      .stores({ plans: 'id, orderKey', activities: 'id, planId, [planId+orderKey]' })
+      .upgrade(async (tx) => {
+        await tx.table('meta').delete('lastServerSeq');
+      });
   }
 
   async getMeta<T>(key: string): Promise<T | undefined> {
@@ -154,6 +168,8 @@ export class TodonessDB extends Dexie {
         this.lists,
         this.todos,
         this.notes,
+        this.plans,
+        this.activities,
         this.outbox,
         this.publicOutbox,
         this.publicCache,
@@ -168,6 +184,8 @@ export class TodonessDB extends Dexie {
           this.lists.clear(),
           this.todos.clear(),
           this.notes.clear(),
+          this.plans.clear(),
+          this.activities.clear(),
           this.outbox.clear(),
           this.deadLetter.clear(),
           this.meta.clear(),

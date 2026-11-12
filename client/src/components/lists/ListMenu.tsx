@@ -11,10 +11,13 @@ const ACTIONS = ['rename', 'delete'] as const;
  */
 export function ListMenu({
   name,
+  deleteLabel,
   onRename,
   onDelete,
 }: {
   name: string;
+  /** The delete item's text; "Delete list" unless given (Manage plans: "Delete plan"). */
+  deleteLabel?: string;
   onRename: () => void;
   /** Left out for a list that cannot be deleted ("My notes"): the menu only renames. */
   onDelete?: () => void;
@@ -113,7 +116,7 @@ export function ListMenu({
                 className="danger"
                 onClick={choose(onDelete!)}
               >
-                {t.list.deleteList}
+                {deleteLabel ?? t.list.deleteList}
               </button>
             ),
           )}
