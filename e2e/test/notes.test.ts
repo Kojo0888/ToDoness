@@ -427,8 +427,7 @@ describe('recovery with notes (FR-98, FR-99)', () => {
       await dialog.waitFor();
       await expect(dialog.textContent()).resolves.toContain('and 1 note of');
 
-      await dialog.getByRole('button', { name: 'Yes, push it' }).click();
-      await dialog.getByRole('button', { name: 'Append' }).click();
+      await dialog.getByRole('button', { name: 'Upload my data' }).click();
       await dialog.waitFor({ state: 'hidden' });
       await myNotesHeading(page).waitFor();
       await page.waitForFunction(() => document.querySelectorAll('.notes .note-text').length === 1);

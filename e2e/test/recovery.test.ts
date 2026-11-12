@@ -11,6 +11,7 @@ import {
   logIn,
   newDevice,
   newPage,
+  openTask,
   PASSWORD,
   signUp,
   startApp,
@@ -58,6 +59,28 @@ async function oldDevice() {
   return { email, context, page };
 }
 
+/** Opens the Plan module and makes a plan with one activity (docs/plan). */
+async function addPlanWithActivity(page: Page, plan: string, activity: string) {
+  await page.getByRole('group', { name: 'Modules' }).getByRole('link', { name: 'Plan' }).click();
+  await page.waitForURL(/\/plans?(\/|$)/);
+  const name = page.getByLabel('New plan name');
+  await name.fill(plan);
+  await name.press('Enter');
+  await page.getByRole('heading', { level: 2, name: plan }).waitFor();
+  const input = page.getByLabel('Add an activity');
+  await input.fill(activity);
+  await input.press('Enter');
+  await page.locator(`.plan-block[aria-label^="${activity}, "]`).waitFor();
+}
+
+/** Writes the notes of a task in its detail panel (saved when the field loses focus). */
+async function writeTaskNote(page: Page, title: string, text: string) {
+  await openTask(page, title);
+  const field = page.getByRole('complementary', { name: 'Task details' }).getByLabel('Notes');
+  await field.fill(text);
+  await field.blur();
+}
+
 /** The server's database is lost: another server with an empty database takes its place. */
 async function loseServer() {
   await app!.stop();
@@ -84,9 +107,11 @@ describe('recovery after the server lost its database (FR-77 – FR-82)', () => 
     await expect(dialog(page).textContent()).resolves.toContain('2 tasks and 1 list');
     await expect(dialog(page).textContent()).resolves.toContain(email);
     await expect(dialog(page).textContent()).resolves.toContain(
-      'Would you like to push all offline data to the server?',
+      'Upload all data from this device to the server?',
     );
     await expect(dialog(page).textContent()).resolves.toContain('Attachments');
+    await dialog(page).getByRole('button', { name: 'Upload my data' }).waitFor();
+    await dialog(page).getByRole('button', { name: 'Keep it empty' }).waitFor();
 
     await page.keyboard.press('Escape');
     await dialog(page).waitFor(); // still there
@@ -100,11 +125,11 @@ describe('recovery after the server lost its database (FR-77 – FR-82)', () => 
     await dialog(page).waitFor();
   });
 
-  it('No: discards the offline data, the account stays empty, and it is not asked again', async () => {
+  it('Keep it empty: discards the offline data, the account stays empty, and it is not asked again', async () => {
     const { email, page } = await oldDevice();
     await loseServer();
     await signUpAgain(page, email);
-    await dialog(page).getByRole('button', { name: 'No, discard it' }).click();
+    await dialog(page).getByRole('button', { name: 'Keep it empty' }).click();
     await dialog(page).waitFor({ state: 'hidden' });
 
     expect(await titlesOnPage(page)).toEqual([]);
@@ -114,22 +139,23 @@ describe('recovery after the server lost its database (FR-77 – FR-82)', () => 
     await expect(page.getByRole('link', { name: 'Work' }).count()).resolves.toBe(0);
   });
 
-  it('Yes, Append: everything is back, also on a second device', async () => {
+  it('Upload my data on an empty account: uploads at once, also task notes and plans, and a second device gets it', async () => {
     const { email, page } = await oldDevice();
+    await writeTaskNote(page, 'Write report', 'Two pages with a chart');
+    await addPlanWithActivity(page, 'Launch', 'Design');
+    await waitSaved(page);
     await loseServer();
     await signUpAgain(page, email);
+    await expect(dialog(page).textContent()).resolves.toContain('1 plan');
 
-    await dialog(page).getByRole('button', { name: 'Yes, push it' }).click();
-    await expect(dialog(page).textContent()).resolves.toContain('Overwrite or append?');
-    await dialog(page).getByRole('button', { name: 'Back' }).click();
-    await dialog(page).getByRole('button', { name: 'Yes, push it' }).click();
-    await dialog(page).getByRole('button', { name: 'Append' }).click();
+    // Nothing to overwrite on an empty account: no "Overwrite or append?" step (FR-164).
+    await dialog(page).getByRole('button', { name: 'Upload my data' }).click();
     await dialog(page).waitFor({ state: 'hidden' });
 
-    await page.getByRole('heading', { level: 2, name: 'Inbox' }).waitFor();
+    // The device was last in the Plan module.
+    await page.getByRole('heading', { level: 2, name: 'Launch' }).waitFor();
+    await page.getByRole('group', { name: 'Modules' }).getByRole('link', { name: 'Tasks' }).click();
     await task(page, 'Buy milk').waitFor();
-    await page.getByRole('link', { name: 'Work' }).click();
-    await task(page, 'Write report').waitFor();
     await waitSaved(page);
 
     // A second device of the same account gets it from the server.
@@ -137,10 +163,32 @@ describe('recovery after the server lost its database (FR-77 – FR-82)', () => 
     await logIn(phone, email);
     await task(phone, 'Buy milk').waitFor();
     await phone.getByRole('link', { name: 'Work' }).click();
-    await task(phone, 'Write report').waitFor();
+    await openTask(phone, 'Write report');
+    await expect(
+      phone.getByRole('complementary', { name: 'Task details' }).getByLabel('Notes').inputValue(),
+    ).resolves.toBe('Two pages with a chart');
+    await phone.getByRole('group', { name: 'Modules' }).getByRole('link', { name: 'Plan' }).click();
+    await phone.getByRole('heading', { level: 2, name: 'Launch' }).waitFor(); // the first plan opens
+    await phone.locator('.plan-block[aria-label^="Design, "]').waitFor();
   });
 
-  it('Yes, Overwrite: replaces what the account already holds', async () => {
+  it('a failed login with the device e-mail offers Sign up again, which leads to the question', async () => {
+    const { email, page } = await oldDevice();
+    await loseServer();
+    await page.reload();
+    await page.getByLabel('E-mail').fill(email);
+    await page.getByLabel('Password').fill(PASSWORD);
+    await page.getByRole('button', { name: 'Log in' }).click();
+    await page.getByRole('alert').getByText('set up again').waitFor();
+    await page.getByRole('button', { name: 'Sign up again' }).click();
+    await dialog(page).waitFor();
+    await expect(dialog(page).textContent()).resolves.toContain('Your new account is empty');
+    await dialog(page).getByRole('button', { name: 'Upload my data' }).click();
+    await dialog(page).waitFor({ state: 'hidden' });
+    await task(page, 'Buy milk').waitFor();
+  });
+
+  it('Upload my data, Overwrite: replaces what the account already holds', async () => {
     const { email, page } = await oldDevice();
     await loseServer();
     await signUpAgain(page, email);
@@ -157,7 +205,15 @@ describe('recovery after the server lost its database (FR-77 – FR-82)', () => 
     await dialog(page).waitFor();
     // It first shows what is stored locally, then what the first sync brought.
     await page.getByText('already holds 1 task').waitFor();
-    await dialog(page).getByRole('button', { name: 'Yes, push it' }).click();
+    // Not empty: the other answer does not claim to keep it empty (FR-164).
+    await dialog(page).getByRole('button', { name: "Don't upload" }).waitFor();
+    await expect(dialog(page).getByRole('button', { name: 'Keep it empty' }).count()).resolves.toBe(
+      0,
+    );
+    await dialog(page).getByRole('button', { name: 'Upload my data' }).click();
+    await expect(dialog(page).textContent()).resolves.toContain('Overwrite or append?');
+    await dialog(page).getByRole('button', { name: 'Back' }).click();
+    await dialog(page).getByRole('button', { name: 'Upload my data' }).click();
     await dialog(page).getByRole('button', { name: 'Overwrite' }).click();
     await dialog(page).waitFor({ state: 'hidden' });
     await waitSaved(page);

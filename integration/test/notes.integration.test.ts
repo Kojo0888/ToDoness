@@ -1,7 +1,7 @@
 /** Notes between simulated browsers and the real server (docs/notes/PRD.md). */
 import { describe, expect, it } from 'vitest';
 import { RECOVERY_KEY, takeSnapshot } from '../../client/src/data/recovery';
-import { getNotes } from '../../client/src/data/queries';
+import { getNoteLists, getNotes, getNotesOfList } from '../../client/src/data/queries';
 import type { PublicListResponse } from '@todoness/shared';
 import { overlayListPage } from '../../client/src/data/publicOverlay';
 import { createPublicData } from '../../client/src/services/publicData';
@@ -268,5 +268,79 @@ describe('recovery with notes', () => {
     await a.sync();
     await phone.sync();
     expect(await texts(phone)).toEqual(['Old note']);
+  });
+});
+
+describe('note lists sync (docs/recovery-upload FR-167)', () => {
+  const names = async (b: Browser) => (await getNoteLists(b.db)).map((l) => l.name);
+  const inList = async (b: Browser, listId: string | null) =>
+    (await getNotesOfList(b.db, listId)).map((n) => n.text);
+
+  it('a note list with notes, made offline, reaches the other device', async () => {
+    const { a, b } = await twoBrowsers();
+    a.online = false;
+    const ideas = await a.repo.createList('Ideas', 'notes');
+    await a.repo.createNote('Garden', ideas.id);
+    a.time += 10;
+    await a.repo.createNote('Kitchen', ideas.id);
+    await a.repo.createNote('Loose note');
+    a.online = true;
+    expect(await a.sync()).toEqual({ ok: true });
+    expect(await b.sync()).toEqual({ ok: true });
+
+    expect(await names(b)).toEqual(await names(a));
+    expect(await names(b)).toContain('Ideas');
+    expect(await inList(b, ideas.id)).toEqual(['Kitchen', 'Garden']);
+    expect(await inList(b, null)).toEqual(['Loose note']);
+    expect((await b.db.lists.get(ideas.id))?.module).toBe('notes');
+    expect(await notesOf(b)).toEqual(await notesOf(a));
+  });
+
+  it('a renamed note list is renamed on the other device', async () => {
+    const { a, b } = await twoBrowsers();
+    const ideas = await a.repo.createList('Ideas', 'notes');
+    await a.sync();
+    await b.sync();
+    await b.repo.renameList(ideas.id, 'Projects');
+    await b.sync();
+    await a.sync();
+    expect((await a.db.lists.get(ideas.id))?.name).toBe('Projects');
+  });
+
+  it('deleting a note list on one device removes it and its notes on the other', async () => {
+    const { a, b } = await twoBrowsers();
+    const ideas = await a.repo.createList('Ideas', 'notes');
+    const note = await a.repo.createNote('Inside', ideas.id);
+    const kept = await a.repo.createNote('Outside');
+    await a.sync();
+    await b.sync();
+    await b.repo.deleteList(ideas.id);
+    await b.sync();
+    await a.sync();
+    expect(await names(a)).not.toContain('Ideas');
+    expect((await a.db.notes.get(note.id))?.deletedAt).not.toBeNull();
+    expect((await a.db.notes.get(kept.id))?.deletedAt).toBeNull();
+  });
+
+  it('a note reordered and one restored after a delete follow on the other device', async () => {
+    const { a, b } = await twoBrowsers();
+    const one = await a.repo.createNote('one');
+    a.time += 10;
+    const two = await a.repo.createNote('two');
+    await a.sync();
+    await b.sync();
+    expect(await texts(b)).toEqual(['two', 'one']);
+
+    await a.repo.reorderNote(one.id, two.id);
+    await a.repo.deleteNote(two.id);
+    await a.sync();
+    await b.sync();
+    expect(await texts(b)).toEqual(['one']);
+
+    await b.repo.restoreNote(two.id);
+    await b.sync();
+    await a.sync();
+    expect(await texts(a)).toEqual(['one', 'two']);
+    expect(await notesOf(a)).toEqual(await notesOf(b));
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { newId } from '@todoness/shared';
 import { RECOVERY_KEY, takeSnapshot } from '../../src/data/recovery';
 import { createRepo } from '../../src/data/repo';
-import { createRecovery } from '../../src/services/recovery';
+import { createRecovery, isAccountEmpty } from '../../src/services/recovery';
 import { fakeNow, seedInbox, testDb, T0 } from '../helpers/db';
 
 /** A device that was Ann's, now showing a fresh account (new Inbox) with the data kept aside. */
@@ -172,5 +172,37 @@ describe('recovery service', () => {
     const recovery = createRecovery({ db, repo });
     await recovery.load();
     expect(await recovery.accept('append')).toEqual({ ok: false, error: 'no_offer' });
+  });
+});
+
+describe('isAccountEmpty (docs/recovery-upload FR-163, FR-164)', () => {
+  const offer = {
+    fromEmail: 'ann@corp.test',
+    todos: 2,
+    lists: 1,
+    notes: 1,
+    plans: 1,
+    accountTodos: 0,
+    accountLists: 0,
+    accountNotes: 0,
+    accountPlans: 0,
+  };
+
+  it('is empty when the account holds nothing but its Inbox', () => {
+    expect(isAccountEmpty(offer)).toBe(true);
+  });
+
+  it.each(['accountTodos', 'accountLists', 'accountNotes', 'accountPlans'] as const)(
+    'is not empty with one in %s',
+    (key) => {
+      expect(isAccountEmpty({ ...offer, [key]: 1 })).toBe(false);
+    },
+  );
+
+  it('a fresh account with kept data offers an empty account', async () => {
+    const { db, repo } = await deviceWithKeptData();
+    const recovery = createRecovery({ db, repo });
+    await recovery.load();
+    expect(isAccountEmpty(recovery.getOffer()!)).toBe(true);
   });
 });

@@ -57,6 +57,10 @@ export const t = {
       server: 'The server had a problem. Try again in a moment.',
       network: 'Cannot reach the server. Check your connection.',
     },
+    /** docs/recovery-upload FR-166. */
+    serverReset:
+      'If the server was set up again, your account is not there yet. Sign up again with this e-mail and you will be asked to upload the data on this device.',
+    signUpAgain: 'Sign up again',
   },
 
   offlineNoSession: {
@@ -83,18 +87,20 @@ export const t = {
       account: { todos: number; notes: number; plans?: number },
     ) =>
       `Your new account already holds ${and([count(account.todos, 'task'), ...extras(account)])}, and ${kept(offline)} of ${email} are still stored offline on this device.`,
-    question: 'Would you like to push all offline data to the server?',
+    question: 'Upload all data from this device to the server?',
     attachments: 'Attachments are only stored on the server and cannot be restored.',
-    no: 'No, discard it',
-    yes: 'Yes, push it',
-    noWarning: 'The offline data will be deleted from this device.',
+    /** docs/recovery-upload FR-163, FR-164. */
+    upload: 'Upload my data',
+    keepEmpty: 'Keep it empty',
+    dontUpload: "Don't upload",
+    noWarning: 'Data that is not uploaded is deleted from this device.',
     chooseTitle: 'Overwrite or append?',
     chooseText:
       'Append adds the offline data to what the account already holds. Overwrite deletes all tasks, lists, notes and plans the account holds now (only the empty Inbox list itself stays) and replaces them with the offline data.',
     append: 'Append',
     overwrite: 'Overwrite',
     back: 'Back',
-    working: 'Pushing offline data…',
+    working: 'Uploading your data…',
     errors: {
       no_inbox: 'The account is not ready yet. Try again in a moment.',
       failed: 'Something went wrong. The offline data is still kept. Try again.',

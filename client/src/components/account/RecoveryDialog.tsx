@@ -3,12 +3,14 @@ import { recovery } from '../../app/container';
 import { useRecoveryOffer, useSyncStatus } from '../../app/hooks';
 import { t } from '../../app/strings';
 import type { RestoreMode } from '../../data/recovery';
+import { isAccountEmpty } from '../../services/recovery';
 
 /**
  * Shown after signing up on a device that still holds the data of an old account (the
- * server lost its database). Asks whether to push it to the server, then whether to
- * overwrite or append (docs/v1/PRD.md FR-78 – FR-82). Escape does not answer: both answers
- * are deliberate, and the question comes back after a reload until one is given.
+ * server lost its database). Asks "Upload my data" or "Keep it empty"; on an account that is
+ * not empty, uploading then asks whether to overwrite or append (docs/v1/PRD.md FR-78 –
+ * FR-82, docs/recovery-upload FR-163 – FR-165). Escape does not answer: both answers are
+ * deliberate, and the question comes back after a reload until one is given.
  */
 export function RecoveryDialog() {
   const offer = useRecoveryOffer();
@@ -26,6 +28,7 @@ export function RecoveryDialog() {
   }, [lastSyncAt]);
 
   const open = offer !== undefined;
+  const empty = offer !== undefined && isAccountEmpty(offer);
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
@@ -63,10 +66,7 @@ export function RecoveryDialog() {
         <>
           <h2 id="recovery-title">{t.recovery.title}</h2>
           <p>
-            {offer.accountTodos === 0 &&
-            offer.accountLists === 0 &&
-            offer.accountNotes === 0 &&
-            offer.accountPlans === 0
+            {empty
               ? t.recovery.emptyAccount(offer.fromEmail, offer)
               : t.recovery.filledAccount(offer.fromEmail, offer, {
                   todos: offer.accountTodos,
@@ -79,18 +79,20 @@ export function RecoveryDialog() {
           </p>
           <p className="hint">{t.recovery.attachments}</p>
           <p className="hint">{t.recovery.noWarning}</p>
+          {busy && <p role="status">{t.recovery.working}</p>}
           {error && <p role="alert">{t.recovery.errors[error]}</p>}
           <div className="dialog-actions">
             <button type="button" className="danger" disabled={busy} onClick={() => void decline()}>
-              {t.recovery.no}
+              {empty ? t.recovery.keepEmpty : t.recovery.dontUpload}
             </button>
             <button
               type="button"
               className="primary"
               disabled={busy}
-              onClick={() => setStep('choose')}
+              // Nothing to overwrite on an empty account: upload at once (FR-164, decision U1).
+              onClick={() => (empty ? void accept('append') : setStep('choose'))}
             >
-              {t.recovery.yes}
+              {t.recovery.upload}
             </button>
           </div>
         </>

@@ -225,3 +225,141 @@ describe('recovery after the server lost its database', () => {
     expect(await phone.snapshot()).toEqual(await a.snapshot());
   });
 });
+
+describe('upload of every kind of data to an empty server (docs/recovery-upload FR-167)', () => {
+  /** Live rows without clocks and timestamps, sorted: what the user sees. */
+  async function visible(b: Browser) {
+    const strip = <T extends { id: string; deletedAt: number | null }>(rows: T[]) =>
+      rows
+        .filter((r) => r.deletedAt === null)
+        .sort((x, y) => x.id.localeCompare(y.id))
+        .map((r) => {
+          const copy: Record<string, unknown> = { ...r };
+          delete copy.fieldHlc;
+          delete copy.createdAt;
+          delete copy.updatedAt;
+          return copy;
+        });
+    return {
+      lists: strip(await b.db.lists.toArray()).filter((l) => !l.isInbox),
+      todos: strip(await b.db.todos.toArray()),
+      notes: strip(await b.db.notes.toArray()),
+      plans: strip(await b.db.plans.toArray()),
+      activities: strip(await b.db.activities.toArray()),
+    };
+  }
+
+  async function deviceWithEverything() {
+    const old = startServer();
+    const a = new Browser(old, 'laptop');
+    await a.register('ann@corp.test');
+    const inbox = await a.inboxId();
+    const work = await a.repo.createList('Work');
+    await a.repo.createTodo({ listId: inbox, title: 'Call the bank', notes: 'Ask about the fee' });
+    const report = await a.repo.createTodo({ listId: work.id, title: 'Report', dueAt: T0 });
+    await a.repo.updateTodo(report.id, { notes: 'Two pages\nwith a chart', priority: 2 });
+    const ideas = await a.repo.createList('Ideas', 'notes');
+    await a.repo.createNote('Loose note');
+    const garden = await a.repo.createNote('Garden', ideas.id);
+    await a.repo.setNotePublic(garden.id, true);
+    const plan = await a.repo.createPlan('Launch');
+    const design = await a.repo.createActivity(plan.id, 'Design');
+    a.time += 10;
+    const build = await a.repo.createActivity(plan.id, 'Build');
+    await a.repo.updateActivity(build.id, { days: 5 });
+    await a.repo.linkActivities(design.id, build.id);
+    await a.repo.updateActivity(design.id, { done: true });
+    expect(await a.sync()).toEqual({ ok: true });
+    return { a, inbox };
+  }
+
+  it('everything the device holds reaches the fresh server and a second device', async () => {
+    const { a, inbox: oldInbox } = await deviceWithEverything();
+    const before = await visible(a);
+    expect(before).toMatchObject({
+      lists: { length: 2 },
+      todos: { length: 2 },
+      notes: { length: 2 },
+      plans: { length: 1 },
+      activities: { length: 2 },
+    });
+
+    const fresh = startServer();
+    const recovery = await signUpAgain(a, fresh, 'ann@corp.test');
+    expect(recovery.getOffer()).toMatchObject({
+      todos: 2,
+      lists: 2,
+      notes: 2,
+      plans: 1,
+      accountTodos: 0,
+      accountLists: 0,
+      accountNotes: 0,
+      accountPlans: 0,
+    });
+    expect(await recovery.accept('append')).toEqual({
+      ok: true,
+      lists: 2,
+      todos: 2,
+      notes: 2,
+      plans: 1,
+    });
+    expect(await a.sync()).toEqual({ ok: true });
+    expect(await a.db.outbox.count()).toBe(0);
+    expect(await a.db.deadLetter.count()).toBe(0);
+
+    const phone = new Browser(fresh, 'phone');
+    await phone.login('ann@corp.test');
+    await phone.sync();
+    const after = await visible(phone);
+    const newInbox = await phone.inboxId();
+    // The only change: tasks of the old Inbox are in the new account's Inbox (FR-80).
+    expect(after.todos).toEqual(
+      before.todos.map((t) => (t.listId === oldInbox ? { ...t, listId: newInbox } : t)),
+    );
+    expect(after.lists).toEqual(before.lists);
+    expect(after.notes).toEqual(before.notes);
+    expect(after.plans).toEqual(before.plans);
+    expect(after.activities).toEqual(before.activities);
+    expect(await visible(a)).toEqual(after);
+  });
+
+  it('the upload made offline is sent once the connection is back, with nothing lost', async () => {
+    const { a } = await deviceWithEverything();
+    const before = await visible(a);
+    const fresh = startServer();
+    const recovery = await signUpAgain(a, fresh, 'ann@corp.test');
+    a.online = false;
+    await recovery.accept('append');
+    expect((await a.sync()).ok).toBe(false);
+    a.online = true;
+    expect(await a.sync()).toEqual({ ok: true });
+
+    const phone = new Browser(fresh, 'phone');
+    await phone.login('ann@corp.test');
+    await phone.sync();
+    const after = await visible(phone);
+    expect(after.notes).toEqual(before.notes);
+    expect(after.activities).toEqual(before.activities);
+    expect(after.todos.map((t) => [t.title, t.notes]).sort()).toEqual(
+      before.todos.map((t) => [t.title, t.notes]).sort(),
+    );
+  });
+
+  it('keep it empty: nothing reaches the server', async () => {
+    const { a } = await deviceWithEverything();
+    const fresh = startServer();
+    const recovery = await signUpAgain(a, fresh, 'ann@corp.test');
+    await recovery.decline();
+    expect(await a.sync()).toEqual({ ok: true });
+    const phone = new Browser(fresh, 'phone');
+    await phone.login('ann@corp.test');
+    await phone.sync();
+    expect(await visible(phone)).toEqual({
+      lists: [],
+      todos: [],
+      notes: [],
+      plans: [],
+      activities: [],
+    });
+  });
+});

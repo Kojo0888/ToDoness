@@ -28,6 +28,16 @@ export interface RecoveryOffer {
   accountPlans: number;
 }
 
+/** The new account holds nothing but its Inbox (docs/recovery-upload FR-163, FR-164). */
+export function isAccountEmpty(offer: RecoveryOffer): boolean {
+  return (
+    offer.accountTodos === 0 &&
+    offer.accountLists === 0 &&
+    offer.accountNotes === 0 &&
+    offer.accountPlans === 0
+  );
+}
+
 export type AcceptResult =
   | { ok: true; lists: number; todos: number; notes: number; plans: number }
   | { ok: false; error: 'no_offer' | 'no_inbox' };

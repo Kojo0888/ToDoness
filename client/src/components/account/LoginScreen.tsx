@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { session } from '../../app/container';
 import type { AuthResult } from '../../services/session';
+import { offerSignUpAgain } from '../../lib/signUpAgain';
 import { t } from '../../app/strings';
 
 interface Props {
@@ -13,23 +14,39 @@ export function LoginScreen({ email: initialEmail = '', reason }: Props) {
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  /** A failed login that may mean the server was set up again (docs/recovery-upload FR-166). */
+  const [mayBeReset, setMayBeReset] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  async function send(as: 'login' | 'register') {
     setBusy(true);
     setError(null);
+    setMayBeReset(false);
     const result: AuthResult =
-      mode === 'login'
+      as === 'login'
         ? await session.login(email, password)
         : await session.register(email, password);
     if (!result.ok) {
       const base = t.login.errors[result.error];
       const wait = result.retryAfterSec ? ` (${Math.ceil(result.retryAfterSec / 60)} min)` : '';
       setError(base + wait);
+      setMayBeReset(
+        offerSignUpAgain({
+          mode: as,
+          reason,
+          storedEmail: initialEmail || undefined,
+          typedEmail: email,
+          error: result.error,
+        }),
+      );
       setBusy(false);
     }
     // On success the session changes state and this screen goes away.
+  }
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    void send(mode);
   }
 
   return (
@@ -68,7 +85,13 @@ export function LoginScreen({ email: initialEmail = '', reason }: Props) {
         {error && (
           <p className="error" role="alert">
             {error}
+            {mayBeReset && ` ${t.login.serverReset}`}
           </p>
+        )}
+        {mayBeReset && (
+          <button type="button" disabled={busy} onClick={() => void send('register')}>
+            {t.login.signUpAgain}
+          </button>
         )}
         <button type="submit" className="primary" disabled={busy}>
           {mode === 'login' ? t.login.submitLogin : t.login.submitRegister}
@@ -79,6 +102,7 @@ export function LoginScreen({ email: initialEmail = '', reason }: Props) {
           onClick={() => {
             setMode(mode === 'login' ? 'register' : 'login');
             setError(null);
+            setMayBeReset(false);
           }}
         >
           {mode === 'login' ? t.login.toRegister : t.login.toLogin}

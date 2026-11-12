@@ -426,3 +426,67 @@ describe('users are separate', () => {
     expect(await ann.inboxId()).not.toBe(await bob.inboxId());
   });
 });
+
+describe('task notes sync (docs/recovery-upload FR-167)', () => {
+  it('a task note reaches the other device, and an offline edit there comes back', async () => {
+    const { a, b } = await twoBrowsers();
+    const todo = await a.repo.createTodo({
+      listId: await a.inboxId(),
+      title: 'Call the bank',
+      notes: 'Ask about the fee',
+    });
+    await a.sync();
+    await b.sync();
+    expect((await b.db.todos.get(todo.id))?.notes).toBe('Ask about the fee');
+
+    b.online = false;
+    b.time += 1000;
+    await b.repo.updateTodo(todo.id, { notes: 'Ask about the fee\nAnd the new card' });
+    b.online = true;
+    await b.sync();
+    await a.sync();
+    expect((await a.db.todos.get(todo.id))?.notes).toBe('Ask about the fee\nAnd the new card');
+    await expectConverged(a, b);
+  });
+
+  it('a task note edited on one device and the title on the other: both are kept', async () => {
+    const { a, b } = await twoBrowsers();
+    const todo = await a.repo.createTodo({ listId: await a.inboxId(), title: 'Draft' });
+    await a.sync();
+    await b.sync();
+
+    a.online = false;
+    b.online = false;
+    a.time += 1000;
+    b.time += 2000;
+    await a.repo.updateTodo(todo.id, { notes: 'From the laptop' });
+    await b.repo.updateTodo(todo.id, { title: 'Final' });
+    a.online = true;
+    b.online = true;
+    await a.sync();
+    await b.sync();
+    await a.sync();
+    for (const x of [a, b]) {
+      expect(await x.db.todos.get(todo.id)).toMatchObject({
+        title: 'Final',
+        notes: 'From the laptop',
+      });
+    }
+    await expectConverged(a, b);
+  });
+
+  it('a cleared task note is cleared on the other device too', async () => {
+    const { a, b } = await twoBrowsers();
+    const todo = await a.repo.createTodo({
+      listId: await a.inboxId(),
+      title: 'Task',
+      notes: 'temporary',
+    });
+    await a.sync();
+    await b.sync();
+    await b.repo.updateTodo(todo.id, { notes: '' });
+    await b.sync();
+    await a.sync();
+    expect((await a.db.todos.get(todo.id))?.notes).toBe('');
+  });
+});
