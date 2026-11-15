@@ -9,6 +9,7 @@ import { trackPresence } from './http/presence';
 import { staticMiddleware } from './http/static';
 import type { AppEnv } from './http/types';
 import { getVapidKeys } from './push/keys';
+import { createBackupService, type BackupService } from './backup/service';
 import { createNtfySender, type NtfySend } from './push/ntfy';
 import { adminRoutes } from './routes/admin';
 import { attachmentRoutes } from './routes/attachments';
@@ -28,6 +29,8 @@ export interface AppDeps {
   now?: () => number;
   /** Sends reminders through ntfy. Default: built from `config.ntfyUrl`, if it is set. */
   ntfySend?: NtfySend;
+  /** The backup service; the server process also runs its scheduler (index.ts). */
+  backup?: BackupService;
 }
 
 /** The ntfy sender the config asks for, or undefined when ntfy is off. */
@@ -41,7 +44,14 @@ export function ntfySenderFor(config: Config): NtfySend | undefined {
 }
 
 /** Builds the HTTP app. Kept separate from `index.ts` so tests can call it directly. */
-export function createApp({ db, config, log = false, now = Date.now, ntfySend }: AppDeps) {
+export function createApp({
+  db,
+  config,
+  log = false,
+  now = Date.now,
+  ntfySend,
+  backup = createBackupService({ db, config, now }),
+}: AppDeps) {
   const app = new Hono<AppEnv>();
   const presence = createPresence(db, config.onlineWindowMs);
   const serverClock = new HlcClock('server', now);
@@ -52,7 +62,7 @@ export function createApp({ db, config, log = false, now = Date.now, ntfySend }:
   app.route('/api', metaRoutes({ db, config }));
   app.route('/api/auth', authRoutes({ db, config, now, serverClock, presence }));
   app.route('/api/me', meRoute({ db, now }));
-  app.route('/api/admin', adminRoutes({ db, now, presence, config }));
+  app.route('/api/admin', adminRoutes({ db, now, presence, config, backup }));
   app.route('/api', attachmentRoutes({ db, config, now }));
   app.route('/api/sync', syncRoutes({ db, now, serverClock }));
   app.route('/api/public', publicRoutes({ db, now }));

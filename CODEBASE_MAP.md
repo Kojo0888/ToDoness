@@ -42,17 +42,18 @@ through `useLiveQuery`.
 
 ### `server/src/`
 
-| Path                              | Contents                                                                                                                                       |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `index.ts`, `app.ts`, `config.ts` | Process entry, Hono app composition, environment configuration                                                                                 |
-| `routes/*.ts`                     | One file per API area: `auth`, `admin`, `sync` (push / pull, **compat flags for older apps**), `public`, `attachments`, `push`, `ntfy`, `meta` |
-| `sync/apply-ops.ts`               | Applying pushed operations: ownership checks, merge, `change_log`                                                                              |
-| `sync/rows.ts`                    | Row ↔ SQLite mapping for every entity (`get*` / `save*`)                                                                                       |
-| `db/migrations/NNN_*.sql`         | Numbered SQL migrations (applied by `db/migrate.ts` via `PRAGMA user_version`)                                                                 |
-| `auth/`                           | Users, sessions, passwords, rate limits (sign-up: 20 per hour per address), presence                                                           |
-| `push/`                           | Web push keys and sending, ntfy, the reminder sweeper (`reminders.ts` tasks and delivery, `eventReminders.ts` event occurrences)               |
-| `http/`                           | Errors, static files, shutdown, context types                                                                                                  |
-| `attachments/storage.ts`          | Uploaded files on disk                                                                                                                         |
+| Path                              | Contents                                                                                                                                                    |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `index.ts`, `app.ts`, `config.ts` | Process entry, Hono app composition, environment configuration                                                                                              |
+| `routes/*.ts`                     | One file per API area: `auth`, `admin`, `sync` (push / pull, **compat flags for older apps**), `public`, `attachments`, `push`, `ntfy`, `meta`              |
+| `sync/apply-ops.ts`               | Applying pushed operations: ownership checks, merge, `change_log`                                                                                           |
+| `sync/rows.ts`                    | Row ↔ SQLite mapping for every entity (`get*` / `save*`)                                                                                                    |
+| `db/migrations/NNN_*.sql`         | Numbered SQL migrations (applied by `db/migrate.ts` via `PRAGMA user_version`)                                                                              |
+| `auth/`                           | Users, sessions, passwords, rate limits (sign-up: 20 per hour per address), presence                                                                        |
+| `backup/`                         | Automatic backups (docs/backup): `service.ts` (settings in `app_settings`, one backup, retention, schedule), `zip.ts` (yazl), `scheduler.ts` (every minute) |
+| `push/`                           | Web push keys and sending, ntfy, the reminder sweeper (`reminders.ts` tasks and delivery, `eventReminders.ts` event occurrences)                            |
+| `http/`                           | Errors, static files, shutdown, context types                                                                                                               |
+| `attachments/storage.ts`          | Uploaded files on disk                                                                                                                                      |
 
 ### `client/src/`
 
@@ -93,8 +94,8 @@ sign-up rate limit (≈ 20 per test file).
 
 `docs/<feature>/PRD.md` (requirements FR-n, decisions) and `ImplementationPlan.md` (design,
 steps, "changed on the way"): `mvp`, `v1` (+ `Decisions.md`, `TechStack.md`), `notes`,
-`note-lists`, `ui-refresh`, `plan`, `recovery-upload`, `plan-sort`, `notes-details`, `calendar` (+ `mockups.html`). Requirement numbers continue across documents
-(latest: `docs/calendar/PRD.md`, FR-201 – FR-218). Older docs may name file paths from before the current layout.
+`note-lists`, `ui-refresh`, `plan`, `recovery-upload`, `plan-sort`, `notes-details`, `backup`, `calendar` (+ `mockups.html`). Requirement numbers continue across documents
+(latest: `docs/backup/PRD.md`, FR-232 – FR-240; calendar FR-201 – FR-231). Older docs may name file paths from before the current layout.
 
 ## 3. Recipes: which files a typical change touches
 

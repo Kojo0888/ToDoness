@@ -1,6 +1,8 @@
 import { serve } from '@hono/node-server';
 import type { Server } from 'node:http';
 import { createApp, ntfySenderFor } from './app';
+import { startBackupScheduler } from './backup/scheduler';
+import { createBackupService } from './backup/service';
 import { closeServer } from './http/shutdown';
 import { deleteExpiredSessions } from './auth/sessions';
 import { loadConfig } from './config';
@@ -18,13 +20,15 @@ if (applied > 0) console.log(`Applied ${applied} database migration(s)`);
 deleteExpiredSessions(db, Date.now());
 
 const ntfySend = ntfySenderFor(config);
-const app = createApp({ db, config, log: true, ...(ntfySend ? { ntfySend } : {}) });
+const backup = createBackupService({ db, config });
+const app = createApp({ db, config, log: true, backup, ...(ntfySend ? { ntfySend } : {}) });
 
 const stopSweeper = startReminderSweeper({
   db,
   send: createWebPushSender(getVapidKeys(db, config), config.vapidSubject),
   ...(ntfySend ? { sendNtfy: ntfySend } : {}),
 });
+const stopBackups = startBackupScheduler({ service: backup });
 if (ntfySend) console.log(`Reminders through ntfy are on (${config.ntfyUrl})`);
 
 const server = serve({ fetch: app.fetch, port: config.port }, (info) => {
@@ -36,6 +40,7 @@ function shutdown() {
   if (stopping) return;
   stopping = true;
   stopSweeper();
+  stopBackups();
   // Requests under way get a moment to finish; connections left over are then closed, so a
   // browser's unused pre-connected socket cannot keep the process alive.
   void closeServer(server as Server).then(() => {

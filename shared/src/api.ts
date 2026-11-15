@@ -133,3 +133,40 @@ export type PublicNote = z.infer<typeof publicNoteSchema>;
 
 export const publicNotesResponseSchema = z.object({ notes: z.array(publicNoteSchema) });
 export type PublicNotesResponse = z.infer<typeof publicNotesResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Backup (docs/backup/PRD.md)
+// ---------------------------------------------------------------------------
+
+export const BACKUP_FREQUENCIES = ['day', 'week', 'month'] as const;
+export const backupFrequencySchema = z.enum(BACKUP_FREQUENCIES);
+export type BackupFrequency = z.infer<typeof backupFrequencySchema>;
+export const BACKUP_KEEP_MIN = 1;
+export const BACKUP_KEEP_MAX = 100;
+export const BACKUP_KEEP_DEFAULT = 3;
+
+/** What the administrator sets (FR-232 – FR-234). */
+export const backupSettingsSchema = z.strictObject({
+  enabled: z.boolean(),
+  frequency: backupFrequencySchema,
+  keep: z.number().int().min(BACKUP_KEEP_MIN).max(BACKUP_KEEP_MAX),
+});
+export type BackupSettings = z.infer<typeof backupSettingsSchema>;
+
+export const backupFileSchema = z.object({
+  name: z.string(),
+  size: z.number().int().min(0),
+  createdAt: z.number().int(),
+});
+
+/** The settings plus what the server knows: folder, last and next backup, the list (FR-239). */
+export const backupStatusSchema = backupSettingsSchema.extend({
+  dir: z.string(),
+  writable: z.boolean(),
+  running: z.boolean(),
+  lastAt: z.number().int().nullable(),
+  nextAt: z.number().int().nullable(),
+  lastError: z.string().nullable(),
+  backups: z.array(backupFileSchema),
+});
+export type BackupStatus = z.infer<typeof backupStatusSchema>;

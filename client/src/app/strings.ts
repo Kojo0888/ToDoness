@@ -673,6 +673,23 @@ export const t = {
     resetDone: (email: string) => `Password of ${email} was reset.`,
     needsConnection: 'The admin screen needs a connection to the server.',
     loadFailed: 'Could not load the users.',
+    backup: {
+      title: 'Backup data',
+      info: 'Saves all data and all attachments in one zip file in the backup folder of the server. The oldest backups are deleted. Restoring is done by hand (see the README).',
+      frequency: 'Backup frequency',
+      frequencies: { day: 'Daily', week: 'Weekly', month: 'Monthly' },
+      keep: 'Backups to keep',
+      folder: (dir: string) => `Folder: ${dir}`,
+      notWritable: 'The backup folder cannot be written to. Check BACKUP_DIR on the server.',
+      lastBackup: (when: string) => `Last backup: ${when}`,
+      noBackup: 'No backup yet.',
+      nextBackup: (when: string) => `Next backup: ${when}`,
+      running: 'Backup running…',
+      failed: (reason: string) => `The last backup failed: ${reason}`,
+      now: 'Back up now',
+      list: 'Backups',
+      saveFailed: 'Could not save the backup settings.',
+    },
   },
 
   reminder: {

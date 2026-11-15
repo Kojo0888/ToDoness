@@ -15,13 +15,15 @@
     "@node-rs/argon2": "^2.2.2",
     "better-sqlite3": "^13.0.3",
     "hono": "^4.13.16",
-    "web-push": "^4.0.0"
+    "web-push": "^4.0.0",
+    "yazl": "^3.3.1"
   },
   "devDependencies": {
     "@todoness/shared": "workspace:*",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.0.0",
     "@types/web-push": "^3.6.4",
+    "@types/yazl": "^3.3.1",
     "esbuild": "^0.28.2",
     "tsx": "^4.23.15",
     "vitest": "^5.1.0"

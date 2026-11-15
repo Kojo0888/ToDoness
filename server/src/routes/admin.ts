@@ -1,10 +1,11 @@
 import type Database from 'better-sqlite3';
 import { Hono } from 'hono';
-import { idSchema, type AdminUsersResponse } from '@todoness/shared';
+import { backupSettingsSchema, idSchema, type AdminUsersResponse } from '@todoness/shared';
 import { requireAdmin, requireAuth } from '../auth/middleware';
 import type { Presence } from '../auth/presence';
 import { deleteUserSessions } from '../auth/sessions';
 import { removeUserFiles } from '../attachments/storage';
+import type { BackupService } from '../backup/service';
 import type { Config } from '../config';
 import type { AppEnv } from '../http/types';
 
@@ -13,11 +14,13 @@ export function adminRoutes({
   now,
   presence,
   config,
+  backup,
 }: {
   db: Database.Database;
   now: () => number;
   presence: Presence;
   config: Config;
+  backup: BackupService;
 }) {
   const app = new Hono<AppEnv>();
   app.use('*', requireAuth(db, now), requireAdmin);
@@ -76,6 +79,22 @@ export function adminRoutes({
     if (r.changes === 0) return c.json({ error: 'not_found' }, 404);
     await removeUserFiles(config.attachmentsDir, id.data); // attachments (FR-54)
     return c.body(null, 204);
+  });
+
+  // Automatic backups (docs/backup/PRD.md).
+  app.get('/backup', async (c) => c.json(await backup.getStatus()));
+
+  app.put('/backup', async (c) => {
+    const parsed = backupSettingsSchema.safeParse(await c.req.json().catch(() => undefined));
+    if (!parsed.success) return c.json({ error: 'invalid_request' }, 400);
+    return c.json(await backup.saveSettings(parsed.data));
+  });
+
+  /** Starts a backup and answers at once; it runs on in the background (FR-239). */
+  app.post('/backup/run', async (c) => {
+    if ((await backup.getStatus()).running) return c.json({ error: 'running' }, 409);
+    void backup.run();
+    return c.json(await backup.getStatus(), 202);
   });
 
   return app;

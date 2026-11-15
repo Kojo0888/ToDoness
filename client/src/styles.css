@@ -3335,3 +3335,70 @@ h2.nav-heading {
     min-height: 44px;
   }
 }
+
+/* A wide table scrolls inside its own box, not the page (Admin on a phone). */
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* ---------- Admin: Backup data (docs/backup/PRD.md) ---------- */
+
+.backup-body {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 0.6rem;
+}
+
+.backup-body label {
+  display: grid;
+  gap: 0.25rem;
+  max-width: 12rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.backup-body input[type='number'] {
+  min-height: 2.5rem;
+  padding: 0.3rem 0.6rem;
+}
+
+.backup-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.backup-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.backup-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.8rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+.backup-list .hint {
+  margin-left: auto;
+}
+
+@media (max-width: 760px) {
+  .backup-body .chip,
+  .backup-body button,
+  .backup-body input[type='number'] {
+    min-height: 44px;
+  }
+
+  .backup-body label {
+    max-width: none;
+  }
+}
