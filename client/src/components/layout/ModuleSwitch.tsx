@@ -10,17 +10,30 @@ const ICONS: Record<ModuleId, string> = {
   notes: 'M6 3h9l4 4v14H6zM15 3v4h4M9 11h7M9 15h7',
   // Three bars of a timeline, each starting later.
   plan: 'M4 6h8M9 12h8M13 18h7',
+  // A calendar page with two rings.
+  calendar: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
 };
 
 /**
- * Tasks | Notes | Plan (docs/notes/PRD.md FR-83, docs/plan/PRD.md FR-119). Shown at the top of the sidebar on a computer
- * and in the top bar on a phone (CSS picks one). A labelled group of links, so it is one
- * tap away and works with the keyboard; more modules only add entries to `MODULES`.
+ * The module picker (docs/calendar/PRD.md FR-201): every module with its icon and full name.
+ * `rail` is the vertical list at the top of the sidebar on a computer; `tabbar` is the bar at
+ * the bottom of the screen on a phone (CSS shows one of them). A labelled group of links, so it
+ * is one tap away and works with the keyboard; more modules only add entries to `MODULES`.
  */
-export function ModuleSwitch({ onNavigate }: { onNavigate?: () => void }) {
+export function ModuleSwitch({
+  variant,
+  onNavigate,
+}: {
+  variant: 'rail' | 'tabbar';
+  onNavigate?: () => void;
+}) {
   const { current, onModulePage, hrefOf } = useModule();
   return (
-    <div className="module-switch" role="group" aria-label={t.modules.label}>
+    <div
+      className={`module-switch ${variant === 'rail' ? 'module-rail' : 'tabbar'}`}
+      role="group"
+      aria-label={t.modules.label}
+    >
       {MODULES.map((m) => {
         const active = m.id === current;
         return (
@@ -31,7 +44,7 @@ export function ModuleSwitch({ onNavigate }: { onNavigate?: () => void }) {
             aria-current={active ? (onModulePage ? 'page' : 'true') : undefined}
             onClick={onNavigate}
           >
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
               <path
                 d={ICONS[m.id]}
                 fill="none"

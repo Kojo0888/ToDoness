@@ -139,12 +139,12 @@ describe('module switch (FR-83 – FR-87)', () => {
     await context.close();
   });
 
-  it('is in the top bar on a phone, without opening the menu', async () => {
+  it('is the bar at the bottom on a phone, without opening the menu', async () => {
     const { page } = await newUser('phone', { width: 390, height: 800 });
     const sw = modules(page);
     await expect(sw.isVisible()).resolves.toBe(true);
-    // It is the top bar's switch (the sidebar is closed).
-    await expect(page.locator('.topbar .module-switch').isVisible()).resolves.toBe(true);
+    // It is the bottom bar's switch (the sidebar is closed).
+    await expect(page.locator('.tabbar').isVisible()).resolves.toBe(true);
     await expect(page.getByRole('navigation').isVisible()).resolves.toBe(false);
     const box = (await sw.getByRole('link', { name: 'Notes' }).boundingBox())!;
     expect(box.height).toBeGreaterThanOrEqual(44);

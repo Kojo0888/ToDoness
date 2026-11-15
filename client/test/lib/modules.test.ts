@@ -40,6 +40,11 @@ describe('moduleOfPath', () => {
     ['/plans', 'plan'],
     ['/plans/', 'plan'],
     ['/plan/abc', 'plan'],
+    ['/calendar', 'calendar'],
+    ['/calendar/', 'calendar'],
+    ['/calendar/new', 'calendar'],
+    ['/calendar/e/abc', 'calendar'],
+    ['/calendar/manage', 'calendar'],
   ])('%s belongs to %s', (path, id) => {
     expect(moduleOfPath(path)).toBe(id);
   });
@@ -54,14 +59,16 @@ describe('moduleOfPath', () => {
     '/publicx',
     '/tasksx',
     '/lists/managex',
+    '/calendarx',
   ])('%s belongs to no module', (path) => {
     expect(moduleOfPath(path)).toBeUndefined();
   });
 });
 
 describe('the module list', () => {
-  it('has Tasks first, then Notes, each with a home address it owns', () => {
-    expect(MODULES.map((m) => m.id)).toEqual(['tasks', 'notes', 'plan']);
+  it('has Tasks first, then Notes, Plan and Calendar, each with a home address it owns', () => {
+    expect(MODULES.map((m) => m.id)).toEqual(['tasks', 'notes', 'plan', 'calendar']);
+    expect(homeOf('calendar')).toBe('/calendar');
     for (const m of MODULES) expect(moduleOfPath(m.home)).toBe(m.id);
     expect(homeOf('notes')).toBe('/notes');
     expect(homeOf('tasks')).toBe('/tasks');
@@ -69,6 +76,12 @@ describe('the module list', () => {
 });
 
 describe('last module on this device', () => {
+  it('remembers the calendar', () => {
+    const s = memoryStorage();
+    saveLastModule(s, 'calendar');
+    expect(readLastModule(s)).toBe('calendar');
+  });
+
   it('defaults to tasks', () => {
     expect(readLastModule(memoryStorage())).toBe('tasks');
   });
@@ -81,7 +94,7 @@ describe('last module on this device', () => {
   });
 
   it('ignores unknown values and storage that throws', () => {
-    expect(readLastModule(memoryStorage({ 'todoness.module': 'calendar' }))).toBe('tasks');
+    expect(readLastModule(memoryStorage({ 'todoness.module': 'journal' }))).toBe('tasks');
     expect(readLastModule(broken)).toBe('tasks');
     expect(() => saveLastModule(broken, 'notes')).not.toThrow();
     expect(readLastModule(undefined)).toBe('tasks');

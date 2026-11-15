@@ -37,6 +37,9 @@ import {
   syncOpSchema,
   wouldLoop,
   type Activity,
+  type Calendar,
+  type CalendarColor,
+  type CalendarEvent,
   type Entity,
   type PlanTree,
   type List,
@@ -62,6 +65,34 @@ export interface ActivityEdit {
   start?: string;
   days?: number;
   done?: boolean;
+}
+
+/** What an event is made of (docs/calendar/PRD.md FR-207). */
+export interface NewEvent {
+  calendarId: string;
+  title: string;
+  start: string;
+  /** Days of an all-day event (default 1). */
+  days?: number;
+  /** `HH:MM`; none (or `null`) = all day. */
+  startTime?: string | null;
+  endTime?: string | null;
+  place?: string;
+}
+
+/**
+ * The fields of an event as they are stored (decision C2): a timed event is one day and an
+ * end time needs a start time. `patch` is changed on top of `base`.
+ */
+function normalizedEvent(base: Partial<NewEvent>, patch: Partial<NewEvent>) {
+  const m = { ...base, ...patch };
+  const startTime = m.startTime ?? null;
+  return {
+    ...m,
+    startTime,
+    endTime: startTime === null ? null : (m.endTime ?? null),
+    days: startTime === null ? (m.days ?? 1) : 1,
+  };
 }
 
 /** How long a new activity lasts (docs/plan/PRD.md FR-124). */
@@ -137,6 +168,20 @@ export interface Repo {
    * (today in an empty plan) and lasts `NEW_ACTIVITY_DAYS`.
    */
   createActivity(planId: string, name: string): Promise<Activity>;
+
+  /** A new calendar after the existing ones (docs/calendar/PRD.md FR-203). */
+  createCalendar(name: string, color?: CalendarColor): Promise<Calendar>;
+  renameCalendar(id: string, name: string): Promise<Calendar>;
+  recolorCalendar(id: string, color: CalendarColor): Promise<Calendar>;
+  /** Puts a calendar directly before another one (`null` = at the end). */
+  reorderCalendar(id: string, beforeId: string | null): Promise<Calendar>;
+  /** Deletes a calendar and its events (FR-205). */
+  deleteCalendar(id: string): Promise<Calendar>;
+  /** Errors: `not_found` (no such live calendar), `invalid` (a field is not valid). */
+  createEvent(input: NewEvent): Promise<CalendarEvent>;
+  updateEvent(id: string, patch: Partial<NewEvent>): Promise<CalendarEvent>;
+  deleteEvent(id: string): Promise<CalendarEvent>;
+  restoreEvent(id: string): Promise<CalendarEvent>;
   /**
    * Changes the name, the start day or the duration. A start before the end of a
    * predecessor becomes the first allowed day, and when the start or the duration changes,
@@ -205,7 +250,7 @@ export interface Repo {
   restoreSnapshot(
     snapshot: RecoverySnapshot,
     mode: RestoreMode,
-  ): Promise<{ lists: number; todos: number; notes: number; plans: number }>;
+  ): Promise<{ lists: number; todos: number; notes: number; plans: number; calendars: number }>;
 }
 
 export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): Repo {
@@ -214,11 +259,21 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
   const inTx = <T>(fn: () => Promise<T>) =>
     db.transaction(
       'rw',
-      [db.todos, db.lists, db.notes, db.plans, db.activities, db.outbox, db.meta],
+      [
+        db.todos,
+        db.lists,
+        db.notes,
+        db.plans,
+        db.activities,
+        db.calendars,
+        db.events,
+        db.outbox,
+        db.meta,
+      ],
       fn,
     );
 
-  type AnyRow = Todo | List | Note | Plan | Activity;
+  type AnyRow = Todo | List | Note | Plan | Activity | Calendar | CalendarEvent;
   const tableOf = <T extends AnyRow>(entity: Entity) =>
     (
       ({
@@ -227,6 +282,8 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         note: db.notes,
         plan: db.plans,
         activity: db.activities,
+        calendar: db.calendars,
+        event: db.events,
       }) as const
     )[entity] as unknown as Dexie.Table<T, string>;
 
@@ -280,6 +337,18 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
     const n = await db.notes.get(id);
     if (!n || n.deletedAt !== null) throw new RepoError('not_found', 'Note not found');
     return n;
+  }
+
+  async function liveCalendar(id: string): Promise<Calendar> {
+    const c = await db.calendars.get(id);
+    if (!c || c.deletedAt !== null) throw new RepoError('not_found', 'Calendar not found');
+    return c;
+  }
+
+  async function liveEvent(id: string): Promise<CalendarEvent> {
+    const e = await db.events.get(id);
+    if (!e || e.deletedAt !== null) throw new RepoError('not_found', 'Event not found');
+    return e;
   }
 
   async function livePlan(id: string): Promise<Plan> {
@@ -658,6 +727,108 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         });
       }),
 
+    createCalendar: (name, color = 'blue') =>
+      inTx(async () => {
+        const last = await db.calendars.orderBy('orderKey').last();
+        return commit<Calendar>('calendar', 'create', newId(now()), {
+          name,
+          color,
+          orderKey: generateKeyBetween(last?.orderKey ?? null, null),
+        });
+      }),
+
+    renameCalendar: (id, name) =>
+      inTx(async () => {
+        const c = await liveCalendar(id);
+        if (c.name === name.trim()) return c;
+        return commit<Calendar>('calendar', 'update', id, { name });
+      }),
+
+    recolorCalendar: (id, color) =>
+      inTx(async () => {
+        const c = await liveCalendar(id);
+        if (c.color === color) return c;
+        return commit<Calendar>('calendar', 'update', id, { color });
+      }),
+
+    reorderCalendar: (id, beforeId) =>
+      inTx(async () => {
+        const c = await liveCalendar(id);
+        const live = (await db.calendars.orderBy('orderKey').toArray()).filter(
+          (x) => x.deletedAt === null,
+        );
+        const choice = keyForPosition(live, id, beforeId);
+        if (choice.kind === 'same') return c;
+        if (choice.kind === 'missing') {
+          throw new RepoError('not_found', 'Calendar or target not found');
+        }
+        return commit<Calendar>('calendar', 'update', id, { orderKey: choice.key });
+      }),
+
+    deleteCalendar: (id) =>
+      inTx(async () => {
+        const c = await db.calendars.get(id);
+        if (!c) throw new RepoError('not_found', 'Calendar not found');
+        if (c.deletedAt !== null) return c;
+        for (const e of await db.events.where('calendarId').equals(id).toArray()) {
+          if (e.deletedAt === null) await commit<CalendarEvent>('event', 'delete', e.id, {});
+        }
+        return commit<Calendar>('calendar', 'delete', id, {});
+      }),
+
+    createEvent: (input) =>
+      inTx(async () => {
+        await liveCalendar(input.calendarId);
+        const f = normalizedEvent({}, input);
+        return commit<CalendarEvent>('event', 'create', newId(now()), {
+          calendarId: f.calendarId,
+          title: f.title,
+          start: f.start,
+          days: f.days,
+          startTime: f.startTime,
+          endTime: f.endTime,
+          place: f.place ?? '',
+        });
+      }),
+
+    updateEvent: (id, patch) =>
+      inTx(async () => {
+        const current = await liveEvent(id);
+        if (patch.calendarId !== undefined) await liveCalendar(patch.calendarId);
+        const f = normalizedEvent(current, patch);
+        const changed: Record<string, unknown> = {};
+        for (const key of [
+          'calendarId',
+          'title',
+          'start',
+          'days',
+          'startTime',
+          'endTime',
+          'place',
+        ] as const) {
+          if (f[key] !== undefined && f[key] !== current[key]) changed[key] = f[key];
+        }
+        if (Object.keys(changed).length === 0) return current;
+        return commit<CalendarEvent>('event', 'update', id, changed);
+      }),
+
+    deleteEvent: (id) =>
+      inTx(async () => {
+        const e = await db.events.get(id);
+        if (!e) throw new RepoError('not_found', 'Event not found');
+        if (e.deletedAt !== null) return e;
+        return commit<CalendarEvent>('event', 'delete', id, {});
+      }),
+
+    restoreEvent: (id) =>
+      inTx(async () => {
+        const e = await db.events.get(id);
+        if (!e) throw new RepoError('not_found', 'Event not found');
+        if (e.deletedAt === null) return e;
+        await liveCalendar(e.calendarId);
+        return commit<CalendarEvent>('event', 'restore', id, {});
+      }),
+
     sortActivities: (planId) =>
       inTx(async () => {
         await livePlan(planId);
@@ -1021,6 +1192,12 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
           for (const p of await db.plans.toArray()) {
             if (p.deletedAt === null) await commit<Plan>('plan', 'delete', p.id, {});
           }
+          for (const e of await db.events.toArray()) {
+            if (e.deletedAt === null) await commit<CalendarEvent>('event', 'delete', e.id, {});
+          }
+          for (const c of await db.calendars.toArray()) {
+            if (c.deletedAt === null) await commit<Calendar>('calendar', 'delete', c.id, {});
+          }
         }
 
         /** Creates the row, or merges into the one that is already here; undeletes it. */
@@ -1091,11 +1268,33 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
             orderKey: a.orderKey,
           });
         }
+        const calendars = snapshot.calendars ?? []; // missing in a copy kept before calendars
+        const calendarIds = new Set(calendars.map((c) => c.id));
+        for (const c of calendars) {
+          await put<Calendar>('calendar', c.id, {
+            name: c.name,
+            color: c.color,
+            orderKey: c.orderKey,
+          });
+        }
+        for (const e of snapshot.events ?? []) {
+          if (!calendarIds.has(e.calendarId)) continue;
+          await put<CalendarEvent>('event', e.id, {
+            calendarId: e.calendarId,
+            title: e.title,
+            start: e.start,
+            days: e.days,
+            startTime: e.startTime,
+            endTime: e.endTime,
+            place: e.place,
+          });
+        }
         return {
           lists: snapshot.lists.length,
           todos: snapshot.todos.length,
           notes: notes.length,
           plans: plans.length,
+          calendars: calendars.length,
         };
       }),
 

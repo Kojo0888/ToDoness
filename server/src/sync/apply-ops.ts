@@ -9,6 +9,8 @@ import {
   applyOp,
   syncOpSchema,
   type Activity,
+  type Calendar,
+  type CalendarEvent,
   type List,
   type Note,
   type Plan,
@@ -17,7 +19,10 @@ import {
   type Todo,
 } from '@todoness/shared';
 import {
+  calendarOwner,
   getActivity,
+  getCalendar,
+  getEvent,
   getList,
   getNote,
   getPlan,
@@ -25,6 +30,8 @@ import {
   listOwner,
   planOwner,
   saveActivity,
+  saveCalendar,
+  saveEvent,
   saveList,
   saveNote,
   savePlan,
@@ -36,6 +43,7 @@ export type RejectReason =
   | 'not_found'
   | 'list_not_found'
   | 'plan_not_found'
+  | 'calendar_not_found'
   | 'inbox_protected'
   | 'forbidden';
 
@@ -201,6 +209,40 @@ export function applyPush(
     return { ok: true };
   }
 
+  function applyCalendar(op: Extract<SyncOp, { entity: 'calendar' }>): Outcome {
+    const existing = getCalendar(db, op.entityId);
+    if (existing && existing.userId !== userId) return { ok: false, reason: 'not_found' };
+
+    const r = applyOp<Calendar>(existing?.row, op);
+    if (!r.ok)
+      return { ok: false, reason: r.reason === 'not_found' ? 'not_found' : 'invalid_operation' };
+    if (r.changed) {
+      saveCalendar(db, userId, r.row);
+      writeLog(op, r.accepted);
+    }
+    return { ok: true };
+  }
+
+  /** An event can only be put into one of the user's own calendars. */
+  function applyEvent(op: Extract<SyncOp, { entity: 'event' }>): Outcome {
+    const existing = getEvent(db, op.entityId);
+    if (existing && existing.userId !== userId) return { ok: false, reason: 'not_found' };
+
+    const target = 'calendarId' in op.patch ? op.patch.calendarId : undefined;
+    if (target !== undefined && calendarOwner(db, target) !== userId) {
+      return { ok: false, reason: 'calendar_not_found' };
+    }
+
+    const r = applyOp<CalendarEvent>(existing?.row, op);
+    if (!r.ok)
+      return { ok: false, reason: r.reason === 'not_found' ? 'not_found' : 'invalid_operation' };
+    if (r.changed) {
+      saveEvent(db, userId, r.row);
+      writeLog(op, r.accepted);
+    }
+    return { ok: true };
+  }
+
   function apply(op: SyncOp): Outcome {
     switch (op.entity) {
       case 'todo':
@@ -213,6 +255,10 @@ export function applyPush(
         return applyPlan(op);
       case 'activity':
         return applyActivity(op);
+      case 'calendar':
+        return applyCalendar(op);
+      case 'event':
+        return applyEvent(op);
     }
   }
 

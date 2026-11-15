@@ -3,7 +3,7 @@
  * entry here plus its pages and sidebar section; the switch and "open where I left" use
  * this list.
  */
-export type ModuleId = 'tasks' | 'notes' | 'plan';
+export type ModuleId = 'tasks' | 'notes' | 'plan' | 'calendar';
 
 export interface AppModule {
   id: ModuleId;
@@ -22,6 +22,9 @@ export const MODULES: readonly AppModule[] = [
   { id: 'notes', home: '/notes', owns: (p) => /^\/notes(\/|$)/.test(p) },
   // `/plans` is the module's start, `/plan/<id>` one plan (docs/plan/PRD.md FR-119, FR-122).
   { id: 'plan', home: '/plans', owns: (p) => /^\/plans?(\/|$)/.test(p) },
+  // `/calendar` is the module's start; `/calendar/new`, `/calendar/e/<id>` and
+  // `/calendar/manage` belong to it (docs/calendar/PRD.md FR-202).
+  { id: 'calendar', home: '/calendar', owns: (p) => /^\/calendar(\/|$)/.test(p) },
 ];
 
 /** The module an address belongs to; `undefined` for Settings, Admin and the like. */

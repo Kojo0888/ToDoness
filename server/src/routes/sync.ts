@@ -62,6 +62,9 @@ export function syncRoutes({
     // still moves past them; such an app reads everything again once it is updated
     // (client/src/data/db.ts, version 7). docs/plan/PRD.md FR-143.
     const withPlans = c.req.query('plans') === '1';
+    // The same for calendars and events (docs/calendar/PRD.md FR-217): only sent to apps that
+    // ask with `calendar=1`; the cursor still moves past them.
+    const withCalendar = c.req.query('calendar') === '1';
     // Apps from before note lists (docs/note-lists, decision L4) would take a note list for
     // a task list and reject a note's `listId`. The current app asks with `lists=modules`.
     const knowsModules = c.req.query('lists') === 'modules';
@@ -113,6 +116,7 @@ export function syncRoutes({
     const body = {
       changes: shown
         .filter((r) => withPlans || (r.entity !== 'plan' && r.entity !== 'activity'))
+        .filter((r) => withCalendar || (r.entity !== 'calendar' && r.entity !== 'event'))
         .map((r) => ({
           serverSeq: r.server_seq,
           entity: r.entity,

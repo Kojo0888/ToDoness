@@ -7,6 +7,9 @@ import { db } from '../../app/container';
 import type { StoredUser } from '../../services/session';
 import { t } from '../../app/strings';
 import { Admin } from '../account/Admin';
+import { CalendarPage } from '../calendar/CalendarPage';
+import { EventPage } from '../calendar/EventPage';
+import { ManageCalendars } from '../calendar/ManageCalendars';
 import { DragAndDrop } from '../common/DragAndDrop';
 import { ListPage } from '../lists/ListPage';
 import { NoteDetailPage } from '../notes/NoteDetailPage';
@@ -71,7 +74,6 @@ export function Shell({ user }: { user: StoredUser }) {
               </svg>
             </button>
             <span className="topbar-title">{t.appName}</span>
-            <ModuleSwitch />
           </header>
           {menuOpen && (
             <button
@@ -131,6 +133,18 @@ export function Shell({ user }: { user: StoredUser }) {
               <Route path="/plans">
                 <PlansHome />
               </Route>
+              <Route path="/calendar/e/:eventId">
+                {(p) => <EventPage key={p.eventId} eventId={p.eventId} />}
+              </Route>
+              <Route path="/calendar/new">
+                <EventPage />
+              </Route>
+              <Route path="/calendar/manage">
+                <ManageCalendars />
+              </Route>
+              <Route path="/calendar">
+                <CalendarPage />
+              </Route>
               <Route path="/tasks">
                 <Home />
               </Route>
@@ -145,6 +159,7 @@ export function Shell({ user }: { user: StoredUser }) {
               </Route>
             </Switch>
           </main>
+          <ModuleSwitch variant="tabbar" />
         </div>
       </DragAndDrop>
     </ToastProvider>

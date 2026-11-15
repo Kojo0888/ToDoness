@@ -32,6 +32,7 @@ export const t = {
     openTasks: (n: number) => `${n} open task${n === 1 ? '' : 's'}`,
     notesCount: (n: number) => `${n} note${n === 1 ? '' : 's'}`,
     activitiesCount: (n: number) => `${n} activit${n === 1 ? 'y' : 'ies'}`,
+    eventsCount: (n: number) => `${n} event${n === 1 ? '' : 's'}`,
   },
 
   login: {
@@ -109,6 +110,7 @@ export const t = {
     tasks: 'Tasks',
     notes: 'Notes',
     plan: 'Plan',
+    calendar: 'Calendar',
   },
 
   nav: {
@@ -251,6 +253,77 @@ export const t = {
     back: 'Back to plans',
     drag: (name: string) => `Drag to reorder plan: ${name}`,
     reorderFailed: 'Could not move the plan: it was changed or deleted meanwhile. Try again.',
+  },
+
+  manageCalendars: {
+    title: 'Manage calendars',
+    empty: 'You have no calendars yet.',
+    back: 'Back to the calendar',
+    drag: (name: string) => `Drag to reorder calendar: ${name}`,
+    reorderFailed: 'Could not move the calendar: it was changed or deleted meanwhile. Try again.',
+  },
+
+  calendar: {
+    calendars: 'Calendars',
+    manageCalendars: 'Manage calendars',
+    newCalendar: 'New calendar name',
+    addCalendar: 'Add calendar',
+    nameLabel: 'Calendar name',
+    empty: 'No calendars yet.',
+    firstCalendar: 'Name of your first calendar',
+    createCalendar: 'Create calendar',
+    deleteCalendar: 'Delete calendar',
+    deleteCalendarTitle: 'Delete this calendar?',
+    deleteCalendarText: (name: string, count: number) =>
+      count === 0
+        ? `"${name}" will be deleted.`
+        : `"${name}" and its ${count} event${count === 1 ? '' : 's'} will be deleted.`,
+    colourOf: (name: string) => `Colour of ${name}`,
+    colours: {
+      blue: 'Blue',
+      green: 'Green',
+      amber: 'Amber',
+      red: 'Red',
+      purple: 'Purple',
+      teal: 'Teal',
+    },
+    showCalendar: (name: string) => name,
+    view: 'Calendar view',
+    views: { month: 'Month', week: 'Week', agenda: 'Agenda' },
+    previous: 'Previous',
+    next: 'Next',
+    today: 'Today',
+    newEvent: 'New event',
+    showTasks: 'Show tasks',
+    tasksInfo: 'Tasks with a due date appear on their day. Tap one to open it.',
+    allDay: 'All day',
+    allDayRow: 'all day',
+    nothingPlanned: 'Nothing planned',
+    moreEvents: (n: number) => `+${n} more`,
+    taskDue: (listName: string) => `Task · ${listName}`,
+    weekOf: 'Week',
+    eventLabel: (title: string, when: string) => `${title}, ${when}`,
+    taskLabel: (title: string, when: string) => `Task: ${title}, ${when}`,
+    dayLabel: (day: string) => `Open ${day} in the agenda`,
+    daysCount: (n: number) => `${n} days`,
+    noCalendarsHint: 'Create a calendar to add events.',
+    // Event page
+    newEventTitle: 'New event',
+    editEventTitle: 'Edit event',
+    back: 'Back to the calendar',
+    title: 'Title',
+    place: 'Place',
+    date: 'Date',
+    starts: 'Starts',
+    ends: 'Ends',
+    lasts: 'Days',
+    calendar: 'Calendar',
+    save: 'Save',
+    cancel: 'Cancel',
+    deleteEvent: 'Delete event',
+    eventDeleted: 'Event deleted.',
+    notFound: 'This event does not exist (any more).',
+    saveFailed: 'Could not save the event. Check the date and the times.',
   },
 
   plan: {

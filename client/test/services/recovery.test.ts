@@ -117,6 +117,7 @@ describe('recovery service', () => {
       todos: 2,
       notes: 0,
       plans: 0,
+      calendars: 0,
     });
     expect(recovery.getOffer()).toBeUndefined();
     expect(await db.getMeta(RECOVERY_KEY)).toBeUndefined();

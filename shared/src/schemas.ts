@@ -7,6 +7,7 @@
  */
 import { z } from 'zod';
 import { isHlc, isValidClientId } from './hlc';
+import { isTime } from './calendar';
 import { isDay } from './plan';
 
 export const TITLE_MAX = 500;
@@ -20,6 +21,11 @@ export const ACTIVITY_NAME_MAX = 200;
 export const ACTIVITY_DAYS_MAX = 3660;
 /** How many activities one activity can depend on. */
 export const ACTIVITY_LINKS_MAX = 50;
+export const CALENDAR_NAME_MAX = 200;
+export const EVENT_TITLE_MAX = 200;
+export const EVENT_PLACE_MAX = 200;
+/** The longest all-day event: a year (docs/calendar/PRD.md FR-207). */
+export const EVENT_DAYS_MAX = 366;
 export const PUSH_BATCH_MAX = 500;
 
 // ---------------------------------------------------------------------------
@@ -122,6 +128,33 @@ const activityFields = {
   parentId: idSchema.nullable(),
 };
 
+/** The colours of a calendar: names, mapped to CSS variables by the app (decision C3). */
+export const CALENDAR_COLORS = ['blue', 'green', 'amber', 'red', 'purple', 'teal'] as const;
+export const calendarColorSchema = z.enum(CALENDAR_COLORS);
+export type CalendarColor = z.infer<typeof calendarColorSchema>;
+
+const calendarFields = {
+  name: z.string().trim().min(1).max(CALENDAR_NAME_MAX),
+  color: calendarColorSchema,
+  orderKey: orderKeySchema,
+};
+
+/** A time of day, `HH:MM` in 24 hours (docs/calendar/PRD.md decision C1). */
+export const timeSchema = z.string().refine(isTime, { message: 'Invalid time' });
+
+const eventFields = {
+  calendarId: idSchema,
+  title: z.string().trim().min(1).max(EVENT_TITLE_MAX),
+  /** The first day. */
+  start: daySchema,
+  /** How many days an all-day event lasts; ignored for an event with a time (decision C2). */
+  days: z.number().int().min(1).max(EVENT_DAYS_MAX),
+  /** `null` = all day. */
+  startTime: timeSchema.nullable(),
+  endTime: timeSchema.nullable(),
+  place: z.string().trim().max(EVENT_PLACE_MAX),
+};
+
 const rowMeta = {
   id: idSchema,
   fieldHlc: fieldHlcSchema,
@@ -156,7 +189,14 @@ export type Plan = z.infer<typeof planSchema>;
 export const activitySchema = z.object({ ...activityFields, ...rowMeta });
 export type Activity = z.infer<typeof activitySchema>;
 
-export type Entity = 'todo' | 'list' | 'note' | 'plan' | 'activity';
+/** A calendar: a named, coloured set of events (docs/calendar/PRD.md). */
+export const calendarSchema = z.object({ ...calendarFields, ...rowMeta });
+export type Calendar = z.infer<typeof calendarSchema>;
+
+export const eventSchema = z.object({ ...eventFields, ...rowMeta });
+export type CalendarEvent = z.infer<typeof eventSchema>;
+
+export type Entity = 'todo' | 'list' | 'note' | 'plan' | 'activity' | 'calendar' | 'event';
 export type OpType = 'create' | 'update' | 'delete' | 'restore';
 
 // ---------------------------------------------------------------------------
@@ -225,6 +265,29 @@ export const activityUpdatePatchSchema = z
   .partial()
   .refine(notEmpty, NOT_EMPTY);
 export type ActivityPatch = z.infer<typeof activityUpdatePatchSchema>;
+
+export const calendarCreatePatchSchema = z.strictObject({
+  ...calendarFields,
+  color: calendarFields.color.optional(),
+});
+export const calendarUpdatePatchSchema = z
+  .strictObject(calendarFields)
+  .partial()
+  .refine(notEmpty, NOT_EMPTY);
+export type CalendarPatch = z.infer<typeof calendarUpdatePatchSchema>;
+
+export const eventCreatePatchSchema = z.strictObject({
+  ...eventFields,
+  days: eventFields.days.optional(),
+  startTime: eventFields.startTime.optional(),
+  endTime: eventFields.endTime.optional(),
+  place: eventFields.place.optional(),
+});
+export const eventUpdatePatchSchema = z
+  .strictObject(eventFields)
+  .partial()
+  .refine(notEmpty, NOT_EMPTY);
+export type EventPatch = z.infer<typeof eventUpdatePatchSchema>;
 
 const emptyPatch = z.strictObject({});
 
@@ -301,6 +364,32 @@ export const syncOpSchema = z.union([
     patch: activityUpdatePatchSchema,
   }),
   z.object({ ...opBase, entity: z.literal('activity'), type: removeTypes, patch: emptyPatch }),
+  z.object({
+    ...opBase,
+    entity: z.literal('calendar'),
+    type: z.literal('create'),
+    patch: calendarCreatePatchSchema,
+  }),
+  z.object({
+    ...opBase,
+    entity: z.literal('calendar'),
+    type: z.literal('update'),
+    patch: calendarUpdatePatchSchema,
+  }),
+  z.object({ ...opBase, entity: z.literal('calendar'), type: removeTypes, patch: emptyPatch }),
+  z.object({
+    ...opBase,
+    entity: z.literal('event'),
+    type: z.literal('create'),
+    patch: eventCreatePatchSchema,
+  }),
+  z.object({
+    ...opBase,
+    entity: z.literal('event'),
+    type: z.literal('update'),
+    patch: eventUpdatePatchSchema,
+  }),
+  z.object({ ...opBase, entity: z.literal('event'), type: removeTypes, patch: emptyPatch }),
 ]);
 export type SyncOp = z.infer<typeof syncOpSchema>;
 
@@ -338,6 +427,10 @@ const pulledPlanPatch = z.strictObject({ ...planFields, deletedAt: nullableEpoch
 const pulledActivityPatch = z
   .strictObject({ ...activityFields, deletedAt: nullableEpochMs })
   .partial();
+const pulledCalendarPatch = z
+  .strictObject({ ...calendarFields, deletedAt: nullableEpochMs })
+  .partial();
+const pulledEventPatch = z.strictObject({ ...eventFields, deletedAt: nullableEpochMs }).partial();
 const opType = z.enum(['create', 'update', 'delete', 'restore']);
 const changeBase = {
   serverSeq: z.number().int().min(1),
@@ -352,6 +445,8 @@ export const pullChangeSchema = z.union([
   z.object({ ...changeBase, entity: z.literal('note'), patch: pulledNotePatch }),
   z.object({ ...changeBase, entity: z.literal('plan'), patch: pulledPlanPatch }),
   z.object({ ...changeBase, entity: z.literal('activity'), patch: pulledActivityPatch }),
+  z.object({ ...changeBase, entity: z.literal('calendar'), patch: pulledCalendarPatch }),
+  z.object({ ...changeBase, entity: z.literal('event'), patch: pulledEventPatch }),
 ]);
 export type PullChange = z.infer<typeof pullChangeSchema>;
 

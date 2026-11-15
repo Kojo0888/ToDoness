@@ -50,7 +50,7 @@ export function isAccountEmpty(offer: RecoveryOffer): boolean {
 }
 
 export type AcceptResult =
-  | { ok: true; lists: number; todos: number; notes: number; plans: number }
+  | { ok: true; lists: number; todos: number; notes: number; plans: number; calendars: number }
   | { ok: false; error: 'no_offer' | 'no_inbox' };
 
 export interface Recovery {
@@ -107,7 +107,11 @@ export function createRecovery(deps: { db: TodonessDB; repo: Repo }): Recovery {
       const accountNotes = (await db.notes.toArray()).filter((n) => n.deletedAt === null).length;
       const accountPlans = (await db.plans.toArray()).filter((p) => p.deletedAt === null).length;
       if (answers !== seen) return;
-      const empty = accountTodos + accountLists + accountNotes + accountPlans === 0;
+      const accountCalendars = (await db.calendars.toArray()).filter(
+        (c) => c.deletedAt === null,
+      ).length;
+      const empty =
+        accountTodos + accountLists + accountNotes + accountPlans + accountCalendars === 0;
       if (!empty) {
         const account = await takeSnapshot(db, snapshot.fromEmail);
         if (answers !== seen) return;
@@ -147,7 +151,7 @@ export function createRecovery(deps: { db: TodonessDB; repo: Repo }): Recovery {
         set(undefined);
         return { ok: false, error: 'no_offer' };
       }
-      let counts: { lists: number; todos: number; notes: number; plans: number };
+      let counts: { lists: number; todos: number; notes: number; plans: number; calendars: number };
       try {
         counts = await repo.restoreSnapshot(snapshot, mode);
       } catch (err) {

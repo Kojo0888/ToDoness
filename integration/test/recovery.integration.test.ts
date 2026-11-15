@@ -63,6 +63,7 @@ describe('recovery after the server lost its database', () => {
       todos: 3,
       notes: 0,
       plans: 0,
+      calendars: 0,
     });
     expect(await a.sync()).toEqual({ ok: true });
     expect(await a.db.outbox.count()).toBe(0);
@@ -302,6 +303,7 @@ describe('upload of every kind of data to an empty server (docs/recovery-upload 
       todos: 2,
       notes: 2,
       plans: 1,
+      calendars: 0,
     });
     expect(await a.sync()).toEqual({ ok: true });
     expect(await a.db.outbox.count()).toBe(0);
