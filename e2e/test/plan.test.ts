@@ -141,7 +141,7 @@ describe('the Plan module and plans (FR-119 – FR-122)', () => {
   it('is in the module switch; a plan is created from the sidebar; the app reopens in Plan', async () => {
     const { page } = await newUser('plans');
     const links = await modules(page).getByRole('link').allTextContents();
-    expect(links).toEqual(['Tasks', 'Notes', 'Plan']);
+    expect(links).toEqual(['Tasks', 'Notes', 'Plan', 'Calendar']);
 
     await openPlanModule(page);
     await page.getByText('No plans yet').waitFor();
