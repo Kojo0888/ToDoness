@@ -2,7 +2,7 @@
 
 |                  |                                                                                         |
 | ---------------- | --------------------------------------------------------------------------------------- |
-| **Status**       | v1.0 – built (see [ImplementationPlan.md](./ImplementationPlan.md))              |
+| **Status**       | v1.0 – built; **Update 1** (section 6, repeats and reminders) – built (see [ImplementationPlan.md](./ImplementationPlan.md))              |
 | **Builds on**    | Plan ([`../plan/PRD.md`](../plan/PRD.md)), Notes, v1 and the MVP                        |
 | **Related docs** | [ImplementationPlan.md](./ImplementationPlan.md), [mockups.html](./mockups.html)        |
 
@@ -121,8 +121,64 @@ test, written before the code (see the plan).
   free hex value (UI guidelines: colours only from variables).
 - **C4** Hidden calendars, the view and "Show tasks" are **device settings** (`localStorage`),
   like the Plan options.
-- **C5** **Reminders and repeating events are deferred** to a follow-up: they need the server
-  reminder sweeper and an expansion rule for repeats, and would double the size of this change.
-  The data model leaves room (new optional fields need only a flag like `activities=…`).
+- **C5** Reminders and repeating events were deferred from v1.0; **Update 1 (section 6) adds them.**
 - **C6** No default calendar is auto-created (two devices would each create one). The empty
   state asks for the first calendar.
+
+## 6. Update 1 – repeating events and reminders
+
+Requirement numbers continue (FR-219 and up). Section 2 non-goals "repeating events" and
+"reminders" no longer apply; the rest of that list does.
+
+### Repeating events
+
+- **FR-219** An event can **repeat**: never (default), daily, weekly (same weekday), monthly
+  (same day of the month) or yearly (same date), every time (no interval).
+- **FR-220** A repeating event may have an **end day** ("Repeat until", the last day an
+  occurrence can start); without one it repeats forever.
+- **FR-221** Every view shows **every occurrence** in its range (a repeating event that began
+  years ago appears in this month). Opening any occurrence opens the one event.
+- **FR-222** The event form has a **Repeats** chip group (Never, Daily, Weekly, Monthly,
+  Yearly) and, when repeating, a **Repeat until** date field that can be cleared.
+- **FR-223** Changing or deleting a repeating event changes or deletes **the whole series**
+  (decision C9); to stop it, set "Repeat until".
+
+### Reminders
+
+- **FR-224** An event can have several **reminders**, chosen as chips (multi-select, none by
+  default): **At start**, **10 minutes before**, **1 hour before**, **1 day before**.
+- **FR-225** A reminder is shown on the device that has the app open, like a task reminder
+  (in-app message plus system notification, FR-45 – FR-47), **once per occurrence and choice**,
+  and **a pushed reminder** reaches every device of the user, and the user's ntfy topic, even
+  when the app is closed (FR-60 – FR-66). The same reminder shown by the app and pushed by the
+  server is one notification (same tag).
+- **FR-226** Of the chosen reminders of one occurrence only the **latest one that has passed**
+  counts, so no burst (as FR-114). A reminder can still fire until **10 minutes after the
+  start** of the occurrence; later it is skipped (decision C10).
+- **FR-227** An all-day event is reminded relative to **09:00** on the first day of the
+  occurrence (decision C7): "At start" = 09:00 that day, "1 day before" = 09:00 the day before.
+- **FR-228** The notification opens the event (`/calendar/e/<id>`). Its text: the title, and
+  when it starts ("Starts in 1 hour (14:00)" / "Today" for all-day).
+- **FR-229** Reminders of deleted events, events of deleted calendars and (on the device) when
+  notifications are switched off on that device follow the task rules (FR-120).
+
+### Data and compatibility
+
+- **FR-230** An event also carries **`tz`**, the time zone of the device that saved it
+  (decision C8), because the server has to turn "14:00 on 18 Nov" into a moment in time.
+- **FR-231** New event fields (`repeat`, `repeatUntil`, `reminders`, `tz`) are synced and
+  restored in recovery snapshots (the snapshot comparison counts them). Apps without them do
+  not get them in a pull (flag `events=repeat`); they reset their pull cursor when updated.
+
+### Decisions
+
+- **C7** Reminder choices are fixed: `start`, `10min`, `hour`, `day`. An all-day event counts
+  as starting at 09:00 local time.
+- **C8** `tz` is an IANA name set from the device at every save of an event; an empty `tz`
+  (events from before this update) counts as UTC and has no reminders anyway.
+- **C9** No exceptions inside a series (move or delete one occurrence): non-goal for now.
+- **C10** A reminder is valid until 10 minutes after the start; the sweep runs every 30 s.
+- **C11** Short months: a monthly event on the 31st uses the last day of shorter months; a
+  yearly one on 29 February uses 28 February in other years.
+- **C12** Occurrences are calculated when shown (nothing is stored per occurrence); the
+  server calculates them for the sweep from `repeat`, `repeatUntil`, `start` and `tz`.

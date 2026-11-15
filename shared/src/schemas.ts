@@ -7,7 +7,7 @@
  */
 import { z } from 'zod';
 import { isHlc, isValidClientId } from './hlc';
-import { isTime } from './calendar';
+import { EVENT_REMINDS, REPEATS, isTime, isTimeZone, normalizeEventReminds } from './calendar';
 import { isDay } from './plan';
 
 export const TITLE_MAX = 500;
@@ -153,6 +153,19 @@ const eventFields = {
   startTime: timeSchema.nullable(),
   endTime: timeSchema.nullable(),
   place: z.string().trim().max(EVENT_PLACE_MAX),
+  /** docs/calendar/PRD.md section 6. */
+  repeat: z.enum(REPEATS),
+  /** The last day an occurrence can start; `null` = forever. */
+  repeatUntil: daySchema.nullable(),
+  reminders: z
+    .array(z.enum(EVENT_REMINDS))
+    .max(EVENT_REMINDS.length)
+    .transform(normalizeEventReminds),
+  /** Time zone of the device that saved the event ('' = unknown, counts as UTC). */
+  tz: z
+    .string()
+    .max(64)
+    .refine((v) => v === '' || isTimeZone(v), { message: 'Invalid time zone' }),
 };
 
 const rowMeta = {
@@ -282,6 +295,10 @@ export const eventCreatePatchSchema = z.strictObject({
   startTime: eventFields.startTime.optional(),
   endTime: eventFields.endTime.optional(),
   place: eventFields.place.optional(),
+  repeat: eventFields.repeat.optional(),
+  repeatUntil: eventFields.repeatUntil.optional(),
+  reminders: eventFields.reminders.optional(),
+  tz: eventFields.tz.optional(),
 });
 export const eventUpdatePatchSchema = z
   .strictObject(eventFields)

@@ -30,6 +30,7 @@ import {
   liveLinks,
   localDay,
   newId,
+  normalizeEventReminds,
   normalizeRemindBefore,
   parseHlc,
   schedulePlan,
@@ -41,6 +42,8 @@ import {
   type CalendarColor,
   type CalendarEvent,
   type Entity,
+  type EventRemind,
+  type Repeat,
   type PlanTree,
   type List,
   type ListModule,
@@ -78,6 +81,11 @@ export interface NewEvent {
   startTime?: string | null;
   endTime?: string | null;
   place?: string;
+  /** docs/calendar/PRD.md section 6. */
+  repeat?: Repeat;
+  /** The last day of a repeating event; `null` = forever. */
+  repeatUntil?: string | null;
+  reminders?: readonly EventRemind[];
 }
 
 /**
@@ -87,13 +95,25 @@ export interface NewEvent {
 function normalizedEvent(base: Partial<NewEvent>, patch: Partial<NewEvent>) {
   const m = { ...base, ...patch };
   const startTime = m.startTime ?? null;
+  const repeat = m.repeat ?? 'none';
+  const repeatUntil = repeat === 'none' ? null : (m.repeatUntil ?? null);
+  // The last day cannot come before the first one (an occurrence would never exist).
+  if (repeatUntil !== null && m.start !== undefined && repeatUntil < m.start) {
+    throw new RepoError('invalid', 'The repeat end day is before the event');
+  }
   return {
     ...m,
     startTime,
     endTime: startTime === null ? null : (m.endTime ?? null),
     days: startTime === null ? (m.days ?? 1) : 1,
+    repeat,
+    repeatUntil,
+    reminders: normalizeEventReminds(m.reminders ?? []),
   };
 }
+
+/** The time zone of this device: events remember it for their reminders (decision C8). */
+const deviceZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone ?? '';
 
 /** How long a new activity lasts (docs/plan/PRD.md FR-124). */
 export const NEW_ACTIVITY_DAYS = 3;
@@ -788,6 +808,10 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
           startTime: f.startTime,
           endTime: f.endTime,
           place: f.place ?? '',
+          repeat: f.repeat,
+          repeatUntil: f.repeatUntil,
+          reminders: f.reminders,
+          tz: deviceZone(),
         });
       }),
 
@@ -805,9 +829,15 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
           'startTime',
           'endTime',
           'place',
+          'repeat',
+          'repeatUntil',
         ] as const) {
           if (f[key] !== undefined && f[key] !== current[key]) changed[key] = f[key];
         }
+        if (f.reminders.join() !== current.reminders.join()) changed.reminders = f.reminders;
+        // The zone belongs to what the times mean: written when they or the reminders change.
+        const timeChanged = ['start', 'startTime', 'repeat', 'reminders'].some((k) => k in changed);
+        if (timeChanged && deviceZone() !== current.tz) changed.tz = deviceZone();
         if (Object.keys(changed).length === 0) return current;
         return commit<CalendarEvent>('event', 'update', id, changed);
       }),
@@ -1287,6 +1317,10 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
             startTime: e.startTime,
             endTime: e.endTime,
             place: e.place,
+            repeat: e.repeat ?? 'none', // missing in a copy kept before repeating events
+            repeatUntil: e.repeatUntil ?? null,
+            reminders: normalizeEventReminds(e.reminders ?? []),
+            tz: e.tz ?? '',
           });
         }
         return {

@@ -68,7 +68,10 @@ export function CalendarPage() {
   if (calendars === undefined) return null;
   if (calendars.length === 0) return <FirstCalendar />;
 
-  const items = [...eventItems(events, calendars, prefs.hidden), ...taskItems(tasks)];
+  const items = [
+    ...eventItems(events, calendars, prefs.hidden, range.from, range.to),
+    ...taskItems(tasks),
+  ];
   const openDay = (d: string) => {
     prefs.setView('agenda');
     setDay(d);

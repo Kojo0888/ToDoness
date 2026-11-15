@@ -71,3 +71,50 @@ New entities are invisible to older apps (`calendar=1` flag; they reset the curs
 - Recovery counts returned by `restoreSnapshot` gained `calendars` (existing tests updated).
 - Reminders and repeating events stay out (decision C5).
 - Audit of cross-module features: the recovery offer and dialog now count calendars (`calendars`, `accountCalendars`, "calendar" in the texts), an account holding only calendars is no longer treated as empty; tests also cover the Dexie upgrade, `clearAll`, user deletion cascade and recovery end to end.
+
+## Update 1 – repeats and reminders
+
+| Step | Content                                                                                                   | Status |
+| ---- | --------------------------------------------------------------------------------------------------------- | ------ |
+| 7    | Shared: fields `repeat`, `repeatUntil`, `reminders`, `tz`; `occurrenceDays`, `zonedMs`, reminder rules      | ☑      |
+| 8    | Server: migration 012 (columns, `sent_event_reminders`), rows, pull flag `events=repeat`, event sweep       | ☑      |
+| 9    | Client data: Dexie v11, repo (`tz` set on save, checks), `getEventsInRange` with series, recovery           | ☑      |
+| 10   | Client: occurrences in the views, event form (Repeats, Repeat until, Reminders), event reminders scheduler  | ☑      |
+| 11   | Tests first for each step; e2e; CODEBASE_MAP                                                                | ☑      |
+
+### Design
+
+- `shared/src/calendar.ts` gains (pure, tested): `REPEATS`, `EVENT_REMINDS` (earliest first:
+  `day, hour, 10min, start`), `EVENT_REMIND_MS`, `isTimeZone`, `zonedMs(day, 'HH:MM', tz)` (local
+  time → epoch ms, DST-correct, two-pass offset), `eventStartMs(e, occurrenceDay)` (all-day →
+  09:00), `occurrenceDays(e, from, to)` (start days of occurrences touching the range, clamping
+  rule C11, `repeatUntil` honoured, arithmetic jump to the first candidate so an old daily event
+  costs nothing), `latestDueEventReminder(startMs, chosen, now)` (FR-226),
+  `eventReminderKey(id, day, choice)` (the tag).
+- Schema: `repeat` enum (default `none`), `repeatUntil` day | null, `reminders` list (unique, in
+  `EVENT_REMINDS` order, ≤ 4), `tz` (≤ 64, `''` or a valid IANA zone). Create patch: all optional.
+- Server: migration `012_event_repeat_remind.sql` adds `repeat`, `repeat_until`, `reminders`
+  (comma list), `tz` to `events` and the table `sent_event_reminders (event_id, occurrence,
+  remind, sent_at)` with `ON DELETE CASCADE`. `routes/sync.ts`: `events=repeat` flag strips the four
+  fields from event patches for older apps. `push/reminders.ts`: `sweepReminders` also sweeps
+  events (`push/eventReminders.ts`): candidate events (live, own live calendar, reminders ≠ '',
+  not ended), occurrences in `[now − 1 day, now + 2 days]`, the latest passed choice per
+  occurrence, "already sent" row, same delivery code as tasks (web push + ntfy, record first,
+  unrecord on total failure). Payload: title, body, tag = `eventReminderKey`, url `/calendar/e/<id>`.
+- Client: Dexie v11 (`events` unchanged, cursor reset; defaults for the new fields). `repo`:
+  `createEvent` / `updateEvent` accept `repeat`, `repeatUntil`, `reminders`; `tz` comes from
+  `Intl.DateTimeFormat().resolvedOptions().timeZone` whenever the start, time, repeat or reminders
+  are written; `repeatUntil` is dropped for a non-repeating event and refused before the start.
+  `getEventsInRange` returns events that start on or before `to` and have an occurrence touching
+  the range; `items.ts` expands them with `occurrenceDays`. `services/reminders.ts`:
+  `dueEventReminders` and a second callback `notifyEvent` of the scheduler, same `notified` table.
+- UI: `EventPage` gets the chip groups and the date field; strings in `t.calendar`.
+
+### Changed on the way
+
+- `eventReminderBody` lives in `shared/src/reminders.ts` (not `calendar.ts`): `calendar.ts` is
+  imported by `schemas.ts`, and importing `reminders.ts` from it made an import cycle.
+- The "already sent" table also has `start_ms` in its key, so a moved event is reminded again
+  (like a task with a new due date); the client's `notified` key has the start moment too.
+- The server and the app share one sweep path for tasks and events (`push/reminders.ts`
+  builds a list of jobs; `push/eventReminders.ts` finds the due event occurrences).

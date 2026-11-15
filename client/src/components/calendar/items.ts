@@ -1,5 +1,11 @@
 /** What the views draw: events and, read-only, tasks with a due date (docs/calendar/PRD.md). */
-import type { CalendarColor, CalendarEvent, Calendar, EventTime } from '@todoness/shared';
+import {
+  occurrenceDays,
+  type CalendarColor,
+  type CalendarEvent,
+  type Calendar,
+  type EventTime,
+} from '@todoness/shared';
 import type { DueTask } from '../../data/queries';
 import { t } from '../../app/strings';
 import { eventPath } from './paths';
@@ -17,27 +23,32 @@ export interface CalItem extends EventTime {
   label: string;
 }
 
+/** One item for every occurrence of every event that touches the days `from` … `to`. */
 export function eventItems(
   events: readonly CalendarEvent[],
   calendars: readonly Calendar[],
   hidden: ReadonlySet<string>,
+  from: string,
+  to: string,
 ): CalItem[] {
   const colours = new Map(calendars.map((c) => [c.id, c.color]));
   return events
     .filter((e) => !hidden.has(e.calendarId) && colours.has(e.calendarId))
-    .map((e) => ({
-      key: `event:${e.id}`,
-      kind: 'event' as const,
-      title: e.title,
-      start: e.start,
-      days: e.days,
-      startTime: e.startTime,
-      endTime: e.endTime,
-      href: eventPath(e.id),
-      color: colours.get(e.calendarId) ?? 'blue',
-      detail: e.place,
-      label: t.calendar.eventLabel(e.title, `${e.start}, ${timeText(e)}`),
-    }));
+    .flatMap((e) =>
+      occurrenceDays(e, from, to).map((day) => ({
+        key: `event:${e.id}:${day}`,
+        kind: 'event' as const,
+        title: e.title,
+        start: day,
+        days: e.days,
+        startTime: e.startTime,
+        endTime: e.endTime,
+        href: eventPath(e.id),
+        color: colours.get(e.calendarId) ?? 'blue',
+        detail: e.place,
+        label: t.calendar.eventLabel(e.title, `${day}, ${timeText(e)}`),
+      })),
+    );
 }
 
 export function taskItems(tasks: readonly DueTask[]): CalItem[] {

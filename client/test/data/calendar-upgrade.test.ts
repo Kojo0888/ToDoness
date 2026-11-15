@@ -48,3 +48,43 @@ describe('local database version 10 (Calendar module, docs/calendar)', () => {
     db.close();
   });
 });
+
+describe('local database version 11 (repeats and reminders)', () => {
+  it('resets the pull cursor so the new event fields skipped by the server arrive (FR-231)', async () => {
+    const name = `upgrade11-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const old = new Dexie(name);
+    old.version(10).stores({
+      lists: 'id, orderKey',
+      todos: 'id, listId, [listId+orderKey]',
+      notes: 'id, orderKey',
+      outbox: 'opId, hlc, entityId',
+      deadLetter: 'opId, failedAt',
+      meta: 'key',
+      notified: 'key',
+      publicOutbox: 'opId, hlc, targetId',
+      publicCache: 'key',
+      plans: 'id, orderKey',
+      activities: 'id, planId, [planId+orderKey]',
+      calendars: 'id, orderKey',
+      events: 'id, calendarId, start',
+    });
+    await old.table('events').put({ id: 'e1', calendarId: 'c1', start: '2026-11-17', title: 'x' });
+    await old.table('meta').bulkPut([
+      { key: 'lastServerSeq', value: 42 },
+      { key: 'clientId', value: 'abcd' },
+    ]);
+    old.close();
+
+    const db = new TodonessDB(name);
+    // Events of before: they never repeat and have no reminders.
+    expect(await db.events.get('e1')).toMatchObject({
+      repeat: 'none',
+      repeatUntil: null,
+      reminders: [],
+      tz: '',
+    });
+    expect(await db.getMeta('lastServerSeq')).toBeUndefined();
+    expect(await db.getMeta('clientId')).toBe('abcd');
+    db.close();
+  });
+});

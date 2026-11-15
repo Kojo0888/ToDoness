@@ -1,10 +1,8 @@
 /** Read-only queries the screens use (wrapped in live queries). */
 import Dexie from 'dexie';
 import {
-  addDays,
-  dayNumber,
-  eventSpan,
   localDay,
+  occurrenceDays,
   type Activity,
   type Calendar,
   type CalendarEvent,
@@ -174,12 +172,9 @@ export async function getEventById(db: TodonessDB, id: string): Promise<Calendar
   return e && e.deletedAt === null ? e : undefined;
 }
 
-/** The longest an event can last: it bounds how far back an event can start and still reach in. */
-const LOOKBACK_DAYS = 366;
-
 /**
- * Live events of live calendars that touch the days `from` … `to` (both included): they start
- * inside, or start earlier and run into it (all-day events of several days).
+ * Live events of live calendars that have an occurrence touching the days `from` … `to`
+ * (both included): they start inside, or start earlier and run into it, or repeat into it.
  */
 export async function getEventsInRange(
   db: TodonessDB,
@@ -187,15 +182,13 @@ export async function getEventsInRange(
   to: string,
 ): Promise<CalendarEvent[]> {
   const liveCalendars = new Set((await getCalendars(db)).map((c) => c.id));
-  const candidates = await db.events
-    .where('start')
-    .between(addDays(from, -LOOKBACK_DAYS), to, true, true)
-    .toArray();
+  // Everything that starts on or before the last day; the rule below decides the rest.
+  const candidates = await db.events.where('start').belowOrEqual(to).toArray();
   return candidates.filter(
     (e) =>
       e.deletedAt === null &&
       liveCalendars.has(e.calendarId) &&
-      dayNumber(eventSpan(e).endDay) >= dayNumber(from),
+      occurrenceDays(e, from, to).length > 0,
   );
 }
 

@@ -75,6 +75,9 @@ export function syncRoutes({
     const activityFlags = new Set((c.req.query('activities') ?? '').split(','));
     const knowsDone = activityFlags.has('done');
     const knowsGroups = activityFlags.has('groups');
+    // Apps from before repeating events and reminders (docs/calendar/PRD.md FR-231) refuse
+    // the four new event fields; the current app asks with `events=repeat`.
+    const knowsEventRepeat = (c.req.query('events') ?? '').split(',').includes('repeat');
     const userId = c.get('user').id;
 
     // Accounts from before note lists get "My notes" at their first sync (FR-124).
@@ -125,7 +128,8 @@ export function syncRoutes({
           patch: ((p: Record<string, unknown>) => {
             const q = knowsModules ? p : withoutModules(r.entity, p);
             const d = knowsDone ? q : withoutField(r.entity, q, 'done');
-            return knowsGroups ? d : withoutField(r.entity, d, 'parentId');
+            const g = knowsGroups ? d : withoutField(r.entity, d, 'parentId');
+            return knowsEventRepeat ? g : withoutEventRepeat(r.entity, g);
           })(remindersAsList ? JSON.parse(r.patch) : legacyPatch(r.entity, JSON.parse(r.patch))),
           hlc: r.hlc,
         })),
@@ -168,5 +172,16 @@ function withoutField(
   if (entity !== 'activity' || !(field in patch)) return patch;
   const rest = { ...patch };
   delete rest[field];
+  return rest;
+}
+
+/** For apps from before repeating events and reminders: an event without those fields. */
+function withoutEventRepeat(
+  entity: string,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  if (entity !== 'event') return patch;
+  const rest = { ...patch };
+  for (const k of ['repeat', 'repeatUntil', 'reminders', 'tz']) delete rest[k];
   return rest;
 }

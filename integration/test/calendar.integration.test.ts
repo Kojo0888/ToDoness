@@ -62,4 +62,46 @@ describe('calendar sync', () => {
     expect(await getCalendars(a.db)).toEqual([]);
     expect(await getEventById(a.db, e.id)).toBeUndefined();
   });
+
+  it('repeat, end day, reminders and time zone reach the other device and merge per field', async () => {
+    const { a, b } = await twoBrowsers();
+    const work = await a.repo.createCalendar('Work');
+    a.time += 10;
+    const e = await a.repo.createEvent({
+      calendarId: work.id,
+      title: 'Standup',
+      start: '2026-11-02',
+      startTime: '10:00',
+      repeat: 'weekly',
+      repeatUntil: '2027-03-31',
+      reminders: ['hour', 'start'],
+    });
+    await a.sync();
+    await b.sync();
+    expect(await getEventById(b.db, e.id)).toMatchObject({
+      repeat: 'weekly',
+      repeatUntil: '2027-03-31',
+      reminders: ['hour', 'start'],
+      tz: e.tz,
+    });
+
+    a.online = false;
+    b.online = false;
+    a.time += 1000;
+    b.time += 2000;
+    await a.repo.updateEvent(e.id, { reminders: ['day'] });
+    await b.repo.updateEvent(e.id, { repeat: 'daily', repeatUntil: null });
+    a.online = true;
+    b.online = true;
+    await a.sync();
+    await b.sync();
+    await a.sync();
+    for (const x of [a, b]) {
+      expect(await getEventById(x.db, e.id)).toMatchObject({
+        reminders: ['day'],
+        repeat: 'daily',
+        repeatUntil: null,
+      });
+    }
+  });
 });

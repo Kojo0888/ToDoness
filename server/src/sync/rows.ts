@@ -1,6 +1,7 @@
 /** Converting between database rows (snake_case, 0/1, JSON text) and shared types. */
 import type Database from 'better-sqlite3';
 import {
+  normalizeEventReminds,
   normalizeRemindBefore,
   type Activity,
   type Calendar,
@@ -356,6 +357,10 @@ interface EventDb {
   start_time: string | null;
   end_time: string | null;
   place: string;
+  repeat: CalendarEvent['repeat'];
+  repeat_until: string | null;
+  reminders: string;
+  tz: string;
   field_hlc: string;
   created_at: number;
   updated_at: number;
@@ -376,6 +381,10 @@ export function getEvent(db: Database.Database, id: string): Owned<CalendarEvent
       startTime: r.start_time,
       endTime: r.end_time,
       place: r.place,
+      repeat: r.repeat,
+      repeatUntil: r.repeat_until,
+      reminders: normalizeEventReminds(r.reminders === '' ? [] : r.reminders.split(',')),
+      tz: r.tz,
       fieldHlc: JSON.parse(r.field_hlc),
       createdAt: r.created_at,
       updatedAt: r.updated_at,
@@ -387,13 +396,20 @@ export function getEvent(db: Database.Database, id: string): Owned<CalendarEvent
 export function saveEvent(db: Database.Database, userId: string, e: CalendarEvent): void {
   db.prepare(
     `INSERT INTO events (id, user_id, calendar_id, title, start_day, days, start_time, end_time,
-                         place, field_hlc, created_at, updated_at, deleted_at)
+                         place, repeat, repeat_until, reminders, tz, field_hlc, created_at,
+                         updated_at, deleted_at)
      VALUES (@id, @userId, @calendarId, @title, @start, @days, @startTime, @endTime,
-             @place, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
+             @place, @repeat, @repeatUntil, @reminders, @tz, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
      ON CONFLICT(id) DO UPDATE SET
        calendar_id = excluded.calendar_id, title = excluded.title, start_day = excluded.start_day,
        days = excluded.days, start_time = excluded.start_time, end_time = excluded.end_time,
-       place = excluded.place, field_hlc = excluded.field_hlc, updated_at = excluded.updated_at,
+       place = excluded.place, repeat = excluded.repeat, repeat_until = excluded.repeat_until,
+       reminders = excluded.reminders, tz = excluded.tz, field_hlc = excluded.field_hlc, updated_at = excluded.updated_at,
        deleted_at = excluded.deleted_at`,
-  ).run({ ...e, userId, fieldHlc: JSON.stringify(e.fieldHlc) });
+  ).run({
+    ...e,
+    userId,
+    reminders: e.reminders.join(','),
+    fieldHlc: JSON.stringify(e.fieldHlc),
+  });
 }

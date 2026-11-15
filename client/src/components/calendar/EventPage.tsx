@@ -4,17 +4,22 @@ import { Link, useLocation, useSearch } from 'wouter';
 import {
   EVENT_DAYS_MAX,
   EVENT_PLACE_MAX,
+  EVENT_REMINDS,
   EVENT_TITLE_MAX,
+  REPEATS,
   isDay,
   localDay,
   type Calendar,
   type CalendarEvent,
+  type EventRemind,
+  type Repeat,
 } from '@todoness/shared';
 import { getCalendars, getEventById } from '../../data/queries';
 import { RepoError } from '../../data/repo';
 import { db, repo } from '../../app/container';
 import { t } from '../../app/strings';
 import { AppBar } from '../common/icons';
+import { InfoTip } from '../common/InfoTip';
 import { useUndoToast } from '../common/Toast';
 import { CALENDAR_PATH } from './paths';
 
@@ -76,6 +81,9 @@ function EventForm({
   const [endTime, setEndTime] = useState(event?.endTime ?? DEFAULT_END);
   const [days, setDays] = useState(event?.days ?? 1);
   const [calendarId, setCalendarId] = useState(event?.calendarId ?? calendars[0]?.id ?? '');
+  const [repeat, setRepeat] = useState<Repeat>(event?.repeat ?? 'none');
+  const [repeatUntil, setRepeatUntil] = useState(event?.repeatUntil ?? '');
+  const [reminders, setReminders] = useState<EventRemind[]>(event?.reminders ?? []);
   const [error, setError] = useState(false);
 
   async function save(e: FormEvent) {
@@ -89,6 +97,9 @@ function EventForm({
       days: allDay ? days : 1,
       startTime: allDay ? null : startTime,
       endTime: allDay || !endTime ? null : endTime,
+      repeat,
+      repeatUntil: repeat === 'none' || !repeatUntil ? null : repeatUntil,
+      reminders,
     };
     try {
       if (event) await repo.updateEvent(event.id, fields);
@@ -179,6 +190,68 @@ function EventForm({
             onChange={(e) => setPlace(e.target.value)}
           />
         </label>
+
+        <div className="event-field">
+          <span id="event-repeat-label">{t.calendar.repeats}</span>
+          <div className="chip-group" role="group" aria-labelledby="event-repeat-label">
+            {REPEATS.map((r) => (
+              <button
+                key={r}
+                type="button"
+                className={`chip${r === repeat ? ' is-selected' : ''}`}
+                aria-pressed={r === repeat}
+                onClick={() => setRepeat(r)}
+              >
+                {t.calendar.repeatChoices[r]}
+              </button>
+            ))}
+          </div>
+        </div>
+        {repeat !== 'none' && (
+          <div className="event-row event-until">
+            <label>
+              {t.calendar.repeatUntil}
+              <input
+                type="date"
+                value={repeatUntil}
+                min={date}
+                onChange={(e) => setRepeatUntil(e.target.value)}
+              />
+            </label>
+            {repeatUntil && (
+              <button type="button" onClick={() => setRepeatUntil('')}>
+                {t.calendar.noEnd}
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="event-field">
+          <span id="event-reminders-label" className="event-label-row">
+            {t.calendar.reminders}
+            <InfoTip
+              text={t.calendar.remindersInfo}
+              label={t.common.moreInfo(t.calendar.reminders)}
+            />
+          </span>
+          <div className="chip-group" role="group" aria-labelledby="event-reminders-label">
+            {[...EVENT_REMINDS].reverse().map((r) => (
+              <button
+                key={r}
+                type="button"
+                className={`chip${reminders.includes(r) ? ' is-selected' : ''}`}
+                aria-pressed={reminders.includes(r)}
+                onClick={() =>
+                  setReminders(
+                    reminders.includes(r) ? reminders.filter((x) => x !== r) : [...reminders, r],
+                  )
+                }
+              >
+                {t.calendar.reminderChoices[r]}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {calendars.length <= CHIPS_MAX ? (
           <div className="event-field">

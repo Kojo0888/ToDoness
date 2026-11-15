@@ -3221,6 +3221,16 @@ h2.nav-heading {
 }
 
 /* Event page */
+.event-label-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.event-until {
+  align-items: end;
+}
+
 .event-page {
   max-width: 36rem;
 }
@@ -3295,6 +3305,8 @@ h2.nav-heading {
   .event-form select,
   .event-actions .btn,
   .event-actions button,
+  .event-until button,
+  .event-form .chip,
   .cal-more {
     min-height: 44px;
   }

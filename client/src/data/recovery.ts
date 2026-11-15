@@ -4,6 +4,7 @@
  * restore itself is `Repo.restoreSnapshot`, because only the repo changes data.
  */
 import {
+  normalizeEventReminds,
   normalizeRemindBefore,
   type Activity,
   type Calendar,
@@ -125,7 +126,18 @@ function uploaded(copy: RecoverySnapshot): Map<string, string> {
   const calendarIds = new Set((copy.calendars ?? []).map((c) => c.id));
   for (const e of copy.events ?? []) {
     if (!calendarIds.has(e.calendarId)) continue;
-    add(`event:${e.id}`, [e.calendarId, e.title, e.start, e.days, e.startTime, e.endTime, e.place]);
+    add(`event:${e.id}`, [
+      e.calendarId,
+      e.title,
+      e.start,
+      e.days,
+      e.startTime,
+      e.endTime,
+      e.place,
+      e.repeat ?? 'none', // missing in a copy kept before repeating events
+      e.repeatUntil ?? null,
+      normalizeEventReminds(e.reminders ?? []),
+    ]);
   }
   return rows;
 }

@@ -34,10 +34,10 @@ through `useLiveQuery`.
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `schemas.ts`      | **All data shapes**: row schemas, create / update patch schemas, sync op and pull schemas, limits (`*_MAX`)                                                |
 | `merge.ts`        | `applyOp`: applies an operation to a row; defaults for new rows; required fields on create                                                                 |
-| `calendar.ts`     | Calendar module: `isTime`, `eventSpan` (what an event covers), `eventsOnDay`, `compareEvents`                                                              |
+| `calendar.ts`     | Calendar module: `isTime`, `eventSpan`, `eventsOnDay`, `compareEvents`, repeats (`occurrenceDays`), time zones (`zonedMs`) and event reminder rules        |
 | `plan.ts`         | Calendar days (`YYYY-MM-DD`), activity groups (`planTree`, `spansOf`) and dependency rules: `liveLinks`, `schedulePlan`, `sortedActivityIds`, `wouldLoop`… |
 | `hlc.ts`, `id.ts` | Hybrid logical clock, ids created on the device                                                                                                            |
-| `reminders.ts`    | Reminder times of a task                                                                                                                                   |
+| `reminders.ts`    | Reminder times of a task (and the text of an event reminder)                                                                                               |
 | `api.ts`          | Request / response envelopes of the HTTP API                                                                                                               |
 
 ### `server/src/`
@@ -50,7 +50,7 @@ through `useLiveQuery`.
 | `sync/rows.ts`                    | Row ↔ SQLite mapping for every entity (`get*` / `save*`)                                                                                       |
 | `db/migrations/NNN_*.sql`         | Numbered SQL migrations (applied by `db/migrate.ts` via `PRAGMA user_version`)                                                                 |
 | `auth/`                           | Users, sessions, passwords, rate limits (sign-up: 20 per hour per address), presence                                                           |
-| `push/`                           | Web push keys and sending, ntfy, the reminder sweeper                                                                                          |
+| `push/`                           | Web push keys and sending, ntfy, the reminder sweeper (`reminders.ts` tasks and delivery, `eventReminders.ts` event occurrences)               |
 | `http/`                           | Errors, static files, shutdown, context types                                                                                                  |
 | `attachments/storage.ts`          | Uploaded files on disk                                                                                                                         |
 

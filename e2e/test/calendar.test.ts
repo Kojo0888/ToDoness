@@ -263,3 +263,95 @@ describe('calendars and events', () => {
     await context.close();
   });
 });
+
+/** Today's day and a time `minutes` from now, as the page's own clock shows them. */
+const soon = (page: Page, minutes: number) =>
+  page.evaluate((m) => {
+    const d = new Date(Date.now() + m * 60_000);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return {
+      day: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`,
+      time: `${p(d.getHours())}:${p(d.getMinutes())}`,
+    };
+  }, minutes);
+const plus = (day: string, n: number) =>
+  new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+const chip = (page: Page, group: string, name: string) =>
+  page.getByRole('group', { name: group }).getByRole('button', { name, exact: true });
+
+describe('repeating events and reminders', () => {
+  it('a weekly event shows in later months; "Repeat until" stops it', async () => {
+    const { page, context } = await newUser('repeat');
+    await openCalendar(page);
+    await firstCalendar(page, 'Work');
+    await page.getByRole('link', { name: 'New event' }).click();
+    await page.getByLabel('Title').fill('Standup');
+    await chip(page, 'Repeats', 'Weekly').click();
+    await expect
+      .poll(() => chip(page, 'Repeats', 'Weekly').getAttribute('aria-pressed'))
+      .toBe('true');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await view(page, 'Month').waitFor();
+
+    await page.getByRole('button', { name: 'Next' }).click();
+    await eventLink(page, 'Standup').waitFor(); // an occurrence next month
+    await page.getByRole('button', { name: 'Today' }).click();
+
+    await eventLink(page, 'Standup').click();
+    await chip(page, 'Repeats', 'Weekly').waitFor();
+    await page.getByLabel('Repeat until').fill(plus(await today(page), 10));
+    await page.getByRole('button', { name: 'Save' }).click();
+    await view(page, 'Month').waitFor();
+    await page.getByRole('button', { name: 'Next' }).click();
+    await page.getByRole('button', { name: 'Next' }).click();
+    await eventLink(page, 'Standup').waitFor({ state: 'hidden' });
+    await context.close();
+  });
+
+  it('the repeat and reminder choices are kept when the event is opened again', async () => {
+    const { page, context } = await newUser('choices');
+    await openCalendar(page);
+    await firstCalendar(page, 'Work');
+    await page.getByRole('link', { name: 'New event' }).click();
+    await page.getByLabel('Title').fill('Dentist');
+    await chip(page, 'Reminders', '1 day before').click();
+    await chip(page, 'Reminders', 'At start').click();
+    await chip(page, 'Repeats', 'Monthly').click();
+    await page.getByRole('button', { name: 'Save' }).click();
+    await view(page, 'Month').waitFor();
+    await eventLink(page, 'Dentist').click();
+    for (const [group, name, on] of [
+      ['Reminders', '1 day before', 'true'],
+      ['Reminders', 'At start', 'true'],
+      ['Reminders', '1 hour before', 'false'],
+      ['Repeats', 'Monthly', 'true'],
+      ['Repeats', 'Never', 'false'],
+    ] as const) {
+      await expect.poll(() => chip(page, group, name).getAttribute('aria-pressed')).toBe(on);
+    }
+    await context.close();
+  });
+
+  it('a reminder of an event starting soon shows in the app, once, and opens the event', async () => {
+    const { page, context } = await newUser('remind');
+    await openCalendar(page);
+    await firstCalendar(page, 'Work');
+    const { day, time } = await soon(page, 30);
+    await page.getByRole('link', { name: 'New event' }).click();
+    await page.getByLabel('Title').fill('Board call');
+    await page.getByLabel('Date').fill(day);
+    await page.getByRole('switch', { name: 'All day' }).uncheck();
+    await page.getByLabel('Starts').fill(time);
+    await chip(page, 'Reminders', '1 hour before').click();
+    await page.getByRole('button', { name: 'Save' }).click();
+    await view(page, 'Month').waitFor();
+
+    // The check runs every 30 seconds while the app is open.
+    const message = page.getByRole('status').filter({ hasText: 'Reminder: Board call' });
+    await message.waitFor({ timeout: 45_000 });
+    await message.getByRole('link', { name: 'Open' }).click();
+    await page.waitForURL(/\/calendar\/e\//);
+    await page.getByLabel('Title').waitFor();
+    await context.close();
+  }, 90_000);
+});

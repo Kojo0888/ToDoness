@@ -9,9 +9,18 @@
  */
 import {
   REMIND_MS,
+  addDays,
+  eventReminderBody,
+  eventReminderKey,
+  eventStartMs,
   latestDueChoice,
+  latestDueEventReminder,
+  occurrenceDays,
   reminderKey,
   timeUntil,
+  type Calendar,
+  type CalendarEvent,
+  type EventRemind,
   type RemindBefore,
   type Todo,
 } from '@todoness/shared';
@@ -48,6 +57,60 @@ export function dueReminders(
       out.push({ key, todo, choice, remindAt: todo.dueAt! - REMIND_MS[choice] });
   }
   return out.sort((a, b) => a.todo.dueAt! - b.todo.dueAt!);
+}
+
+/** A reminder of an event occurrence (docs/calendar/PRD.md section 6). */
+export interface EventReminder {
+  /** Remembers that it was shown: the tag and the start moment (a moved event is a new one). */
+  key: string;
+  /** The notification tag, the same the server uses for its push. */
+  tag: string;
+  event: CalendarEvent;
+  /** The first day of the occurrence. */
+  occurrence: string;
+  choice: EventRemind;
+  startMs: number;
+}
+
+/** Occurrences are looked for this many days around "now" (time zones reach a day either way). */
+const EVENT_WINDOW_DAYS = 2;
+const dayOfMs = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/** The event reminders that should fire now, earliest start first (FR-225, FR-226). */
+export function dueEventReminders(
+  events: readonly CalendarEvent[],
+  calendars: readonly Calendar[],
+  now: number,
+  notified: ReadonlySet<string>,
+): EventReminder[] {
+  const live = new Set(calendars.filter((c) => c.deletedAt === null).map((c) => c.id));
+  const from = addDays(dayOfMs(now), -EVENT_WINDOW_DAYS);
+  const to = addDays(dayOfMs(now), EVENT_WINDOW_DAYS);
+  const out: EventReminder[] = [];
+  for (const event of events) {
+    if (event.deletedAt !== null || !live.has(event.calendarId) || event.reminders.length === 0) {
+      continue;
+    }
+    for (const occurrence of occurrenceDays(event, from, to)) {
+      const startMs = eventStartMs(event, occurrence);
+      const choice = latestDueEventReminder(startMs, event.reminders, now);
+      if (choice === null) continue;
+      const tag = eventReminderKey(event.id, occurrence, choice);
+      const key = `${tag}:${startMs}`;
+      if (!notified.has(key)) out.push({ key, tag, event, occurrence, choice, startMs });
+    }
+  }
+  return out.sort((a, b) => a.startMs - b.startMs);
+}
+
+export function eventReminderText(r: EventReminder, now: number): { title: string; body: string } {
+  return {
+    title: r.event.title,
+    body: eventReminderBody(
+      { startTime: r.event.startTime, startMs: r.startMs, occurrence: r.occurrence },
+      now,
+    ),
+  };
 }
 
 export function reminderText(r: Reminder, now: number): { title: string; body: string } {
@@ -119,6 +182,8 @@ export async function showSystemNotification(opts: {
 export interface ReminderSchedulerOptions {
   db: TodonessDB;
   notify: (reminder: Reminder) => void | Promise<void>;
+  /** Shows a reminder of an event; left out, events are not reminded of. */
+  notifyEvent?: (reminder: EventReminder) => void | Promise<void>;
   now?: () => number;
   intervalMs?: number;
   /** Calls the handler when the tab becomes visible; returns a function that stops it. */
@@ -142,6 +207,7 @@ export function createReminderScheduler(opts: ReminderSchedulerOptions): Reminde
   const {
     db,
     notify,
+    notifyEvent,
     now = Date.now,
     intervalMs = CHECK_EVERY_MS,
     subscribeVisible = browserVisible,
@@ -165,7 +231,21 @@ export function createReminderScheduler(opts: ReminderSchedulerOptions): Reminde
       await db.notified.put({ key: r.key, at: t }); // remember first: never fire twice
       await notify(r);
     }
-    return reminders.length;
+    let count = reminders.length;
+    if (notifyEvent) {
+      const due = dueEventReminders(
+        await db.events.toArray(),
+        await db.calendars.toArray(),
+        t,
+        seen,
+      );
+      for (const r of due) {
+        await db.notified.put({ key: r.key, at: t });
+        await notifyEvent(r);
+      }
+      count += due.length;
+    }
+    return count;
   }
 
   const scheduler: ReminderScheduler = {

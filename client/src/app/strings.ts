@@ -326,6 +326,26 @@ export const t = {
     eventDeleted: 'Event deleted.',
     notFound: 'This event does not exist (any more).',
     saveFailed: 'Could not save the event. Check the date and the times.',
+    // Repeats and reminders (docs/calendar/PRD.md section 6)
+    repeats: 'Repeats',
+    repeatChoices: {
+      none: 'Never',
+      daily: 'Daily',
+      weekly: 'Weekly',
+      monthly: 'Monthly',
+      yearly: 'Yearly',
+    },
+    repeatUntil: 'Repeat until',
+    noEnd: 'No end',
+    reminders: 'Reminders',
+    remindersInfo:
+      'Shown on your devices, also when the app is closed. An all-day event counts as starting at 09:00.',
+    reminderChoices: {
+      start: 'At start',
+      '10min': '10 minutes before',
+      hour: '1 hour before',
+      day: '1 day before',
+    },
   },
 
   plan: {

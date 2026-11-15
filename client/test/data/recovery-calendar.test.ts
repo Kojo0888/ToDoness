@@ -20,6 +20,9 @@ async function oldDevice() {
     startTime: '14:00',
     endTime: '15:00',
     place: 'Room 4',
+    repeat: 'weekly',
+    repeatUntil: '2027-06-30',
+    reminders: ['day', 'hour'],
   });
   const dropped = await repo.createEvent({
     calendarId: work.id,
@@ -69,6 +72,10 @@ describe('restoreSnapshot with calendars', () => {
       startTime: '14:00',
       endTime: '15:00',
       place: 'Room 4',
+      repeat: 'weekly',
+      repeatUntil: '2027-06-30',
+      reminders: ['day', 'hour'],
+      tz: old.kept.tz,
     });
     expect((await getCalendars(fresh.db)).find((c) => c.id === old.work.id)!.color).toBe('red');
     await expectValidOutbox(fresh.db);
@@ -152,6 +159,15 @@ describe('the recovery question with calendars', () => {
     expect(sameData(snap, other)).toBe(true);
     other.events![0]!.place = 'Elsewhere';
     expect(sameData(snap, other)).toBe(false);
+    for (const change of [
+      (e: NonNullable<typeof snap.events>[number]) => (e.repeat = 'daily'),
+      (e: NonNullable<typeof snap.events>[number]) => (e.repeatUntil = null),
+      (e: NonNullable<typeof snap.events>[number]) => (e.reminders = ['start']),
+    ]) {
+      const changed = structuredClone(snap);
+      change(changed.events![0]!);
+      expect(sameData(snap, changed)).toBe(false);
+    }
     const recoloured = structuredClone(snap);
     recoloured.calendars![0]!.color = 'teal';
     expect(sameData(snap, recoloured)).toBe(false);

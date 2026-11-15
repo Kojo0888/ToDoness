@@ -81,6 +81,10 @@ const EVENT_DEFAULTS = {
   startTime: null,
   endTime: null,
   place: '',
+  repeat: 'none',
+  repeatUntil: null,
+  reminders: [] as CalendarEvent['reminders'],
+  tz: '',
   deletedAt: null,
 } as const satisfies Partial<CalendarEvent>;
 

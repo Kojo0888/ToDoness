@@ -182,6 +182,21 @@ export class TodonessDB extends Dexie {
       .upgrade(async (tx) => {
         await tx.table('meta').delete('lastServerSeq');
       });
+    // Repeating events and reminders (docs/calendar, Update 1). The server leaves the new event
+    // fields out for an app that does not ask for them, so the cursor is reset again to read
+    // them (FR-231). Events of before never repeat and have no reminders.
+    this.version(11).upgrade(async (tx) => {
+      await tx
+        .table('events')
+        .toCollection()
+        .modify((e) => {
+          e.repeat ??= 'none';
+          e.repeatUntil ??= null;
+          e.reminders ??= [];
+          e.tz ??= '';
+        });
+      await tx.table('meta').delete('lastServerSeq');
+    });
   }
 
   async getMeta<T>(key: string): Promise<T | undefined> {
