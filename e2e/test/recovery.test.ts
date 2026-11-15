@@ -181,6 +181,47 @@ describe('recovery after the server lost its database (FR-77 – FR-82)', () => 
     await phone.locator('.plan-block[aria-label^="Design, "]').waitFor();
   });
 
+  it('Upload my data also brings back calendars and events, and a second device gets them', async () => {
+    const { email, page } = await oldDevice();
+    await page
+      .getByRole('group', { name: 'Modules' })
+      .getByRole('link', { name: 'Calendar' })
+      .click();
+    await page.getByLabel('Name of your first calendar').fill('Work');
+    await page.getByRole('button', { name: 'Create calendar' }).click();
+    await page.getByRole('link', { name: 'New event' }).click();
+    await page.getByLabel('Title').fill('Dentist');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await page
+      .getByRole('link', { name: /^Dentist,/ })
+      .first()
+      .waitFor();
+    await waitSaved(page);
+    await loseServer();
+    await signUpAgain(page, email);
+    await expect(dialog(page).textContent()).resolves.toContain('1 calendar');
+
+    await dialog(page).getByRole('button', { name: 'Upload my data' }).click();
+    await dialog(page).waitFor({ state: 'hidden' });
+    // The device was last in the Calendar module.
+    await page
+      .getByRole('link', { name: /^Dentist,/ })
+      .first()
+      .waitFor();
+    await waitSaved(page);
+
+    const phone = await newPage(await newDevice(browser, app!));
+    await logIn(phone, email);
+    await phone
+      .getByRole('group', { name: 'Modules' })
+      .getByRole('link', { name: 'Calendar' })
+      .click();
+    await phone
+      .getByRole('link', { name: /^Dentist,/ })
+      .first()
+      .waitFor();
+  });
+
   it('a failed login with the device e-mail offers Sign up again, which leads to the question', async () => {
     const { email, page } = await oldDevice();
     await loseServer();

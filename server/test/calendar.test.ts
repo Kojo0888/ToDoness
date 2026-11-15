@@ -156,4 +156,11 @@ describe('calendars through sync', () => {
       expect(body.rejected.map((x) => x.reason)).toEqual(['forbidden', 'forbidden']);
     }
   });
+
+  it('deleting the user removes their calendars and events', async () => {
+    c.db.pragma('foreign_keys = ON');
+    c.db.prepare('DELETE FROM users WHERE id = ?').run(c.ann.me.id);
+    expect(row(c, 'calendars', c.calendarId)).toBeUndefined();
+    expect(row(c, 'events', c.eventId)).toBeUndefined();
+  });
 });

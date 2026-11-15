@@ -10,12 +10,14 @@ interface KeptCounts {
   lists: number;
   notes: number;
   plans?: number;
+  calendars?: number;
 }
 
-/** Notes and plans are only named when there are some. */
-const extras = (c: { notes: number; plans?: number }) => [
+/** Notes, plans and calendars are only named when there are some. */
+const extras = (c: { notes: number; plans?: number; calendars?: number }) => [
   ...(c.notes > 0 ? [count(c.notes, 'note')] : []),
   ...((c.plans ?? 0) > 0 ? [count(c.plans ?? 0, 'plan')] : []),
+  ...((c.calendars ?? 0) > 0 ? [count(c.calendars ?? 0, 'calendar')] : []),
 ];
 
 /** What was kept offline. */
@@ -91,7 +93,7 @@ export const t = {
     deviceNewer: 'Data on this device is newer',
     serverNewerHint: 'Server data is newer: the data on this device is deleted.',
     deviceNewerHint:
-      'Data on this device is newer: every task, list, note and plan on the server is replaced with it.',
+      'Data on this device is newer: every task, list, note, plan and calendar on the server is replaced with it.',
     question: 'Upload all data from this device to the server?',
     attachments: 'Attachments are only stored on the server and cannot be restored.',
     /** docs/recovery-upload FR-163, FR-164. */

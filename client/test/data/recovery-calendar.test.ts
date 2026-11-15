@@ -1,7 +1,8 @@
 /** Calendars and events in the recovery after a server loss (docs/calendar/PRD.md FR-216). */
 import { describe, expect, it } from 'vitest';
 import { newId } from '@todoness/shared';
-import { takeSnapshot } from '../../src/data/recovery';
+import { sameData, takeSnapshot } from '../../src/data/recovery';
+import { createRecovery, isAccountEmpty } from '../../src/services/recovery';
 import { createRepo } from '../../src/data/repo';
 import { getCalendars, getEventById, getEventsInRange } from '../../src/data/queries';
 import { expectValidOutbox, fakeNow, seedInbox, testDb, T0 } from '../helpers/db';
@@ -106,5 +107,54 @@ describe('restoreSnapshot with calendars', () => {
     await expect(fresh.repo.restoreSnapshot(snap, 'append')).resolves.toMatchObject({
       calendars: 0,
     });
+  });
+});
+
+describe('the recovery question with calendars', () => {
+  async function kept() {
+    const old = await oldDevice();
+    const snap = (await takeSnapshot(old.db, 'ann@corp.test'))!;
+    return { snap, old };
+  }
+  const withSnapshot = async (db: ReturnType<typeof testDb>, snap: unknown) => {
+    await db.setMeta('recoverySnapshot', snap);
+  };
+
+  it('counts the kept calendars, and an account with only calendars is not empty', async () => {
+    const { snap } = await kept();
+    const fresh = await freshAccount();
+    await withSnapshot(fresh.db, snap);
+    const recovery = createRecovery({ db: fresh.db, repo: fresh.repo });
+    await recovery.load();
+    expect(recovery.getOffer()).toMatchObject({ calendars: 1, accountCalendars: 0 });
+    expect(isAccountEmpty(recovery.getOffer()!)).toBe(true);
+
+    await fresh.repo.createCalendar('Already here');
+    await recovery.load();
+    expect(recovery.getOffer()).toMatchObject({ calendars: 1, accountCalendars: 1 });
+    expect(isAccountEmpty(recovery.getOffer()!)).toBe(false);
+  });
+
+  it('drops the kept data without asking when the account already holds the same calendars', async () => {
+    const { snap } = await kept();
+    const fresh = await freshAccount();
+    await fresh.repo.restoreSnapshot(snap, 'append');
+    await fresh.db.outbox.clear();
+    await withSnapshot(fresh.db, snap);
+    const recovery = createRecovery({ db: fresh.db, repo: fresh.repo });
+    await recovery.load();
+    expect(recovery.getOffer()).toBeUndefined();
+  });
+
+  it('sameData notices a changed event or colour', async () => {
+    const { snap, old } = await kept();
+    const other = structuredClone(snap);
+    expect(sameData(snap, other)).toBe(true);
+    other.events![0]!.place = 'Elsewhere';
+    expect(sameData(snap, other)).toBe(false);
+    const recoloured = structuredClone(snap);
+    recoloured.calendars![0]!.color = 'teal';
+    expect(sameData(snap, recoloured)).toBe(false);
+    void old;
   });
 });

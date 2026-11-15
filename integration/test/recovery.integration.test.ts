@@ -45,10 +45,12 @@ describe('recovery after the server lost its database', () => {
       lists: 1,
       notes: 0,
       plans: 0,
+      calendars: 0,
       accountTodos: 0,
       accountLists: 0,
       accountNotes: 0,
       accountPlans: 0,
+      accountCalendars: 0,
     });
   });
 
@@ -484,5 +486,38 @@ describe('compare with the server at login (docs/recovery-upload FR-168 – FR-1
     expect(await laptop.db.getMeta(RECOVERY_KEY)).toBeUndefined();
     expect(await live(laptop)).toEqual(['Milk|2 l', 'Phone task', 'Report|offline edit']);
     expect(await laptop.snapshot()).toEqual(await phone.snapshot());
+  });
+});
+
+describe('recovery with calendars', () => {
+  it('calendars and events come back on the fresh server and on a second device', async () => {
+    const { a } = await oldAccount();
+    const work = await a.repo.createCalendar('Work', 'green');
+    a.time += 10;
+    await a.repo.createEvent({
+      calendarId: work.id,
+      title: 'Review',
+      start: '2026-11-17',
+      startTime: '14:00',
+      endTime: '15:00',
+      place: 'Room 4',
+    });
+    expect(await a.sync()).toEqual({ ok: true });
+
+    const fresh = startServer();
+    const recovery = await signUpAgain(a, fresh, 'ann@corp.test');
+    expect(recovery.getOffer()).toMatchObject({ calendars: 1, accountCalendars: 0 });
+    expect(await recovery.accept('append')).toMatchObject({ ok: true, calendars: 1 });
+    expect(await a.sync()).toEqual({ ok: true });
+
+    const b = new Browser(fresh, 'phone');
+    await b.login('ann@corp.test');
+    expect(await b.sync()).toEqual({ ok: true });
+    expect((await b.db.calendars.toArray()).map((c) => [c.name, c.color])).toEqual([
+      ['Work', 'green'],
+    ]);
+    expect((await b.db.events.toArray()).map((e) => [e.title, e.startTime, e.place])).toEqual([
+      ['Review', '14:00', 'Room 4'],
+    ]);
   });
 });

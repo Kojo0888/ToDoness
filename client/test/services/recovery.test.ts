@@ -40,10 +40,12 @@ describe('recovery service', () => {
       lists: 1,
       notes: 0,
       plans: 0,
+      calendars: 0,
       accountTodos: 0,
       accountLists: 0,
       accountNotes: 0,
       accountPlans: 0,
+      accountCalendars: 0,
     });
   });
 
@@ -183,22 +185,27 @@ describe('isAccountEmpty (docs/recovery-upload FR-163, FR-164)', () => {
     lists: 1,
     notes: 1,
     plans: 1,
+    calendars: 1,
     accountTodos: 0,
     accountLists: 0,
     accountNotes: 0,
     accountPlans: 0,
+    accountCalendars: 0,
   };
 
   it('is empty when the account holds nothing but its Inbox', () => {
     expect(isAccountEmpty(offer)).toBe(true);
   });
 
-  it.each(['accountTodos', 'accountLists', 'accountNotes', 'accountPlans'] as const)(
-    'is not empty with one in %s',
-    (key) => {
-      expect(isAccountEmpty({ ...offer, [key]: 1 })).toBe(false);
-    },
-  );
+  it.each([
+    'accountTodos',
+    'accountLists',
+    'accountNotes',
+    'accountPlans',
+    'accountCalendars',
+  ] as const)('is not empty with one in %s', (key) => {
+    expect(isAccountEmpty({ ...offer, [key]: 1 })).toBe(false);
+  });
 
   it('a fresh account with kept data offers an empty account', async () => {
     const { db, repo } = await deviceWithKeptData();

@@ -104,6 +104,7 @@ export function RecoveryDialog() {
               lists: offer.accountLists,
               notes: offer.accountNotes,
               plans: offer.accountPlans,
+              calendars: offer.accountCalendars,
             })}
           </p>
           <p>

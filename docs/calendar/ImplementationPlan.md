@@ -70,3 +70,4 @@ New entities are invisible to older apps (`calendar=1` flag; they reset the curs
   phone top bar now expect the bottom bar.
 - Recovery counts returned by `restoreSnapshot` gained `calendars` (existing tests updated).
 - Reminders and repeating events stay out (decision C5).
+- Audit of cross-module features: the recovery offer and dialog now count calendars (`calendars`, `accountCalendars`, "calendar" in the texts), an account holding only calendars is no longer treated as empty; tests also cover the Dexie upgrade, `clearAll`, user deletion cascade and recovery end to end.

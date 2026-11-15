@@ -32,11 +32,13 @@ export interface RecoveryOffer {
   lists: number;
   notes: number;
   plans: number;
+  calendars: number;
   /** What the new account already holds (all 0 = empty), the Inbox not counted. */
   accountTodos: number;
   accountLists: number;
   accountNotes: number;
   accountPlans: number;
+  accountCalendars: number;
 }
 
 /** The new account holds nothing but its Inbox (docs/recovery-upload FR-163, FR-164). */
@@ -45,7 +47,8 @@ export function isAccountEmpty(offer: RecoveryOffer): boolean {
     offer.accountTodos === 0 &&
     offer.accountLists === 0 &&
     offer.accountNotes === 0 &&
-    offer.accountPlans === 0
+    offer.accountPlans === 0 &&
+    offer.accountCalendars === 0
   );
 }
 
@@ -128,10 +131,12 @@ export function createRecovery(deps: { db: TodonessDB; repo: Repo }): Recovery {
         lists: snapshot.lists.length,
         notes: snapshot.notes?.length ?? 0,
         plans: snapshot.plans?.length ?? 0,
+        calendars: snapshot.calendars?.length ?? 0,
         accountTodos,
         accountLists,
         accountNotes,
         accountPlans,
+        accountCalendars,
       });
     },
 

@@ -29,4 +29,18 @@ describe('recovery texts', () => {
       'The server already holds 4 tasks, 1 list (besides the Inbox), 2 notes and 1 plan for this account, and this device holds 1 task, 0 lists (besides the Inbox) and 1 note of a@b.co. They are not the same.',
     );
   });
+
+  it('names calendars when there are some (the Calendar module is part of the recovery)', () => {
+    expect(
+      t.recovery.emptyAccount('a@b.co', { todos: 0, lists: 0, notes: 0, plans: 1, calendars: 2 }),
+    ).toContain('0 tasks, 0 lists (besides the Inbox), 1 plan and 2 calendars of a@b.co');
+    expect(
+      t.recovery.differs(
+        'a@b.co',
+        { todos: 0, lists: 0, notes: 0, calendars: 1 },
+        { todos: 0, lists: 0, notes: 0, calendars: 3 },
+      ),
+    ).toContain('3 calendars for this account, and this device holds 0 tasks');
+    expect(t.recovery.deviceNewerHint).toContain('calendar');
+  });
 });
