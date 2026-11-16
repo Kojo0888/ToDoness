@@ -2799,7 +2799,14 @@ h2.nav-heading {
   box-shadow: inset 0 0 0 2px var(--cal);
 }
 
-/* Manage calendars: the colour of a row. */
+/* Manage calendars: the Public switch and the colour of a row. */
+.cal-public {
+  flex: 1 1 100%;
+  margin: 0;
+  padding-left: 2rem;
+  font-weight: 400;
+}
+
 .manage-row:has(.cal-colours) {
   flex-wrap: wrap;
 }
@@ -3111,6 +3118,10 @@ h2.nav-heading {
   max-width: 40rem;
 }
 
+.cal-row-what small.cal-desc {
+  white-space: pre-wrap;
+}
+
 /* Week (computer) */
 .cal-week {
   border: 1px solid var(--border);
@@ -3265,6 +3276,14 @@ h2.nav-heading {
   padding: 0.3rem 0.6rem;
 }
 
+.event-form textarea {
+  width: 100%;
+  min-height: 5.5rem;
+  padding: 0.5rem 0.6rem;
+  resize: vertical;
+  font: inherit;
+}
+
 .event-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
@@ -3282,7 +3301,13 @@ h2.nav-heading {
 .event-actions {
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end; /* Cancel and Save on the right (FR-247) */
   gap: 0.5rem;
+}
+
+/* Delete stays on the left. */
+.event-actions .event-delete {
+  margin-right: auto;
 }
 
 @media (max-width: 760px) {
@@ -3301,8 +3326,11 @@ h2.nav-heading {
   .cal-views .chip,
   .cal-new,
   .cal-toggle,
-  .event-form input,
+  /* Not the All day switch: its track keeps its own compact height (FR-243). */
+  .event-form input:not([role='switch']),
   .event-form select,
+  .event-form textarea,
+  .event-form label.switch,
   .event-actions .btn,
   .event-actions button,
   .event-until button,

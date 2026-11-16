@@ -12,12 +12,14 @@ import {
   idSchema,
   pushEnvelopeSchema,
   type PublicListResponse,
+  type PublicCalendarsResponse,
   type PublicListsResponse,
   type PublicNotesResponse,
   type PublicTodo,
 } from '@todoness/shared';
 import { requireAuth } from '../auth/middleware';
 import { applyPush } from '../sync/apply-ops';
+import { getEvent } from '../sync/rows';
 import type { AppEnv } from '../http/types';
 
 /**
@@ -223,6 +225,59 @@ export function publicRoutes({ db, now }: { db: Database.Database; now: () => nu
       );
     },
   );
+
+  /**
+   * The public calendars of other users with their events (docs/calendar FR-241, FR-242).
+   * Read-only: there is no push for them (FR-218).
+   */
+  app.get('/calendars', (c) => {
+    const calendars = db
+      .prepare(
+        `SELECT c.id, c.name, c.color, u.email AS owner_email
+           FROM calendars c JOIN users u ON u.id = c.user_id
+          WHERE c.is_public = 1 AND c.deleted_at IS NULL AND c.user_id != ?
+          ORDER BY u.email COLLATE NOCASE, c.order_key, c.id`,
+      )
+      .all(c.get('user').id) as {
+      id: string;
+      name: string;
+      color: PublicCalendarsResponse['calendars'][number]['color'];
+      owner_email: string;
+    }[];
+    const eventIds = db.prepare(
+      'SELECT id FROM events WHERE calendar_id = ? AND deleted_at IS NULL ORDER BY start_day, id',
+    );
+    const body: PublicCalendarsResponse = {
+      calendars: calendars.map((cal) => ({
+        id: cal.id,
+        name: cal.name,
+        color: cal.color,
+        ownerEmail: cal.owner_email,
+        events: (eventIds.all(cal.id) as { id: string }[]).flatMap(({ id }) => {
+          const e = getEvent(db, id)?.row;
+          if (!e) return [];
+          return [
+            {
+              id: e.id,
+              calendarId: e.calendarId,
+              title: e.title,
+              start: e.start,
+              days: e.days,
+              startTime: e.startTime,
+              endTime: e.endTime,
+              place: e.place,
+              description: e.description,
+              repeat: e.repeat,
+              repeatUntil: e.repeatUntil,
+              reminders: e.reminders,
+              tz: e.tz,
+            },
+          ];
+        }),
+      })),
+    };
+    return jsonWithEtag(c, body);
+  });
 
   return app;
 }

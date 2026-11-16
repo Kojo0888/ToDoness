@@ -513,9 +513,9 @@ describe('recovery with calendars', () => {
     const b = new Browser(fresh, 'phone');
     await b.login('ann@corp.test');
     expect(await b.sync()).toEqual({ ok: true });
-    expect((await b.db.calendars.toArray()).map((c) => [c.name, c.color])).toEqual([
-      ['Work', 'green'],
-    ]);
+    expect((await b.db.calendars.toArray()).map((c) => [c.name, c.color])).toEqual(
+      expect.arrayContaining([['Work', 'green']]), // and the new account's "My calendar"
+    );
     expect((await b.db.events.toArray()).map((e) => [e.title, e.startTime, e.place])).toEqual([
       ['Review', '14:00', 'Room 4'],
     ]);

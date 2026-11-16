@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { newId, type Hlc } from '@todoness/shared';
+import { DEFAULT_CALENDAR_NAME, newId, type Hlc } from '@todoness/shared';
 import type { AuthUser } from '../http/types';
 
 /**
@@ -37,6 +37,7 @@ export function createUserWithInbox(
     ).run(id, inboxId, JSON.stringify({ name: 'Inbox', orderKey: 'a0', isInbox: true }), hlc, now);
 
     ensureNotesList(db, id, now, hlc);
+    ensureCalendar(db, id, now, hlc);
     return { id, email, role };
   });
 
@@ -75,6 +76,36 @@ export function ensureNotesList(
   db.prepare(
     `INSERT INTO change_log (user_id, client_id, entity, entity_id, op_type, patch, hlc, created_at)
      VALUES (?, 'server', 'list', ?, 'create', ?, ?, ?)`,
+  ).run(userId, id, JSON.stringify(patch), stamp, now);
+  return true;
+}
+
+/**
+ * Creates the calendar "My calendar" for a user who has never had a calendar (docs/calendar
+ * FR-244, decision C13): at sign-up, and before every pull so older accounts get it too. Deleted
+ * calendars count, so one the user deleted does not come back. Done on the server, so two
+ * devices cannot create two. Returns whether it created one.
+ */
+export function ensureCalendar(
+  db: Database.Database,
+  userId: string,
+  now: number,
+  hlc: Hlc | (() => Hlc),
+): boolean {
+  if (db.prepare('SELECT 1 FROM calendars WHERE user_id = ?').get(userId)) return false;
+  const stamp = typeof hlc === 'function' ? hlc() : hlc;
+  const id = newId(now);
+  const patch = { name: DEFAULT_CALENDAR_NAME, color: 'blue', orderKey: 'a0', isPublic: false };
+  const fieldHlc = JSON.stringify(
+    Object.fromEntries(Object.keys(patch).map((key) => [key, stamp])),
+  );
+  db.prepare(
+    `INSERT INTO calendars (id, user_id, name, color, is_public, order_key, field_hlc, created_at, updated_at)
+     VALUES (?, ?, ?, 'blue', 0, 'a0', ?, ?, ?)`,
+  ).run(id, userId, DEFAULT_CALENDAR_NAME, fieldHlc, now, now);
+  db.prepare(
+    `INSERT INTO change_log (user_id, client_id, entity, entity_id, op_type, patch, hlc, created_at)
+     VALUES (?, 'server', 'calendar', ?, 'create', ?, ?, ?)`,
   ).run(userId, id, JSON.stringify(patch), stamp, now);
   return true;
 }

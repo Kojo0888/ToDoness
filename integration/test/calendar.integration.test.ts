@@ -21,7 +21,10 @@ describe('calendar sync', () => {
     a.online = true;
     expect(await a.sync()).toEqual({ ok: true });
     expect(await b.sync()).toEqual({ ok: true });
-    expect((await getCalendars(b.db)).map((c) => [c.name, c.color])).toEqual([['Work', 'green']]);
+    // Every account also has "My calendar" (docs/calendar FR-244).
+    expect((await getCalendars(b.db)).map((c) => [c.name, c.color])).toEqual(
+      expect.arrayContaining([['Work', 'green']]),
+    );
     expect(await getEventById(b.db, review.id)).toMatchObject({
       title: 'Review',
       startTime: '14:00',
@@ -59,7 +62,7 @@ describe('calendar sync', () => {
     await b.repo.deleteCalendar(work.id);
     await b.sync();
     await a.sync();
-    expect(await getCalendars(a.db)).toEqual([]);
+    expect((await getCalendars(a.db)).map((c) => c.name)).toEqual(['My calendar']);
     expect(await getEventById(a.db, e.id)).toBeUndefined();
   });
 

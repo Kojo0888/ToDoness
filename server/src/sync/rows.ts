@@ -304,6 +304,7 @@ interface CalendarDb {
   user_id: string;
   name: string;
   color: Calendar['color'];
+  is_public: number;
   order_key: string;
   field_hlc: string;
   created_at: number;
@@ -320,6 +321,7 @@ export function getCalendar(db: Database.Database, id: string): Owned<Calendar> 
       id: r.id,
       name: r.name,
       color: r.color,
+      isPublic: r.is_public === 1,
       orderKey: r.order_key,
       fieldHlc: JSON.parse(r.field_hlc),
       createdAt: r.created_at,
@@ -331,13 +333,14 @@ export function getCalendar(db: Database.Database, id: string): Owned<Calendar> 
 
 export function saveCalendar(db: Database.Database, userId: string, c: Calendar): void {
   db.prepare(
-    `INSERT INTO calendars (id, user_id, name, color, order_key, field_hlc, created_at, updated_at, deleted_at)
-     VALUES (@id, @userId, @name, @color, @orderKey, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
+    `INSERT INTO calendars (id, user_id, name, color, is_public, order_key, field_hlc, created_at, updated_at, deleted_at)
+     VALUES (@id, @userId, @name, @color, @isPublic, @orderKey, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
      ON CONFLICT(id) DO UPDATE SET
-       name = excluded.name, color = excluded.color, order_key = excluded.order_key,
+       name = excluded.name, color = excluded.color, is_public = excluded.is_public,
+       order_key = excluded.order_key,
        field_hlc = excluded.field_hlc, updated_at = excluded.updated_at,
        deleted_at = excluded.deleted_at`,
-  ).run({ ...c, userId, fieldHlc: JSON.stringify(c.fieldHlc) });
+  ).run({ ...c, userId, isPublic: c.isPublic ? 1 : 0, fieldHlc: JSON.stringify(c.fieldHlc) });
 }
 
 /** The owner of a calendar, if it exists (deleted calendars still count). */
@@ -357,6 +360,7 @@ interface EventDb {
   start_time: string | null;
   end_time: string | null;
   place: string;
+  description: string;
   repeat: CalendarEvent['repeat'];
   repeat_until: string | null;
   reminders: string;
@@ -381,6 +385,7 @@ export function getEvent(db: Database.Database, id: string): Owned<CalendarEvent
       startTime: r.start_time,
       endTime: r.end_time,
       place: r.place,
+      description: r.description,
       repeat: r.repeat,
       repeatUntil: r.repeat_until,
       reminders: normalizeEventReminds(r.reminders === '' ? [] : r.reminders.split(',')),
@@ -396,14 +401,14 @@ export function getEvent(db: Database.Database, id: string): Owned<CalendarEvent
 export function saveEvent(db: Database.Database, userId: string, e: CalendarEvent): void {
   db.prepare(
     `INSERT INTO events (id, user_id, calendar_id, title, start_day, days, start_time, end_time,
-                         place, repeat, repeat_until, reminders, tz, field_hlc, created_at,
+                         place, description, repeat, repeat_until, reminders, tz, field_hlc, created_at,
                          updated_at, deleted_at)
      VALUES (@id, @userId, @calendarId, @title, @start, @days, @startTime, @endTime,
-             @place, @repeat, @repeatUntil, @reminders, @tz, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
+             @place, @description, @repeat, @repeatUntil, @reminders, @tz, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
      ON CONFLICT(id) DO UPDATE SET
        calendar_id = excluded.calendar_id, title = excluded.title, start_day = excluded.start_day,
        days = excluded.days, start_time = excluded.start_time, end_time = excluded.end_time,
-       place = excluded.place, repeat = excluded.repeat, repeat_until = excluded.repeat_until,
+       place = excluded.place, description = excluded.description, repeat = excluded.repeat, repeat_until = excluded.repeat_until,
        reminders = excluded.reminders, tz = excluded.tz, field_hlc = excluded.field_hlc, updated_at = excluded.updated_at,
        deleted_at = excluded.deleted_at`,
   ).run({

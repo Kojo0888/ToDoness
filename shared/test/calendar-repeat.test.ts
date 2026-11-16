@@ -136,8 +136,8 @@ describe('occurrenceDays', () => {
     expect(occurrenceDays(e, '2026-11-11', '2026-11-11')).toEqual(['2026-11-09']);
   });
 
-  it('a timed event is one day, whatever `days` says', () => {
-    const e = ev({ start: '2026-11-02', days: 3, startTime: '10:00', repeat: 'weekly' });
+  it('a timed event with `days` 1 is one day', () => {
+    const e = ev({ start: '2026-11-02', days: 1, startTime: '10:00', repeat: 'weekly' });
     expect(occurrenceDays(e, '2026-11-11', '2026-11-11')).toEqual([]);
     expect(occurrenceDays(e, '2026-11-09', '2026-11-09')).toEqual(['2026-11-09']);
   });

@@ -118,3 +118,45 @@ New entities are invisible to older apps (`calendar=1` flag; they reset the curs
   (like a task with a new due date); the client's `notified` key has the start moment too.
 - The server and the app share one sweep path for tasks and events (`push/reminders.ts`
   builds a list of jobs; `push/eventReminders.ts` finds the due event occurrences).
+
+## Update 2 – public calendars, description, end date, default calendar (FR-241 – FR-248)
+
+Order: PRD → this plan → tests (they fail) → implementation.
+
+### Shared
+
+- `schemas.ts`: `calendarFields.isPublic` (boolean; optional on create), `eventFields.description`
+  (`EVENT_DESCRIPTION_MAX` = 5000, optional on create); `merge.ts` defaults (`false`, `''`).
+  `api.ts`: `PublicCalendarsResponse` (calendars with `ownerEmail` and their events).
+- `calendar.ts`: `eventSpan` for a timed event with `days > 1` (end day = start + days − 1,
+  `to` = end time, or the end of the day without one); `occurrenceDays` uses `days` for every
+  event; `dayClip(span, day)` clips `from` / `to` to one day for the week grid.
+
+### Server
+
+- Migration `013_calendar_public_description.sql`: `calendars.is_public`, `events.description`.
+  `sync/rows.ts` reads / writes both.
+- `auth/users.ts`: `ensureCalendar(db, userId, now, hlc)` – "My calendar" if the user has no
+  calendar row at all (deleted rows count); called at sign-up and before every pull.
+- `routes/sync.ts`: `calendars=public` keeps `isPublic`, `events=…,description` keeps `description`;
+  older apps get patches without them.
+- `routes/public.ts`: `GET /api/public/calendars` (other users' public, live calendars and their
+  live events, ETag like the others).
+
+### Client
+
+- Dexie v12: defaults (`isPublic` false, `description` ''), cursor reset. Pull URL gains
+  `calendars=public` and `events=repeat,description`.
+- `repo`: `setCalendarPublic(id, bool)`; events carry `description`; `normalizedEvent` keeps `days`
+  for timed events. `data/queries.ts` untouched.
+- `EventPage`: start date + time, end date + time, description textarea, buttons on the right.
+  `ManageCalendars`: Public switch per row. `PublicCalendarsPage` (`/calendar/public`) and a
+  sidebar button. `layoutTimed(events, day?)` clips multi-day events.
+- CSS: the switch is excluded from the 44 px input height on phones; `.event-actions` is right
+  aligned.
+
+### Tests (written first)
+
+`shared/test/calendar.test.ts` (multi-day timed span, occurrences), `shared/test/schemas` (new
+fields), `server/test/calendar-update2.test.ts` (migration, default calendar, compat flags, public
+route), `client/test/data/calendar-update2.test.ts` (repo), e2e `calendar.test.ts` (form, public).

@@ -27,6 +27,10 @@ export function weekTitle(days: readonly string[]): string {
 export function timeText(e: Pick<EventTime, 'start' | 'days' | 'startTime' | 'endTime'>): string {
   if (e.startTime === null) return t.calendar.allDayRow;
   const span = eventSpan(e);
+  // Over several days: "22:00 – 12 Nov 08:00" (the end day is the one that differs).
+  if (span.endDay !== span.start) {
+    return `${e.startTime} – ${dayMonthShort(span.endDay)}${e.endTime === null ? '' : ` ${e.endTime}`}`;
+  }
   const end = span.to === null ? null : minutesText(span.to);
   return e.endTime !== null && end !== null && end !== e.startTime
     ? `${e.startTime}–${e.endTime}`

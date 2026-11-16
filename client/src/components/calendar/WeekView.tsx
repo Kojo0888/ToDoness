@@ -67,7 +67,7 @@ export function WeekView({
           </div>
           {days.map((d) => (
             <div key={d} className="cal-week-col">
-              {layoutTimed(eventsOnDay(items, d)).map((b) => (
+              {layoutTimed(eventsOnDay(items, d), d).map((b) => (
                 <Link
                   key={b.event.key}
                   href={b.event.href}

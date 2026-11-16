@@ -24,6 +24,8 @@ export const ACTIVITY_LINKS_MAX = 50;
 export const CALENDAR_NAME_MAX = 200;
 export const EVENT_TITLE_MAX = 200;
 export const EVENT_PLACE_MAX = 200;
+/** The longest description of an event (docs/calendar/PRD.md FR-246). */
+export const EVENT_DESCRIPTION_MAX = 5000;
 /** The longest all-day event: a year (docs/calendar/PRD.md FR-207). */
 export const EVENT_DAYS_MAX = 366;
 export const PUSH_BATCH_MAX = 500;
@@ -137,6 +139,8 @@ const calendarFields = {
   name: z.string().trim().min(1).max(CALENDAR_NAME_MAX),
   color: calendarColorSchema,
   orderKey: orderKeySchema,
+  /** Readable by every logged-in user (docs/calendar/PRD.md FR-241). */
+  isPublic: z.boolean(),
 };
 
 /** A time of day, `HH:MM` in 24 hours (docs/calendar/PRD.md decision C1). */
@@ -147,12 +151,14 @@ const eventFields = {
   title: z.string().trim().min(1).max(EVENT_TITLE_MAX),
   /** The first day. */
   start: daySchema,
-  /** How many days an all-day event lasts; ignored for an event with a time (decision C2). */
+  /** How many days the event touches: its end date is start + days − 1 (decision C11). */
   days: z.number().int().min(1).max(EVENT_DAYS_MAX),
   /** `null` = all day. */
   startTime: timeSchema.nullable(),
   endTime: timeSchema.nullable(),
   place: z.string().trim().max(EVENT_PLACE_MAX),
+  /** Free text, shown on the event page (docs/calendar/PRD.md FR-246). Not trimmed. */
+  description: z.string().max(EVENT_DESCRIPTION_MAX),
   /** docs/calendar/PRD.md section 6. */
   repeat: z.enum(REPEATS),
   /** The last day an occurrence can start; `null` = forever. */
@@ -282,6 +288,7 @@ export type ActivityPatch = z.infer<typeof activityUpdatePatchSchema>;
 export const calendarCreatePatchSchema = z.strictObject({
   ...calendarFields,
   color: calendarFields.color.optional(),
+  isPublic: calendarFields.isPublic.optional(),
 });
 export const calendarUpdatePatchSchema = z
   .strictObject(calendarFields)
@@ -295,6 +302,7 @@ export const eventCreatePatchSchema = z.strictObject({
   startTime: eventFields.startTime.optional(),
   endTime: eventFields.endTime.optional(),
   place: eventFields.place.optional(),
+  description: eventFields.description.optional(),
   repeat: eventFields.repeat.optional(),
   repeatUntil: eventFields.repeatUntil.optional(),
   reminders: eventFields.reminders.optional(),

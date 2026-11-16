@@ -469,7 +469,7 @@ describe('migration 012 (repeating events and reminders)', () => {
       INSERT INTO calendars (id, user_id, name, order_key, created_at, updated_at) VALUES ('c1','u1','Work','a0',1,1);
       INSERT INTO events (id, user_id, calendar_id, title, start_day, created_at, updated_at)
         VALUES ('e1','u1','c1','Review','2026-11-17',1,1);`);
-    expect(migrate(db, MIGRATIONS_DIR)).toBe(1);
+    expect(migrate(db, MIGRATIONS_DIR)).toBe(2); // 012 and 013
     expect(db.prepare('SELECT repeat, repeat_until, reminders, tz FROM events').get()).toEqual({
       repeat: 'none',
       repeat_until: null,

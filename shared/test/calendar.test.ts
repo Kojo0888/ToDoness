@@ -154,8 +154,8 @@ describe('eventSpan', () => {
     });
   });
 
-  it('a timed event lasts one day, whatever `days` says', () => {
-    expect(eventSpan(ev({ days: 5, startTime: '09:30', endTime: '10:15' }))).toEqual({
+  it('a timed event with `days` 1 lasts one day (longer ones: calendar-update2.test.ts)', () => {
+    expect(eventSpan(ev({ days: 1, startTime: '09:30', endTime: '10:15' }))).toEqual({
       start: '2026-11-18',
       endDay: '2026-11-18',
       from: 570,

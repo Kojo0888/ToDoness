@@ -6,6 +6,7 @@ import {
   addDays,
   dayNumber,
   dayOf,
+  dayClip,
   eventSpan,
   eventsOnDay,
   type EventTime,
@@ -77,13 +78,21 @@ export interface TimedBox<T> {
 
 /**
  * The timed events of one day laid out in an hour grid: overlapping events sit side by side,
- * in equal columns. All-day events are left out.
+ * in equal columns. All-day events are left out. With `day`, an event that runs over several
+ * days is cut to the part on that day.
  */
-export function layoutTimed<T extends EventTime>(events: readonly T[]): TimedBox<T>[] {
+export function layoutTimed<T extends EventTime>(
+  events: readonly T[],
+  day?: string,
+): TimedBox<T>[] {
   const boxes = events
     .map((event) => ({ event, span: eventSpan(event) }))
     .filter((b) => b.span.from !== null)
-    .map((b) => ({ event: b.event, from: b.span.from!, to: b.span.to! }))
+    .map((b) => {
+      // On one day of a longer event only that day's part is drawn (FR-245).
+      const clip = day === undefined ? null : dayClip(b.span, day);
+      return { event: b.event, from: clip?.from ?? b.span.from!, to: clip?.to ?? b.span.to! };
+    })
     .sort((a, b) => a.from - b.from || a.to - b.to);
 
   const out: TimedBox<T>[] = [];

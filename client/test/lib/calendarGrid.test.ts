@@ -82,6 +82,17 @@ describe('shiftPeriod', () => {
   });
 });
 
+describe('layoutTimed on a day of a longer event (FR-245)', () => {
+  const trip = ev('Trip', { start: '2026-11-10', days: 3, startTime: '22:00', endTime: '08:00' });
+  const spans = (day: string) => layoutTimed([trip], day).map((o) => [o.from, o.to]);
+
+  it('fills the rest of the first day, whole middle days and the start of the last day', () => {
+    expect(spans('2026-11-10')).toEqual([[1320, 1440]]);
+    expect(spans('2026-11-11')).toEqual([[0, 1440]]);
+    expect(spans('2026-11-12')).toEqual([[0, 480]]);
+  });
+});
+
 describe('layoutTimed (week view columns)', () => {
   it('events that do not overlap each take the whole column', () => {
     const out = layoutTimed([

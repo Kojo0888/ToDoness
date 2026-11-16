@@ -19,7 +19,7 @@ import { usePublicLists, usePublicNotes } from '../../app/publicHooks';
 import { db, repo } from '../../app/container';
 import type { StoredUser } from '../../services/session';
 import { t } from '../../app/strings';
-import { CALENDAR_PATH, MANAGE_CALENDARS_PATH } from '../calendar/paths';
+import { CALENDAR_PATH, MANAGE_CALENDARS_PATH, PUBLIC_CALENDARS_PATH } from '../calendar/paths';
 import { useCalendarPrefs } from '../calendar/useCalendarPrefs';
 import { MANAGE_PLANS_PATH } from '../plan/ManagePlans';
 import { planPath } from '../plan/PlansHome';
@@ -306,6 +306,13 @@ function CalendarNav({
         href={MANAGE_CALENDARS_PATH}
         label={t.calendar.manageCalendars}
         active={active(MANAGE_CALENDARS_PATH)}
+        onNavigate={onNavigate}
+      />
+
+      <ManageLink
+        href={PUBLIC_CALENDARS_PATH}
+        label={t.calendar.publicCalendars}
+        active={active(PUBLIC_CALENDARS_PATH)}
         onNavigate={onNavigate}
       />
 

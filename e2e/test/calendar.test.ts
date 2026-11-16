@@ -54,9 +54,17 @@ async function openCalendar(page: Page) {
   await page.waitForURL(/\/calendar/);
 }
 
+/** Every account starts with "My calendar" (FR-244): rename it, so the tests keep their names. */
 async function firstCalendar(page: Page, name: string) {
-  await page.getByLabel('Name of your first calendar').fill(name);
-  await page.getByRole('button', { name: 'Create calendar' }).click();
+  // By address, so it also works on a phone (where the link is in the menu).
+  await page.goto(new URL('/calendar/manage', page.url()).href);
+  await page.getByRole('button', { name: 'Actions: My calendar' }).click();
+  await page.getByRole('menuitem', { name: 'Rename' }).click();
+  const field = page.getByLabel('Calendar name', { exact: true });
+  await field.fill(name);
+  await field.press('Enter');
+  await page.locator('.manage-name', { hasText: name }).waitFor();
+  await page.getByRole('link', { name: 'Back to the calendar' }).click();
   await view(page, 'Month').waitFor();
 }
 
@@ -67,7 +75,7 @@ async function addEvent(
 ) {
   await page.getByRole('link', { name: 'New event' }).click();
   await page.getByLabel('Title').fill(title);
-  if (opts.day) await page.getByLabel('Date').fill(opts.day);
+  if (opts.day) await page.getByLabel('Start date').fill(opts.day);
   if (opts.start) {
     await page.getByRole('switch', { name: 'All day' }).uncheck();
     await page.getByLabel('Starts').fill(opts.start);
@@ -130,10 +138,9 @@ describe('module picker (four modules)', () => {
 });
 
 describe('calendars and events', () => {
-  it('starts empty, creates the first calendar, adds an event and shows it in the month', async () => {
+  it('starts with "My calendar", adds an event and shows it in the month', async () => {
     const { page, context } = await newUser('month');
     await openCalendar(page);
-    await page.getByText('No calendars yet.').waitFor();
     await firstCalendar(page, 'Work');
     await expect.poll(() => view(page, 'Month').getAttribute('aria-pressed')).toBe('true'); // computer default
     await addEvent(page, 'Dentist', { start: '09:30', end: '10:15' });
@@ -222,7 +229,7 @@ describe('calendars and events', () => {
 
     await page.getByRole('link', { name: 'Manage calendars' }).click();
     await page.waitForURL(/\/calendar\/manage/);
-    await page.getByText('Work', { exact: true }).waitFor();
+    await page.locator('.manage-name', { hasText: 'Work' }).waitFor();
     const red = page
       .getByRole('group', { name: 'Colour of Home' })
       .getByRole('button', { name: 'Red', exact: true });
@@ -339,7 +346,7 @@ describe('repeating events and reminders', () => {
     const { day, time } = await soon(page, 30);
     await page.getByRole('link', { name: 'New event' }).click();
     await page.getByLabel('Title').fill('Board call');
-    await page.getByLabel('Date').fill(day);
+    await page.getByLabel('Start date').fill(day);
     await page.getByRole('switch', { name: 'All day' }).uncheck();
     await page.getByLabel('Starts').fill(time);
     await chip(page, 'Reminders', '1 hour before').click();
@@ -354,4 +361,100 @@ describe('repeating events and reminders', () => {
     await page.getByLabel('Title').waitFor();
     await context.close();
   }, 90_000);
+});
+
+describe('Update 2: default calendar, form, description, public calendars', () => {
+  it('a new user already has "My calendar" and can add an event at once (FR-244)', async () => {
+    const { page, context } = await newUser('default');
+    await openCalendar(page);
+    await view(page, 'Month').waitFor();
+    await page
+      .getByRole('group', { name: 'Calendars' })
+      .getByRole('button', { name: 'My calendar' })
+      .waitFor();
+    await addEvent(page, 'First thing');
+    await eventLink(page, 'First thing').waitFor();
+    await context.close();
+  });
+
+  it('the form: compact All day switch, both dates kept, description, buttons on the right (FR-243 – FR-247)', async () => {
+    const { page, context } = await newUser('form', { width: 390, height: 780 });
+    await openCalendar(page);
+    await page.getByRole('link', { name: 'New event' }).click();
+    const sw = page.getByRole('switch', { name: 'All day' });
+    const box = (await sw.boundingBox())!;
+    expect(box.height).toBeLessThanOrEqual(32);
+
+    await page.getByLabel('Title').fill('Conference');
+    await page.getByLabel('Start date').fill('2026-12-01');
+    await page.getByLabel('End date').fill('2026-12-03');
+    await sw.uncheck();
+    await page.getByLabel('Starts').fill('09:00');
+    await page.getByLabel('Ends').fill('17:30');
+    // Both dates are still there after switching All day off (and on again).
+    expect(await page.getByLabel('Start date').inputValue()).toBe('2026-12-01');
+    expect(await page.getByLabel('End date').inputValue()).toBe('2026-12-03');
+    await sw.check();
+    await sw.uncheck();
+    expect(await page.getByLabel('End date').inputValue()).toBe('2026-12-03');
+    expect(await page.getByLabel('Ends').inputValue()).toBe('17:30');
+
+    await page.getByLabel('Description').fill('Hall B, bring the badge');
+
+    // Cancel and Save are on the right side of the screen; Save is the last one.
+    const save = (await page.getByRole('button', { name: 'Save' }).boundingBox())!;
+    const cancel = (await page.getByRole('link', { name: 'Cancel' }).boundingBox())!;
+    expect(save.x + save.width).toBeGreaterThan(390 - 24);
+    expect(cancel.x).toBeGreaterThan(390 / 4);
+    expect(save.x).toBeGreaterThan(cancel.x);
+
+    await page.getByRole('button', { name: 'Save' }).click();
+    await page.waitForURL(/\/calendar$/);
+    await context.close();
+  });
+
+  it('saved description and end date come back when the event is opened again', async () => {
+    const { page, context } = await newUser('desc');
+    await openCalendar(page);
+    const day = await today(page);
+    await page.getByRole('link', { name: 'New event' }).click();
+    await page.getByLabel('Title').fill('Workshop');
+    await page.getByLabel('Start date').fill(day);
+    await page.getByRole('switch', { name: 'All day' }).uncheck();
+    await page.getByLabel('Starts').fill('10:00');
+    await page.getByLabel('End date').fill(day);
+    await page.getByLabel('Ends').fill('12:00');
+    await page.getByLabel('Description').fill('Bring a laptop');
+    await page.getByRole('button', { name: 'Save' }).click();
+    await view(page, 'Month').waitFor();
+    await eventLink(page, 'Workshop').click();
+    expect(await page.getByLabel('Description').inputValue()).toBe('Bring a laptop');
+    expect(await page.getByLabel('End date').inputValue()).toBe(day);
+    expect(await page.getByLabel('Ends').inputValue()).toBe('12:00');
+    await context.close();
+  });
+
+  it('a public calendar is visible, read-only, to another user (FR-241, FR-242)', async () => {
+    const ann = await newUser('pub-ann');
+    await openCalendar(ann.page);
+    const day = await today(ann.page);
+    await addEvent(ann.page, 'Open day', { day });
+    await ann.page.getByRole('link', { name: 'Manage calendars' }).click();
+    const sw = ann.page.getByRole('switch', { name: 'Public: My calendar' });
+    await sw.click(); // the switch follows the stored value, so it turns on a moment later
+    await expect.poll(() => sw.isChecked()).toBe(true);
+    await waitSaved(ann.page);
+    await syncNow(ann.page);
+
+    const bob = await newUser('pub-bob');
+    await openCalendar(bob.page);
+    await bob.page.getByRole('link', { name: 'Public calendars' }).click();
+    await bob.page.waitForURL(/\/calendar\/public/);
+    await bob.page.getByText('Open day').waitFor();
+    await bob.page.getByText(ann.email).first().waitFor();
+    // Nothing to edit there.
+    expect(await bob.page.getByRole('link', { name: 'New event' }).count()).toBe(0);
+    await ann.context.close();
+    await bob.context.close();
+  });
 });

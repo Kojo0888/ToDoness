@@ -19,6 +19,7 @@ import {
   RECOVERY_KEY,
   sameData,
   takeSnapshot,
+  userCalendars,
   type RecoverySnapshot,
   type RestoreMode,
 } from '../data/recovery';
@@ -110,9 +111,7 @@ export function createRecovery(deps: { db: TodonessDB; repo: Repo }): Recovery {
       const accountNotes = (await db.notes.toArray()).filter((n) => n.deletedAt === null).length;
       const accountPlans = (await db.plans.toArray()).filter((p) => p.deletedAt === null).length;
       if (answers !== seen) return;
-      const accountCalendars = (await db.calendars.toArray()).filter(
-        (c) => c.deletedAt === null,
-      ).length;
+      const accountCalendars = (await userCalendars(db)).length;
       const empty =
         accountTodos + accountLists + accountNotes + accountPlans + accountCalendars === 0;
       if (!empty) {

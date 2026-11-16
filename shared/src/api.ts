@@ -1,6 +1,12 @@
 /** Request and response shapes of the non-sync API endpoints. */
 import { z } from 'zod';
-import { clientIdSchema, idSchema, PUSH_BATCH_MAX } from './schemas';
+import {
+  calendarColorSchema,
+  clientIdSchema,
+  eventSchema,
+  idSchema,
+  PUSH_BATCH_MAX,
+} from './schemas';
 
 export const PASSWORD_MIN = 8;
 export const PASSWORD_MAX = 200;
@@ -133,6 +139,22 @@ export type PublicNote = z.infer<typeof publicNoteSchema>;
 
 export const publicNotesResponseSchema = z.object({ notes: z.array(publicNoteSchema) });
 export type PublicNotesResponse = z.infer<typeof publicNotesResponseSchema>;
+
+/** The public calendars of other users with their events, read-only (docs/calendar FR-242). */
+export const publicCalendarsResponseSchema = z.object({
+  calendars: z.array(
+    z.object({
+      id: idSchema,
+      name: z.string(),
+      color: calendarColorSchema,
+      ownerEmail: z.string(),
+      events: z.array(
+        eventSchema.omit({ fieldHlc: true, createdAt: true, updatedAt: true, deletedAt: true }),
+      ),
+    }),
+  ),
+});
+export type PublicCalendarsResponse = z.infer<typeof publicCalendarsResponseSchema>;
 
 // ---------------------------------------------------------------------------
 // Backup (docs/backup/PRD.md)

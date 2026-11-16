@@ -197,6 +197,24 @@ export class TodonessDB extends Dexie {
         });
       await tx.table('meta').delete('lastServerSeq');
     });
+    // Public calendars and event descriptions (docs/calendar, Update 2). The server leaves
+    // `isPublic` and `description` out for an app that does not ask for them (FR-248), so the
+    // cursor is reset once more to read them.
+    this.version(12).upgrade(async (tx) => {
+      await tx
+        .table('calendars')
+        .toCollection()
+        .modify((c) => {
+          c.isPublic ??= false;
+        });
+      await tx
+        .table('events')
+        .toCollection()
+        .modify((e) => {
+          e.description ??= '';
+        });
+      await tx.table('meta').delete('lastServerSeq');
+    });
   }
 
   async getMeta<T>(key: string): Promise<T | undefined> {

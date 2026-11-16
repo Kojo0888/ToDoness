@@ -2,7 +2,7 @@
 
 |                  |                                                                                         |
 | ---------------- | --------------------------------------------------------------------------------------- |
-| **Status**       | v1.0 – built; **Update 1** (section 6, repeats and reminders) – built (see [ImplementationPlan.md](./ImplementationPlan.md))              |
+| **Status**       | v1.0 – built; **Update 1** (section 6, repeats and reminders) – built; **Update 2** (section 7, public calendars, event details, default calendar) – built (see [ImplementationPlan.md](./ImplementationPlan.md)) |
 | **Builds on**    | Plan ([`../plan/PRD.md`](../plan/PRD.md)), Notes, v1 and the MVP                        |
 | **Related docs** | [ImplementationPlan.md](./ImplementationPlan.md), [mockups.html](./mockups.html)        |
 
@@ -182,3 +182,43 @@ Requirement numbers continue (FR-219 and up). Section 2 non-goals "repeating eve
   yearly one on 29 February uses 28 February in other years.
 - **C12** Occurrences are calculated when shown (nothing is stored per occurrence); the
   server calculates them for the sweep from `repeat`, `repeatUntil`, `start` and `tz`.
+
+## 7. Update 2 – public calendars, description, end date, default calendar
+
+Requirement numbers continue (FR-241 and up). Decision C6 (no default calendar) and the
+non-goals "sharing or public calendars" and "events that span several days with times" no
+longer apply.
+
+- **FR-241** A calendar can be **public**: a switch "Public" on every row of Manage calendars
+  (default off; `isPublic`, synced). Any logged-in user then sees it **read-only**; nobody else
+  can change it (public pushes still refuse calendars and events, FR-218).
+- **FR-242** The sidebar / menu of the module has a **"Public calendars"** button to
+  `/calendar/public`: the upcoming events (next 60 days, repeats expanded, grouped by day) of
+  the public calendars of other users, labelled with the calendar and its owner. Nothing there
+  can be edited; it works only online.
+- **FR-243** The controls of the event form have a consistent height: the **All day** switch is
+  a compact switch row (track 1.5 rem), not a 44 px tall box; inputs and chips stay ≥ 44 px on
+  a phone (the row of the switch is a 44 px target, the track is not stretched).
+- **FR-244** A new user gets a calendar **"My calendar"** (blue) at sign-up. Accounts from
+  before get it at their next sync **if they have never had a calendar** (a deleted one counts).
+  Done on the server, so two devices cannot create two.
+- **FR-245** An event with times keeps a **start date + start time** and an **end date + end
+  time** (the end date defaults to the start date). An event that ends on a later day spans
+  several days (`days` = number of days it touches, now also for timed events); on a day in the
+  middle it fills the whole day in the week grid. An all-day event also shows its **end date**
+  instead of "Lasts n days"; switching All day on and off keeps both dates.
+- **FR-246** An event has an optional **description** (multi-line, ≤ 5000 characters), edited
+  in the form, shown on the event page only.
+- **FR-247** The form's buttons are on the **right side**: Cancel, then Save (primary, last);
+  Delete (existing event) stays on the left.
+- **FR-248** Apps from before this update refuse the new fields: `description` of events and
+  `isPublic` of calendars are left out of their pull (`events=…,description`,
+  `calendars=public`), and they reset their pull cursor when they update (Dexie version 12).
+
+### Decisions
+
+- **C11** `days` is reused for the end date (end date = start + days − 1) instead of a new
+  field: no migration, an old timed event has `days = 1`, and it merges like every number.
+- **C12** The public calendars of others are fetched on demand (like public lists, not synced),
+  by one endpoint that returns the calendars with their events.
+- **C13** "My calendar" is created by the server, as "My notes" is (FR-124).
