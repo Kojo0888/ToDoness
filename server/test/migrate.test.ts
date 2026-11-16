@@ -31,13 +31,16 @@ describe('migrate (real migrations)', () => {
         'activities',
         'app_settings',
         'attachments',
+        'calendars',
         'change_log',
+        'events',
         'lists',
         'notes',
         'ntfy_topics',
         'plans',
         'processed_ops',
         'push_subscriptions',
+        'sent_event_reminders',
         'sent_reminders',
         'sessions',
         'todos',
@@ -389,5 +392,111 @@ describe('migration 010 (activity groups)', () => {
       name: 'A',
       parent_id: null,
     });
+  });
+});
+
+describe('migration 011 (calendars and events)', () => {
+  const upTo = (version: number) => {
+    const dir = mkdtempSync(join(tmpdir(), 'todoness-mig-'));
+    for (const f of readdirSync(MIGRATIONS_DIR)) {
+      if (Number(f.slice(0, 3)) <= version) copyFileSync(join(MIGRATIONS_DIR, f), join(dir, f));
+    }
+    return dir;
+  };
+  const LOG =
+    'INSERT INTO change_log (user_id, client_id, entity, entity_id, op_type, patch, hlc, created_at)';
+
+  it('lets the change log carry calendars and events, keeping server_seq and the counter', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, upTo(10));
+    db.exec(`INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
+      ${LOG} VALUES ('u1','c','plan','p1','create','{}','h',1), ('u1','c','todo','t1','create','{}','h',1);`);
+    const seq = () =>
+      db.prepare('SELECT server_seq, entity_id FROM change_log ORDER BY server_seq').all();
+    const before = seq();
+
+    expect(migrate(db, upTo(11))).toBe(1); // exactly migration 011
+    expect(seq()).toEqual(before);
+    db.exec(
+      `${LOG} VALUES ('u1','c','calendar','c1','create','{}','h',1), ('u1','c','event','e1','create','{}','h',1)`,
+    );
+    expect(seq().slice(-2)).toEqual([
+      { server_seq: 3, entity_id: 'c1' },
+      { server_seq: 4, entity_id: 'e1' },
+    ]);
+    expect(() => db.exec(`${LOG} VALUES ('u1','c','other','x','create','{}','h',1)`)).toThrow();
+  });
+
+  it('checks event columns and removes events with their calendar row', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, MIGRATIONS_DIR);
+    db.exec(`INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
+      INSERT INTO calendars (id, user_id, name, order_key, created_at, updated_at) VALUES ('c1','u1','Work','a0',1,1);
+      INSERT INTO events (id, user_id, calendar_id, title, start_day, created_at, updated_at)
+        VALUES ('e1','u1','c1','Review','2026-11-17',1,1);`);
+    expect(db.prepare('SELECT days, start_time, end_time, place FROM events').get()).toEqual({
+      days: 1,
+      start_time: null,
+      end_time: null,
+      place: '',
+    });
+    expect(db.prepare('SELECT color FROM calendars').get()).toEqual({ color: 'blue' });
+    expect(() => db.exec("UPDATE events SET days = 0 WHERE id = 'e1'")).toThrow();
+    expect(() => db.exec("UPDATE events SET days = 367 WHERE id = 'e1'")).toThrow();
+    expect(() => db.exec("UPDATE calendars SET color = 'pink' WHERE id = 'c1'")).toThrow();
+    expect(() => db.exec("UPDATE events SET calendar_id = 'nope' WHERE id = 'e1'")).toThrow();
+    db.exec("DELETE FROM calendars WHERE id = 'c1'");
+    expect((db.prepare('SELECT COUNT(*) n FROM events').get() as { n: number }).n).toBe(0);
+  });
+});
+
+describe('migration 012 (repeating events and reminders)', () => {
+  const upTo = (version: number) => {
+    const dir = mkdtempSync(join(tmpdir(), 'todoness-mig-'));
+    for (const f of readdirSync(MIGRATIONS_DIR)) {
+      if (Number(f.slice(0, 3)) <= version) copyFileSync(join(MIGRATIONS_DIR, f), join(dir, f));
+    }
+    return dir;
+  };
+
+  it('adds the columns with defaults for existing events and checks them', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, upTo(11));
+    db.exec(`INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
+      INSERT INTO calendars (id, user_id, name, order_key, created_at, updated_at) VALUES ('c1','u1','Work','a0',1,1);
+      INSERT INTO events (id, user_id, calendar_id, title, start_day, created_at, updated_at)
+        VALUES ('e1','u1','c1','Review','2026-11-17',1,1);`);
+    expect(migrate(db, MIGRATIONS_DIR)).toBe(1);
+    expect(db.prepare('SELECT repeat, repeat_until, reminders, tz FROM events').get()).toEqual({
+      repeat: 'none',
+      repeat_until: null,
+      reminders: '',
+      tz: '',
+    });
+    db.exec("UPDATE events SET repeat = 'weekly', reminders = 'day,hour' WHERE id = 'e1'");
+    expect(() => db.exec("UPDATE events SET repeat = 'hourly' WHERE id = 'e1'")).toThrow();
+  });
+
+  it('keeps which reminders were sent, and removes them with the event', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, MIGRATIONS_DIR);
+    db.exec(`INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
+      INSERT INTO calendars (id, user_id, name, order_key, created_at, updated_at) VALUES ('c1','u1','Work','a0',1,1);
+      INSERT INTO events (id, user_id, calendar_id, title, start_day, created_at, updated_at)
+        VALUES ('e1','u1','c1','Review','2026-11-17',1,1);
+      INSERT INTO sent_event_reminders (event_id, occurrence, remind, start_ms, sent_at)
+        VALUES ('e1','2026-11-17','hour',5,1);`);
+    expect(() =>
+      db.exec(`INSERT INTO sent_event_reminders (event_id, occurrence, remind, start_ms, sent_at)
+        VALUES ('e1','2026-11-17','hour',5,2)`),
+    ).toThrow();
+    db.exec("DELETE FROM events WHERE id = 'e1'");
+    expect(
+      (db.prepare('SELECT COUNT(*) n FROM sent_event_reminders').get() as { n: number }).n,
+    ).toBe(0);
   });
 });

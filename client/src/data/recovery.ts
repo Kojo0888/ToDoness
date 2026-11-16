@@ -4,8 +4,11 @@
  * restore itself is `Repo.restoreSnapshot`, because only the repo changes data.
  */
 import {
+  normalizeEventReminds,
   normalizeRemindBefore,
   type Activity,
+  type Calendar,
+  type CalendarEvent,
   type List,
   type Note,
   type Plan,
@@ -37,6 +40,9 @@ export interface RecoverySnapshot {
    */
   plans?: Plan[];
   activities?: Activity[];
+  /** Live calendars and their live events (docs/calendar/PRD.md FR-216). Missing in older copies. */
+  calendars?: Calendar[];
+  events?: CalendarEvent[];
 }
 
 /**
@@ -61,8 +67,15 @@ export async function takeSnapshot(
   const activities = (await db.activities.toArray()).filter(
     (a) => a.deletedAt === null && planIds.has(a.planId),
   );
-  if (lists.length + todos.length + notes.length + plans.length === 0) return undefined;
-  return { fromEmail, takenAt: now(), lists, todos, notes, plans, activities };
+  const calendars = (await db.calendars.toArray()).filter((c) => c.deletedAt === null);
+  const calendarIds = new Set(calendars.map((c) => c.id));
+  const events = (await db.events.toArray()).filter(
+    (e) => e.deletedAt === null && calendarIds.has(e.calendarId),
+  );
+  if (lists.length + todos.length + notes.length + plans.length + calendars.length === 0) {
+    return undefined;
+  }
+  return { fromEmail, takenAt: now(), lists, todos, notes, plans, activities, calendars, events };
 }
 
 /**
@@ -107,6 +120,23 @@ function uploaded(copy: RecoverySnapshot): Map<string, string> {
       a.done ?? false, // missing in a copy kept before done activities
       a.parentId ?? null, // missing in a copy kept before activity groups
       a.orderKey,
+    ]);
+  }
+  for (const c of copy.calendars ?? []) add(`calendar:${c.id}`, [c.name, c.color, c.orderKey]);
+  const calendarIds = new Set((copy.calendars ?? []).map((c) => c.id));
+  for (const e of copy.events ?? []) {
+    if (!calendarIds.has(e.calendarId)) continue;
+    add(`event:${e.id}`, [
+      e.calendarId,
+      e.title,
+      e.start,
+      e.days,
+      e.startTime,
+      e.endTime,
+      e.place,
+      e.repeat ?? 'none', // missing in a copy kept before repeating events
+      e.repeatUntil ?? null,
+      normalizeEventReminds(e.reminders ?? []),
     ]);
   }
   return rows;

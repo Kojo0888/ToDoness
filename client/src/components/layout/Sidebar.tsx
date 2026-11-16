@@ -3,12 +3,13 @@ import { useState, type FormEvent } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Link, useLocation } from 'wouter';
 import { listDropId } from '../../lib/dnd';
-import { LIST_NAME_MAX, PLAN_NAME_MAX } from '@todoness/shared';
+import { CALENDAR_NAME_MAX, LIST_NAME_MAX, PLAN_NAME_MAX } from '@todoness/shared';
 import { MANAGE_LISTS_PATH, MANAGE_NOTE_LISTS_PATH, noteListPath } from '../../lib/listManage';
 import {
   countActivitiesByPlan,
   countNotesByList,
   countOpenTodosByList,
+  getCalendars,
   getLists,
   getNoteLists,
   getPlans,
@@ -18,6 +19,8 @@ import { usePublicLists, usePublicNotes } from '../../app/publicHooks';
 import { db, repo } from '../../app/container';
 import type { StoredUser } from '../../services/session';
 import { t } from '../../app/strings';
+import { CALENDAR_PATH, MANAGE_CALENDARS_PATH } from '../calendar/paths';
+import { useCalendarPrefs } from '../calendar/useCalendarPrefs';
 import { MANAGE_PLANS_PATH } from '../plan/ManagePlans';
 import { planPath } from '../plan/PlansHome';
 import { ModuleSwitch } from './ModuleSwitch';
@@ -37,12 +40,14 @@ export function Sidebar({ user, open, onNavigate }: Props) {
   return (
     <nav className={`sidebar${open ? ' open' : ''}`} aria-label={t.nav.main}>
       <h1 className="brand">{t.appName}</h1>
-      <ModuleSwitch onNavigate={onNavigate} />
+      <ModuleSwitch variant="rail" onNavigate={onNavigate} />
       <div className="nav-scroll">
         {current === 'notes' ? (
           <NotesNav location={location} onNavigate={onNavigate} />
         ) : current === 'plan' ? (
           <PlanNav active={active} onNavigate={onNavigate} />
+        ) : current === 'calendar' ? (
+          <CalendarNav active={active} onNavigate={onNavigate} />
         ) : (
           <TasksNav active={active} onNavigate={onNavigate} />
         )}
@@ -257,6 +262,61 @@ function PlanNav({
         addLabel={t.plan.addPlan}
         maxLength={PLAN_NAME_MAX}
         create={async (name) => planPath((await repo.createPlan(name)).id)}
+        onNavigate={onNavigate}
+      />
+    </>
+  );
+}
+
+/**
+ * The Calendar module: the calendars, each a toggle that shows or hides it on this device
+ * (docs/calendar/PRD.md FR-204), a Manage button and a new calendar.
+ */
+function CalendarNav({
+  active,
+  onNavigate,
+}: {
+  active: (href: string) => boolean;
+  onNavigate: () => void;
+}) {
+  const calendars = useLiveQuery(() => getCalendars(db), [], []);
+  const prefs = useCalendarPrefs();
+
+  return (
+    <>
+      <div className="nav-lists cal-toggles" role="group" aria-label={t.calendar.calendars}>
+        {calendars.map((c) => {
+          const shown = !prefs.hidden.has(c.id);
+          return (
+            <button
+              key={c.id}
+              type="button"
+              className={`cal-toggle${shown ? ' is-shown' : ''}`}
+              aria-pressed={shown}
+              onClick={() => prefs.toggleCalendar(c.id)}
+            >
+              <span className={`cal-dot cal-${c.color}`} aria-hidden="true" />
+              <span className="nav-name">{t.calendar.showCalendar(c.name)}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <ManageLink
+        href={MANAGE_CALENDARS_PATH}
+        label={t.calendar.manageCalendars}
+        active={active(MANAGE_CALENDARS_PATH)}
+        onNavigate={onNavigate}
+      />
+
+      <NewItemForm
+        label={t.calendar.newCalendar}
+        addLabel={t.calendar.addCalendar}
+        maxLength={CALENDAR_NAME_MAX}
+        create={async (name) => {
+          await repo.createCalendar(name);
+          return CALENDAR_PATH;
+        }}
         onNavigate={onNavigate}
       />
     </>

@@ -174,6 +174,7 @@ The server reads these environment variables. All are optional except
 | `TRUST_PROXY`                           | `false`                                           | Use the client IP from `X-Forwarded-For` (set to `true` behind Caddy).                                                                                                                                                                                                 |
 | **`MAX_ATTACHMENT_MB`**                 | `100`                                             | **Largest allowed attachment, in megabytes per file** (whole number, at least 1). The app reads it from the server (`GET /api/config`), refuses larger files before uploading, and the server enforces it again while receiving. Restart the server after changing it. |
 | `ATTACHMENTS_DIR`                       | `attachments` folder next to the database         | Where uploaded files are stored (one sub-folder per user, files named by id).                                                                                                                                                                                          |
+| `BACKUP_DIR`                            | `backups` folder next to the database             | Where **automatic backups** are written (see below). Set it to another disk or a mounted network folder for real protection.                                                                                                                                           |
 | `ONLINE_WINDOW_SECONDS`                 | `30`                                              | A user counts as **online** in the admin screen if the server heard from them this recently (whole number, 10 – 3600).                                                                                                                                                 |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | generated on first start and kept in the database | Identity of the server for **web push**. Leave both unset unless you want your own keys (set both or neither). Changing them later invalidates all existing push subscriptions; users then have to switch push off and on again in Settings.                           |
 | `VAPID_SUBJECT`                         | `mailto:todoness@localhost`                       | Contact address (`mailto:` or `https://`) sent to push services. Apple's service wants a real-looking address, so set e.g. `mailto:it@company.example` if you have iPhone users.                                                                                       |
@@ -191,9 +192,23 @@ MAX_ATTACHMENT_MB=250 CLIENT_DIR=client/dist node server/dist/index.js
 Behind a reverse proxy, make sure it does not limit the request size below
 `MAX_ATTACHMENT_MB` (Caddy does not by default; nginx needs `client_max_body_size`).
 
-**What to back up:** the database file **and** the attachments folder. In the Docker
-setup both are in the `todoness-data` volume (`/data`); the optional `backup` service
-copies the database daily and mirrors `/data/attachments` to `./backups/attachments`.
+**What to back up:** the database file **and** the attachments folder. The easiest way is
+the built-in **automatic backup**: an administrator switches **Backup data** on in the Admin screen,
+chooses how often (every day, week or month) and how many backups to keep (3 by default; the
+oldest are deleted). Each backup is one zip file, `todoness-backup-YYYYMMDD-HHMMSS.zip` (UTC), in
+`BACKUP_DIR`, holding `todoness.db` (a consistent copy of all data), `attachments/<user>/<file>` (all
+uploaded files) and `manifest.json`. The first backup is made as soon as it is switched on; the
+next one when the period has passed. **A backup contains everything, including password hashes:
+protect the folder like the database.** In the Docker setup the default folder is inside the
+`todoness-data` volume (`/data/backups`); mount another disk and set `BACKUP_DIR` to it so a lost
+volume does not take the backups with it.
+
+**Restoring** (by hand): stop the server, unzip the backup, put `todoness.db` where `DATABASE_PATH`
+points (delete the old `todoness.db-wal` and `todoness.db-shm` files next to it) and the
+`attachments` folder where `ATTACHMENTS_DIR` points, then start the server.
+
+The optional `backup` service in `docker-compose.yml` (a daily copy of the database and a mirror
+of the attachments) is a separate, older way; use one or the other.
 
 **Notifications and web push** (reminders) use the browser's notification feature, which
 only works on **HTTPS** (or `http://localhost`). Without it, reminders still appear inside

@@ -3,6 +3,8 @@ import {
   applyOp,
   newClientId,
   type Activity,
+  type Calendar,
+  type CalendarEvent,
   type List,
   type Note,
   type Plan,
@@ -26,17 +28,28 @@ export async function applyChanges(
   nextSeq: number,
   now: () => number = Date.now,
 ): Promise<number> {
-  type Row = Todo | List | Note | Plan | Activity;
+  type Row = Todo | List | Note | Plan | Activity | Calendar | CalendarEvent;
   const tables = {
     todo: db.todos,
     list: db.lists,
     note: db.notes,
     plan: db.plans,
     activity: db.activities,
+    calendar: db.calendars,
+    event: db.events,
   };
   // Pulled changes are stored as they are: a dependency they break is shown, not repaired
   // here, or every device would answer a sync with changes of its own (docs/plan, P7).
-  const stores = [db.lists, db.todos, db.notes, db.plans, db.activities, db.meta];
+  const stores = [
+    db.lists,
+    db.todos,
+    db.notes,
+    db.plans,
+    db.activities,
+    db.calendars,
+    db.events,
+    db.meta,
+  ];
   return db.transaction('rw', stores, async () => {
     let newest: string | undefined;
 

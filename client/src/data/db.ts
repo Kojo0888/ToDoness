@@ -3,6 +3,8 @@ import Dexie, { type Table } from 'dexie';
 import {
   normalizeRemindBefore,
   type Activity,
+  type Calendar,
+  type CalendarEvent,
   type List,
   type Note,
   type OutboxOp,
@@ -65,6 +67,7 @@ export type DeadLetter = OutboxOp & {
  * `notes` holds the notes module (version 3, docs/notes/PRD.md).
  * `publicOutbox` and `publicCache` make other users' public data work offline (version 4).
  * `plans` and `activities` hold the Plan module (version 7, docs/plan/PRD.md).
+ * `calendars` and `events` hold the Calendar module (version 10, docs/calendar/PRD.md).
  *
  * Only strings and numbers can be indexed, so `deletedAt` (null) and the
  * booleans have no index; they are filtered in code. The data is small.
@@ -75,6 +78,8 @@ export class TodonessDB extends Dexie {
   notes!: Table<Note, string>;
   plans!: Table<Plan, string>;
   activities!: Table<Activity, string>;
+  calendars!: Table<Calendar, string>;
+  events!: Table<CalendarEvent, string>;
   outbox!: Table<OutboxOp, string>;
   publicOutbox!: Table<PublicOp, string>;
   publicCache!: Table<PublicCacheRow, string>;
@@ -168,6 +173,30 @@ export class TodonessDB extends Dexie {
         });
       await tx.table('meta').delete('lastServerSeq');
     });
+    // Calendar module (docs/calendar). The server leaves calendars and events out of what it
+    // sends to an app that does not ask for them, and that app's pull cursor moved past
+    // them: forgetting the cursor reads the whole change log again (merging is idempotent),
+    // so calendars made on other devices meanwhile arrive here too (FR-217).
+    this.version(10)
+      .stores({ calendars: 'id, orderKey', events: 'id, calendarId, start' })
+      .upgrade(async (tx) => {
+        await tx.table('meta').delete('lastServerSeq');
+      });
+    // Repeating events and reminders (docs/calendar, Update 1). The server leaves the new event
+    // fields out for an app that does not ask for them, so the cursor is reset again to read
+    // them (FR-231). Events of before never repeat and have no reminders.
+    this.version(11).upgrade(async (tx) => {
+      await tx
+        .table('events')
+        .toCollection()
+        .modify((e) => {
+          e.repeat ??= 'none';
+          e.repeatUntil ??= null;
+          e.reminders ??= [];
+          e.tz ??= '';
+        });
+      await tx.table('meta').delete('lastServerSeq');
+    });
   }
 
   async getMeta<T>(key: string): Promise<T | undefined> {
@@ -192,6 +221,8 @@ export class TodonessDB extends Dexie {
         this.notes,
         this.plans,
         this.activities,
+        this.calendars,
+        this.events,
         this.outbox,
         this.publicOutbox,
         this.publicCache,
@@ -208,6 +239,8 @@ export class TodonessDB extends Dexie {
           this.notes.clear(),
           this.plans.clear(),
           this.activities.clear(),
+          this.calendars.clear(),
+          this.events.clear(),
           this.outbox.clear(),
           this.deadLetter.clear(),
           this.meta.clear(),

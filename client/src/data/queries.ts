@@ -1,6 +1,18 @@
 /** Read-only queries the screens use (wrapped in live queries). */
 import Dexie from 'dexie';
-import type { Activity, List, ListModule, Note, OutboxOp, Plan, Todo } from '@todoness/shared';
+import {
+  localDay,
+  occurrenceDays,
+  type Activity,
+  type Calendar,
+  type CalendarEvent,
+  type List,
+  type ListModule,
+  type Note,
+  type OutboxOp,
+  type Plan,
+  type Todo,
+} from '@todoness/shared';
 import type { PublicOp, TodonessDB } from './db';
 
 /** A stored list's module; rows written before note lists have none (task lists). */
@@ -148,4 +160,63 @@ export async function getActivities(db: TodonessDB, planId: string): Promise<Act
     .between([planId, Dexie.minKey], [planId, Dexie.maxKey])
     .toArray();
   return rows.filter((a) => a.deletedAt === null);
+}
+
+/** Live calendars in their order (a new one goes last). */
+export async function getCalendars(db: TodonessDB): Promise<Calendar[]> {
+  return (await db.calendars.orderBy('orderKey').toArray()).filter((c) => c.deletedAt === null);
+}
+
+export async function getEventById(db: TodonessDB, id: string): Promise<CalendarEvent | undefined> {
+  const e = await db.events.get(id);
+  return e && e.deletedAt === null ? e : undefined;
+}
+
+/**
+ * Live events of live calendars that have an occurrence touching the days `from` … `to`
+ * (both included): they start inside, or start earlier and run into it, or repeat into it.
+ */
+export async function getEventsInRange(
+  db: TodonessDB,
+  from: string,
+  to: string,
+): Promise<CalendarEvent[]> {
+  const liveCalendars = new Set((await getCalendars(db)).map((c) => c.id));
+  // Everything that starts on or before the last day; the rule below decides the rest.
+  const candidates = await db.events.where('start').belowOrEqual(to).toArray();
+  return candidates.filter(
+    (e) =>
+      e.deletedAt === null &&
+      liveCalendars.has(e.calendarId) &&
+      occurrenceDays(e, from, to).length > 0,
+  );
+}
+
+/** A task with a due date, as the calendar shows it (docs/calendar/PRD.md FR-215). */
+export interface DueTask {
+  id: string;
+  title: string;
+  listId: string;
+  listName: string;
+  /** The due day on this device's calendar. */
+  day: string;
+}
+
+/** Open tasks of live task lists whose due day (local time) is within `from` … `to`. */
+export async function getDueTasks(db: TodonessDB, from: string, to: string): Promise<DueTask[]> {
+  const lists = new Map(
+    (await db.lists.toArray())
+      .filter((l) => l.deletedAt === null && moduleOf(l) === 'tasks')
+      .map((l) => [l.id, l.name]),
+  );
+  const out: DueTask[] = [];
+  for (const t of await db.todos.toArray()) {
+    if (t.deletedAt !== null || t.done || t.dueAt === null) continue;
+    const listName = lists.get(t.listId);
+    if (listName === undefined) continue;
+    const day = localDay(t.dueAt);
+    if (day < from || day > to) continue;
+    out.push({ id: t.id, title: t.title, listId: t.listId, listName, day });
+  }
+  return out.sort((a, b) => a.day.localeCompare(b.day) || a.title.localeCompare(b.title));
 }

@@ -4,6 +4,7 @@
  */
 import type Database from 'better-sqlite3';
 import { REMIND_MS, reminderKey, timeUntil } from '@todoness/shared';
+import { dueEventReminders, eventReminderBody, eventReminderTag } from './eventReminders';
 import type { NtfySend } from './ntfy';
 
 export interface PushPayload {
@@ -50,6 +51,7 @@ export async function sweepReminders(deps: {
   const { db, send, sendNtfy, now } = deps;
 
   db.prepare('DELETE FROM sent_reminders WHERE due_at < ?').run(now - FORGET_AFTER_MS);
+  db.prepare('DELETE FROM sent_event_reminders WHERE start_ms < ?').run(now - FORGET_AFTER_MS);
 
   // Only users with a device or topic: a reminder is not used up while nobody could receive it.
   // One row per task and chosen reminder whose time has passed; per task only the latest of
@@ -87,42 +89,83 @@ export async function sweepReminders(deps: {
   const unrecord = db.prepare(
     'DELETE FROM sent_reminders WHERE todo_id = ? AND due_at = ? AND remind_before = ?',
   );
+  const recordEvent = db.prepare(
+    'INSERT OR IGNORE INTO sent_event_reminders (event_id, occurrence, remind, start_ms, sent_at) VALUES (?, ?, ?, ?, ?)',
+  );
+  const unrecordEvent = db.prepare(
+    'DELETE FROM sent_event_reminders WHERE event_id = ? AND occurrence = ? AND remind = ? AND start_ms = ?',
+  );
   const targets = db.prepare(
     'SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?',
   );
   const forget = db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?');
   const topicOf = db.prepare('SELECT topic FROM ntfy_topics WHERE user_id = ?');
+  const canReceive = db.prepare(
+    `SELECT (EXISTS (SELECT 1 FROM push_subscriptions x WHERE x.user_id = @u)${
+      sendNtfy ? ' OR EXISTS (SELECT 1 FROM ntfy_topics n WHERE n.user_id = @u)' : ''
+    }) AS ok`,
+  );
 
-  let sent = 0;
-  async function deliver(t: Due) {
-    // Remember first, so a slow or crashing send can never cause a second push.
-    if (record.run(t.id, t.due_at, t.remind_before, now).changes === 0) return;
+  /** One reminder to deliver: a task's or an event occurrence's. */
+  interface Job {
+    userId: string;
+    /** Remembers it as sent; false when it already was (another sweep got there first). */
+    claim(): boolean;
+    /** Forgets it again (nothing could be delivered, so the next sweep tries again). */
+    release(): void;
+    payload: PushPayload;
+  }
 
-    const payload: PushPayload = {
+  const jobs: Job[] = due.map((t) => ({
+    userId: t.user_id,
+    claim: () => record.run(t.id, t.due_at, t.remind_before, now).changes > 0,
+    release: () => void unrecord.run(t.id, t.due_at, t.remind_before),
+    payload: {
       title: t.title,
       body: `Due ${timeUntil(t.due_at - now)}`,
       tag: reminderKey({ id: t.id, dueAt: t.due_at }, t.remind_before),
       url: `/l/${t.list_id}/t/${t.id}`,
-    };
+    },
+  }));
+  // Event reminders (docs/calendar/PRD.md section 6): only for users who could receive them.
+  for (const e of dueEventReminders(db, now)) {
+    if (!(canReceive.get({ u: e.userId }) as { ok: number }).ok) continue;
+    jobs.push({
+      userId: e.userId,
+      claim: () => recordEvent.run(e.id, e.occurrence, e.remind, e.startMs, now).changes > 0,
+      release: () => void unrecordEvent.run(e.id, e.occurrence, e.remind, e.startMs),
+      payload: {
+        title: e.title,
+        body: eventReminderBody(e, now),
+        tag: eventReminderTag(e),
+        url: `/calendar/e/${e.id}`,
+      },
+    });
+  }
+
+  let sent = 0;
+  async function deliver(job: Job) {
+    // Remember first, so a slow or crashing send can never cause a second push.
+    if (!job.claim()) return;
 
     let delivered = 0;
     let failed = 0;
-    for (const target of targets.all(t.user_id) as PushTarget[]) {
-      const outcome = await send(target, payload).catch(() => 'failed' as const);
+    for (const target of targets.all(job.userId) as PushTarget[]) {
+      const outcome = await send(target, job.payload).catch(() => 'failed' as const);
       if (outcome === 'ok') delivered++;
       else if (outcome === 'gone') forget.run(target.endpoint);
       else failed++;
     }
 
-    const row = sendNtfy ? (topicOf.get(t.user_id) as { topic: string } | undefined) : undefined;
+    const row = sendNtfy ? (topicOf.get(job.userId) as { topic: string } | undefined) : undefined;
     if (sendNtfy && row) {
-      const outcome = await sendNtfy(row.topic, payload).catch(() => 'failed' as const);
+      const outcome = await sendNtfy(row.topic, job.payload).catch(() => 'failed' as const);
       if (outcome === 'ok') delivered++;
       else failed++;
     }
 
     if (delivered > 0) sent++;
-    else if (failed > 0) unrecord.run(t.id, t.due_at, t.remind_before); // try again next time
+    else if (failed > 0) job.release(); // try again next time
   }
 
   // A few at a time: one slow or dead push service must not hold up everyone's reminders
@@ -132,15 +175,15 @@ export async function sweepReminders(deps: {
   let next = 0;
   let firstError: unknown;
   const worker = async () => {
-    while (next < due.length) {
+    while (next < jobs.length) {
       try {
-        await deliver(due[next++]!);
+        await deliver(jobs[next++]!);
       } catch (err) {
         firstError ??= err;
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(PARALLEL_SENDS, due.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(PARALLEL_SENDS, jobs.length) }, worker));
   if (firstError !== undefined) throw firstError;
   return { sent };
 }

@@ -21,6 +21,8 @@ export interface Config {
   maxAttachmentBytes: number;
   /** Where uploaded files are stored (ATTACHMENTS_DIR). */
   attachmentsDir: string;
+  /** Where automatic backups are written (BACKUP_DIR, docs/backup/PRD.md FR-235). */
+  backupDir: string;
   /** A user counts as online if the server heard from them this recently. */
   onlineWindowMs: number;
   /** Web push identity. Both unset = generated on first start and kept in the database. */
@@ -133,6 +135,7 @@ export function loadConfig(env: Env = process.env): Config {
     maxAttachmentBytes: maxMb * 1024 * 1024,
     attachmentsDir:
       text(env, 'ATTACHMENTS_DIR') ?? join(dirname(resolvedDatabasePath), 'attachments'),
+    backupDir: text(env, 'BACKUP_DIR') ?? join(dirname(resolvedDatabasePath), 'backups'),
     onlineWindowMs: windowSeconds * 1000,
     vapidPublicKey,
     vapidPrivateKey,

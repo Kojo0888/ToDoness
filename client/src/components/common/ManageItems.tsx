@@ -63,6 +63,8 @@ interface Props {
   fixed?: ManageItem;
   /** Rows below the others that cannot be changed at all ("Public notes"). */
   after?: ReactNode;
+  /** More controls in a row, after its name (the colour of a calendar). */
+  extra?: (item: ManageItem) => ReactNode;
 }
 
 /**
@@ -82,6 +84,7 @@ export function ManageItems({
   countOf,
   fixed,
   after,
+  extra,
 }: Props) {
   const editable = useDropOrder(scope, items);
   const ids = editable.map((l) => l.id);
@@ -216,6 +219,7 @@ export function ManageItems({
               {editable.map((l) => (
                 <SortableRow key={l.id} id={l.id} name={l.name} ids={ids} label={text.drag(l.name)}>
                   {nameOrRename(l, true)}
+                  {extra?.(l)}
                 </SortableRow>
               ))}
             </ul>

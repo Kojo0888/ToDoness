@@ -9,6 +9,7 @@ import {
 } from '../../services/adminApi';
 import type { StoredUser } from '../../services/session';
 import { ConfirmDialog } from '../common/ConfirmDialog';
+import { AdminBackup } from './AdminBackup';
 
 const REFRESH_MS = 5000;
 
@@ -59,41 +60,44 @@ export function Admin({ user }: { user: StoredUser }) {
       )}
       {message && <p role="status">{message}</p>}
       {users && (
-        <table className="users">
-          <thead>
-            <tr>
-              <th>{t.admin.email}</th>
-              <th>{t.admin.online}</th>
-              <th>{t.admin.role}</th>
-              <th>{t.admin.status}</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td>{u.email}</td>
-                <td>
-                  <OnlineIndicator online={u.online} lastSeenAt={u.lastSeenAt} />
-                </td>
-                <td>{u.role}</td>
-                <td>{u.passwordReset ? t.admin.resetPending : t.admin.active}</td>
-                <td>
-                  {u.id !== user.id && (
-                    <button
-                      type="button"
-                      onClick={() => setTarget(u)}
-                      aria-label={`${t.admin.reset}: ${u.email}`}
-                    >
-                      {t.admin.reset}
-                    </button>
-                  )}
-                </td>
+        <div className="table-scroll">
+          <table className="users">
+            <thead>
+              <tr>
+                <th>{t.admin.email}</th>
+                <th>{t.admin.online}</th>
+                <th>{t.admin.role}</th>
+                <th>{t.admin.status}</th>
+                <th />
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id}>
+                  <td>{u.email}</td>
+                  <td>
+                    <OnlineIndicator online={u.online} lastSeenAt={u.lastSeenAt} />
+                  </td>
+                  <td>{u.role}</td>
+                  <td>{u.passwordReset ? t.admin.resetPending : t.admin.active}</td>
+                  <td>
+                    {u.id !== user.id && (
+                      <button
+                        type="button"
+                        onClick={() => setTarget(u)}
+                        aria-label={`${t.admin.reset}: ${u.email}`}
+                      >
+                        {t.admin.reset}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
+      <AdminBackup />
       <ConfirmDialog
         open={target !== null}
         title={t.admin.resetTitle}

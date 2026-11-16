@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Calendar module – mockups</title>
+    <style>
+      /* Same tokens as client/src/styles.css, so the mockups match the app in both themes. */
+      :root {
+        --bg: #ffffff;
+        --surface: #f6f7f9;
+        --fg: #1a1c1f;
+        --muted: #5b6270;
+        --border: #d9dde3;
+        --accent: #2851d6;
+        --accent-fg: #ffffff;
+        --danger: #b3261e;
+        --ok: #1d7a3a;
+        --warn: #9a5b00;
+        color-scheme: light dark;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        color: var(--fg);
+        background: var(--bg);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #121316;
+          --surface: #1b1d22;
+          --fg: #e9ebef;
+          --muted: #a3a9b5;
+          --border: #343843;
+          --accent: #8aa8ff;
+          --accent-fg: #0c1330;
+          --danger: #ff8a80;
+          --ok: #6fd48c;
+          --warn: #f0b15a;
+        }
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); line-height: 1.45; }
+      main { max-width: 1100px; margin: 0 auto; padding: 1rem 16px 4rem; }
+      h1 { font-size: 1.5rem; margin: 1rem 0 0.25rem; }
+      h2 { font-size: 1.2rem; margin: 2.5rem 0 0.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+      h3 { font-size: 1rem; margin: 0 0 0.5rem; }
+      .lead, .note { color: var(--muted); margin: 0 0 1rem; }
+      .grid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); align-items: start; }
+      .card { border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem; background: var(--surface); }
+      .card .tag { display: inline-block; font-size: 0.75rem; font-weight: 700; padding: 0.1rem 0.5rem; border-radius: 999px; border: 1px solid var(--border); background: var(--bg); color: var(--muted); margin-bottom: 0.5rem; }
+      .card .tag.rec { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+      .frame { border: 1px solid var(--border); border-radius: 12px; background: var(--bg); overflow: hidden; }
+      .phone { max-width: 360px; }
+      .pad { padding: 0.6rem; }
+      .pros { font-size: 0.85rem; color: var(--muted); margin: 0.6rem 0 0; padding-left: 1.1rem; }
+
+      /* --- shared controls --- */
+      .btn, button { font: inherit; min-height: 2.25rem; padding: 0.3rem 0.8rem; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); font-weight: 600; }
+      .btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+      .chip-group { display: inline-flex; gap: 0.25rem; }
+      .chip { border-radius: 999px; background: var(--bg); min-height: 2rem; padding: 0.1rem 0.8rem; font-size: 0.85rem; }
+      .chip[aria-pressed='true'] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+      .icon-btn { width: 2.25rem; padding: 0; border-radius: 999px; }
+      svg { flex: none; }
+
+      /* --- module picker options --- */
+      .top { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); }
+      .top .title { font-weight: 700; }
+      .seg { display: flex; gap: 0.25rem; padding: 0.25rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+      .seg a { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; min-height: 2.25rem; padding: 0.2rem 0.3rem; border-radius: 7px; font-size: 0.85rem; font-weight: 600; white-space: nowrap; color: inherit; text-decoration: none; }
+      .seg a.on { background: var(--accent); color: var(--accent-fg); }
+      .seg.icons a span { display: none; }
+      .seg.icons a.on span { display: inline; }
+      .seg.icons a.on { flex: 2.4 1 0; }
+      .tabbar { display: flex; border-top: 1px solid var(--border); background: var(--bg); }
+      .tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 3.25rem; font-size: 0.72rem; font-weight: 600; color: var(--muted); text-decoration: none; }
+      .tabbar a.on { color: var(--accent); }
+      .menu { margin: 0.4rem 0.6rem; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); padding: 0.25rem; }
+      .menu a { display: flex; align-items: center; gap: 0.6rem; min-height: 2.75rem; padding: 0.2rem 0.6rem; border-radius: 7px; color: inherit; text-decoration: none; font-weight: 600; }
+      .menu a.on { background: var(--surface); }
+      .menu a.on::after { content: '✓'; margin-left: auto; color: var(--accent); }
+      .spacer { height: 70px; }
+      .side { display: grid; grid-template-columns: 170px 1fr; min-height: 190px; }
+      .side nav { border-right: 1px solid var(--border); padding: 0.5rem; background: var(--surface); }
+      .side nav .rail a { display: flex; align-items: center; gap: 0.5rem; min-height: 2.25rem; padding: 0.2rem 0.5rem; border-radius: 8px; color: inherit; text-decoration: none; font-weight: 600; font-size: 0.9rem; }
+      .side nav .rail a.on { background: var(--accent); color: var(--accent-fg); }
+      .side .content { padding: 0.6rem; color: var(--muted); font-size: 0.85rem; }
+
+      /* --- month --- */
+      .cal-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; padding: 0.6rem; border-bottom: 1px solid var(--border); }
+      .cal-head h3 { margin: 0; min-width: 8.5rem; }
+      .cal-head .grow { margin-left: auto; }
+      .month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+      .month .dow { padding: 0.3rem 0.4rem; font-size: 0.75rem; font-weight: 700; color: var(--muted); border-bottom: 1px solid var(--border); }
+      .month .day { min-height: 92px; padding: 0.25rem; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); font-size: 0.8rem; overflow: hidden; }
+      .month .day:nth-child(7n) { border-right: 0; }
+      .month .day.out { color: var(--muted); background: var(--surface); }
+      .month .day .n { display: inline-flex; width: 1.6rem; height: 1.6rem; align-items: center; justify-content: center; border-radius: 999px; font-weight: 600; }
+      .month .day.today .n { background: var(--accent); color: var(--accent-fg); }
+      .ev { display: block; margin-top: 2px; padding: 1px 5px; border-radius: 5px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: color-mix(in srgb, var(--accent) 16%, var(--bg)); border-left: 3px solid var(--accent); }
+      .ev.ok { background: color-mix(in srgb, var(--ok) 16%, var(--bg)); border-left-color: var(--ok); }
+      .ev.warn { background: color-mix(in srgb, var(--warn) 16%, var(--bg)); border-left-color: var(--warn); }
+      .ev.task { background: transparent; border: 1px dashed var(--border); border-left: 3px dashed var(--muted); }
+      .more { font-size: 0.7rem; color: var(--muted); font-weight: 600; margin-top: 2px; }
+
+      /* --- phone month --- */
+      .pm { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; padding: 0 0.3rem; }
+      .pm .dow { font-size: 0.7rem; color: var(--muted); font-weight: 700; padding: 0.3rem 0; }
+      .pm .d { min-height: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 600; border-radius: 10px; }
+      .pm .d.out { color: var(--muted); font-weight: 400; }
+      .pm .d.today { background: var(--accent); color: var(--accent-fg); }
+      .pm .d.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+      .dots { display: flex; gap: 2px; height: 6px; margin-top: 2px; }
+      .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+      .dots i.o { background: var(--ok); } .dots i.w { background: var(--warn); }
+      .d.today .dots i { background: var(--accent-fg); }
+      .agenda-day { border-top: 1px solid var(--border); padding: 0.6rem; }
+      .agenda-day h4 { margin: 0 0 0.4rem; font-size: 0.85rem; color: var(--muted); }
+      .row { display: flex; gap: 0.6rem; align-items: stretch; min-height: 44px; padding: 0.3rem 0; }
+      .row .time { width: 3.2rem; font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; padding-top: 0.15rem; }
+      .row .bar { width: 4px; border-radius: 4px; background: var(--accent); }
+      .row .bar.ok { background: var(--ok); } .row .bar.warn { background: var(--warn); }
+      .row .what { font-weight: 600; font-size: 0.9rem; }
+      .row .what small { display: block; font-weight: 400; color: var(--muted); }
+
+      /* --- week --- */
+      .week { display: grid; grid-template-columns: 3rem repeat(7, minmax(0, 1fr)); font-size: 0.75rem; }
+      .week .h { padding: 0.35rem 0.2rem; text-align: center; font-weight: 700; border-bottom: 1px solid var(--border); color: var(--muted); }
+      .week .h b { display: block; color: var(--fg); font-size: 1rem; }
+      .week .h.today b { display: flex; margin: 0 auto; width: 1.8rem; height: 1.8rem; align-items: center; justify-content: center; border-radius: 999px; background: var(--accent); color: var(--accent-fg); }
+      .week .t { height: 36px; text-align: right; padding-right: 0.3rem; color: var(--muted); font-size: 0.68rem; transform: translateY(-0.5em); }
+      .week .col { position: relative; border-left: 1px solid var(--border); background-image: linear-gradient(var(--border) 1px, transparent 1px); background-size: 100% 36px; }
+      .week .blk { position: absolute; left: 2px; right: 2px; padding: 2px 4px; border-radius: 6px; font-weight: 600; font-size: 0.7rem; overflow: hidden; background: color-mix(in srgb, var(--accent) 18%, var(--bg)); border-left: 3px solid var(--accent); }
+      .week .blk.ok { background: color-mix(in srgb, var(--ok) 18%, var(--bg)); border-left-color: var(--ok); }
+      .week .blk.warn { background: color-mix(in srgb, var(--warn) 18%, var(--bg)); border-left-color: var(--warn); }
+      .week .now { position: absolute; left: 0; right: 0; height: 2px; background: var(--danger); }
+      .allday { grid-column: 1 / -1; display: grid; grid-template-columns: 3rem repeat(7, 1fr); border-bottom: 1px solid var(--border); padding: 2px 0; }
+      .allday span:first-child { font-size: 0.65rem; color: var(--muted); padding: 0.3rem 0.2rem; text-align: right; }
+      .span { grid-column: 4 / span 3; margin: 2px 2px; padding: 1px 6px; border-radius: 5px; background: color-mix(in srgb, var(--warn) 18%, var(--bg)); border-left: 3px solid var(--warn); font-weight: 600; }
+
+      /* --- agenda --- */
+      .agenda { padding: 0.2rem 0.6rem 0.6rem; }
+      .agenda .dh { display: flex; gap: 0.6rem; align-items: baseline; margin-top: 0.8rem; font-weight: 700; }
+      .agenda .dh small { color: var(--muted); font-weight: 400; }
+      .agenda .dh.today span { color: var(--accent); }
+      .empty { color: var(--muted); font-size: 0.85rem; padding: 0.3rem 0; }
+
+      /* --- add dialog --- */
+      .form { padding: 0.8rem; display: grid; gap: 0.6rem; }
+      .form label { display: grid; gap: 0.2rem; font-size: 0.8rem; font-weight: 700; color: var(--muted); }
+      .form input { font: inherit; min-height: 2.5rem; padding: 0.3rem 0.6rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); }
+      .form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+      .form .sw { display: flex; align-items: center; justify-content: space-between; min-height: 2.5rem; font-weight: 600; font-size: 0.9rem; color: var(--fg); }
+      .sw i { width: 2.4rem; height: 1.4rem; border-radius: 999px; background: var(--accent); position: relative; }
+      .sw i::after { content: ''; position: absolute; right: 3px; top: 3px; width: 1.1rem; height: 1.1rem; border-radius: 50%; background: var(--accent-fg); }
+      .sw.off i { background: var(--border); }
+      .sw.off i::after { right: auto; left: 3px; background: var(--bg); }
+      .actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+      :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Calendar module – mockups</h1>
+      <p class="lead">
+        Static pictures only (nothing here is wired up). They use the app's real colour tokens and
+        control styles from <code>UI_GUIDELINES.md</code>, so light and dark mode both apply.
+      </p>
+
+      <!-- ============================================================ -->
+      <h2>1. Choosing a module with four modules</h2>
+      <p class="note">
+        Today's segmented control (Tasks | Notes | Plan) is already tight in the 260&nbsp;px sidebar and
+        in the phone top bar. A fourth label does not fit. Options:
+      </p>
+
+      <div class="grid">
+        <!-- A -->
+        <div class="card">
+          <span class="tag">A · phone</span>
+          <h3>Icons only, label on the active one</h3>
+          <div class="frame phone">
+            <div class="top">
+              <span class="title">Calendar</span>
+              <div class="seg icons" style="margin-left:auto">
+                <a><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM8 12l3 3 5-6"/></svg><span>Tasks</span></a>
+                <a><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 11h7M9 15h7"/></svg><span>Notes</span></a>
+                <a><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h8M9 12h8M13 18h7"/></svg><span>Plan</span></a>
+                <a class="on"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg><span>Calendar</span></a>
+              </div>
+            </div>
+            <div class="spacer"></div>
+          </div>
+          <ul class="pros">
+            <li>Smallest change: same control, same place.</li>
+            <li>Icons alone are cryptic for 3 of 4 modules; only the active name is readable.</li>
+          </ul>
+        </div>
+
+        <!-- B -->
+        <div class="card">
+          <span class="tag rec">B · recommended</span>
+          <h3>Phone: bottom tab bar · Computer: list in the sidebar</h3>
+          <div class="frame phone">
+            <div class="top"><span class="title">Calendar</span><button class="btn icon-btn" style="margin-left:auto" aria-label="Menu">⋯</button></div>
+            <div class="spacer" style="height:60px"></div>
+            <div class="tabbar">
+              <a><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1zM8 12l3 3 5-6"/></svg>Tasks</a>
+              <a><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6zM15 3v4h4M9 11h7M9 15h7"/></svg>Notes</a>
+              <a><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h8M9 12h8M13 18h7"/></svg>Plan</a>
+              <a class="on" aria-current="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg>Calendar</a>
+            </div>
+          </div>
+          <div class="frame" style="margin-top:0.8rem">
+            <div class="side">
+              <nav>
+                <div class="rail">
+                  <a>Tasks</a><a>Notes</a><a>Plan</a><a class="on">Calendar</a>
+                </div>
+              </nav>
+              <div class="content">Module's own sidebar section (calendars, “new calendar”)…</div>
+            </div>
+          </div>
+          <ul class="pros">
+            <li>Every module has a full word and a 44&nbsp;px+ target; scales to 5 modules.</li>
+            <li>The usual place for primary navigation on a phone, within thumb reach.</li>
+            <li>Frees the top bar for the page title and actions.</li>
+          </ul>
+        </div>
+
+        <!-- C -->
+        <div class="card">
+          <span class="tag">C · phone</span>
+          <h3>Module menu button</h3>
+          <div class="frame phone">
+            <div class="top">
+              <button class="btn" style="display:inline-flex;gap:0.4rem;align-items:center">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/></svg>Calendar ▾
+              </button>
+            </div>
+            <div class="menu">
+              <a>Tasks</a><a>Notes</a><a>Plan</a><a class="on">Calendar</a>
+            </div>
+            <div class="spacer" style="height:30px"></div>
+          </div>
+          <ul class="pros">
+            <li>Scales to any number of modules; top bar stays clean.</li>
+            <li>Two taps to switch instead of one; the other modules are hidden.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ============================================================ -->
+      <h2>2. Month view (computer)</h2>
+      <p class="note">
+        The default. Events are coloured bars; “+2 more” opens that day. November 2026, today is Sunday 15th.
+      </p>
+      <div class="frame" id="month-desktop">
+        <div class="cal-head">
+          <button class="btn icon-btn" aria-label="Previous month">‹</button>
+          <h3>November 2026</h3>
+          <button class="btn icon-btn" aria-label="Next month">›</button>
+          <button class="btn">Today</button>
+          <span class="grow chip-group" role="group" aria-label="View">
+            <button class="chip" aria-pressed="false">Day</button>
+            <button class="chip" aria-pressed="false">Week</button>
+            <button class="chip" aria-pressed="true">Month</button>
+            <button class="chip" aria-pressed="false">Agenda</button>
+          </span>
+          <button class="btn primary">＋ New event</button>
+        </div>
+        <div class="month" id="month"></div>
+      </div>
+
+      <!-- ============================================================ -->
+      <h2>3. Month view (phone)</h2>
+      <p class="note">
+        A compact month with dots, and the selected day's events listed below – nothing is squeezed into tiny cells.
+      </p>
+      <div class="grid">
+        <div class="frame phone">
+          <div class="cal-head" style="justify-content:space-between">
+            <button class="btn icon-btn" style="min-height:2.75rem;width:2.75rem" aria-label="Previous month">‹</button>
+            <h3 style="text-align:center">November 2026</h3>
+            <button class="btn icon-btn" style="min-height:2.75rem;width:2.75rem" aria-label="Next month">›</button>
+          </div>
+          <div class="pm" id="pm"></div>
+          <div class="agenda-day">
+            <h4>Today · Sunday 15 November</h4>
+            <div class="row"><span class="time">10:00</span><span class="bar"></span><span class="what">Brunch with Ola<small>Café Central</small></span></div>
+            <div class="row"><span class="time">18:30</span><span class="bar ok"></span><span class="what">Climbing<small>Until 20:00</small></span></div>
+            <div class="row"><span class="time">due</span><span class="bar warn"></span><span class="what">Pay rent<small>From Tasks · Inbox</small></span></div>
+          </div>
+          <div class="pad actions"><button class="btn primary" style="min-height:2.75rem;width:100%">＋ New event</button></div>
+        </div>
+
+        <div class="frame phone">
+          <div class="top"><button class="btn icon-btn" aria-label="Cancel">✕</button><span class="title">New event</span></div>
+          <div class="form">
+            <label>Title<input value="Dentist" /></label>
+            <div class="sw"><span>All day</span><i></i></div>
+            <div class="two">
+              <label>Date<input type="date" value="2026-11-18" /></label>
+              <label>Time<input type="time" value="09:30" /></label>
+            </div>
+            <div class="two">
+              <label>Until<input type="time" value="10:15" /></label>
+              <label>Repeats
+                <span class="chip-group" style="flex-wrap:wrap"><button class="chip" aria-pressed="true">Never</button><button class="chip" aria-pressed="false">Weekly</button></span>
+              </label>
+            </div>
+            <label>Reminder
+              <span class="chip-group" style="flex-wrap:wrap"><button class="chip" aria-pressed="false">None</button><button class="chip" aria-pressed="true">1 h before</button><button class="chip" aria-pressed="false">1 day</button></span>
+            </label>
+            <div class="actions"><button class="btn">Cancel</button><button class="btn primary">Save</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================ -->
+      <h2>4. Week view</h2>
+      <p class="note">Hours on the left, one column per day, an all-day row on top and a red “now” line.</p>
+      <div class="frame">
+        <div class="cal-head">
+          <button class="btn icon-btn" aria-label="Previous week">‹</button>
+          <h3>9 – 15 Nov 2026</h3>
+          <button class="btn icon-btn" aria-label="Next week">›</button>
+          <button class="btn">Today</button>
+          <span class="grow chip-group" role="group" aria-label="View">
+            <button class="chip" aria-pressed="false">Day</button>
+            <button class="chip" aria-pressed="true">Week</button>
+            <button class="chip" aria-pressed="false">Month</button>
+            <button class="chip" aria-pressed="false">Agenda</button>
+          </span>
+        </div>
+        <div class="week" id="week"></div>
+      </div>
+
+      <!-- ============================================================ -->
+      <h2>5. Agenda view</h2>
+      <p class="note">A plain, scrollable list of what is coming – the quickest view on a phone.</p>
+      <div class="grid">
+        <div class="frame phone">
+          <div class="agenda">
+            <div class="dh today"><span>Today</span><small>Sun 15 Nov</small></div>
+            <div class="row"><span class="time">10:00</span><span class="bar"></span><span class="what">Brunch with Ola<small>Café Central</small></span></div>
+            <div class="row"><span class="time">18:30</span><span class="bar ok"></span><span class="what">Climbing</span></div>
+            <div class="dh"><span>Tomorrow</span><small>Mon 16 Nov</small></div>
+            <div class="empty">Nothing planned</div>
+            <div class="dh"><span>Tue 17 Nov</span><small>in 2 days</small></div>
+            <div class="row"><span class="time">all day</span><span class="bar warn"></span><span class="what">Release freeze starts<small>until Fri 20 Nov</small></span></div>
+            <div class="row"><span class="time">14:00</span><span class="bar"></span><span class="what">Sprint review</span></div>
+            <div class="dh"><span>Wed 18 Nov</span><small>in 3 days</small></div>
+            <div class="row"><span class="time">09:30</span><span class="bar"></span><span class="what">Dentist<small>until 10:15 · reminder 1 h before</small></span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>What can appear on a calendar</h3>
+          <div class="frame pad">
+            <span class="ev">Event with a time (blue)</span>
+            <span class="ev ok">Another calendar's colour (green)</span>
+            <span class="ev warn">Multi-day / all-day (amber)</span>
+            <span class="ev task">Task with a due date (dashed, from Tasks)</span>
+          </div>
+          <ul class="pros">
+            <li><b>Events</b>: title, date, optional time range, all-day, repeat, reminder.</li>
+            <li><b>Several calendars</b> (Personal, Work…) like task lists, each with a colour, shown or hidden with chips.</li>
+            <li><b>Tasks with a due date</b> shown read-only on their day (optional switch), tap opens the task.</li>
+            <li><b>Plan activities</b> could be shown as multi-day bars later.</li>
+            <li>Synced and offline-first like every other entity; reminders reuse the existing push/ntfy sweeper.</li>
+          </ul>
+        </div>
+      </div>
+    </main>
+
+    <script>
+      // Month grids: Monday first, 1 Nov 2026 is a Sunday, so the grid starts on 26 Oct.
+      const events = {
+        3: [['Team standup', ''], ['Gym', 'ok']],
+        5: [['Flight to Gdańsk', 'warn']],
+        9: [['Planning', ''], ['Call mum', 'ok'], ['Invoices', 'task'], ['Dentist 2', ''], ['Tax form', 'task']],
+        12: [['Piano lesson', 'ok']],
+        15: [['Brunch with Ola', ''], ['Climbing', 'ok'], ['Pay rent', 'task']],
+        17: [['Release freeze →', 'warn'], ['Sprint review', '']],
+        18: [['Dentist', '']],
+        20: [['Birthday: Marta', 'ok']],
+        24: [['Workshop', '']],
+        27: [['Black Friday', 'warn']],
+      };
+      const dows = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const month = document.getElementById('month');
+      dows.forEach((d) => month.insertAdjacentHTML('beforeend', `<div class="dow">${d}</div>`));
+      const pm = document.getElementById('pm');
+      dows.forEach((d) => pm.insertAdjacentHTML('beforeend', `<div class="dow">${d[0]}</div>`));
+      for (let i = 0; i < 42; i++) {
+        const date = new Date(Date.UTC(2026, 9, 26 + i));
+        const d = date.getUTCDate();
+        const inMonth = date.getUTCMonth() === 10;
+        const today = inMonth && d === 15;
+        const evs = inMonth ? events[d] || [] : [];
+        const shown = evs.slice(0, 3);
+        const extra = evs.length - shown.length;
+        month.insertAdjacentHTML('beforeend',
+          `<div class="day${inMonth ? '' : ' out'}${today ? ' today' : ''}"><span class="n">${d}</span>` +
+          shown.map(([t, c]) => `<span class="ev ${c}">${t}</span>`).join('') +
+          (extra > 0 ? `<div class="more">+${extra} more</div>` : '') + '</div>');
+        const dots = evs.slice(0, 3).map(([, c]) => `<i class="${c === 'ok' ? 'o' : c === 'warn' ? 'w' : ''}"></i>`).join('');
+        pm.insertAdjacentHTML('beforeend',
+          `<div class="d${inMonth ? '' : ' out'}${today ? ' today sel' : ''}">${d}<span class="dots">${dots}</span></div>`);
+      }
+
+      // Week 9–15 Nov: hour grid 07:00–20:00, 36 px per hour.
+      const week = document.getElementById('week');
+      week.insertAdjacentHTML('beforeend', '<div class="allday"><span>all day</span><span></span><span></span><span class="span">Release freeze</span></div>'.replace('span">Release', 'span" style="grid-column:2 / span 1">Release'));
+      week.insertAdjacentHTML('beforeend', '<div class="h"></div>');
+      for (let i = 0; i < 7; i++) {
+        week.insertAdjacentHTML('beforeend', `<div class="h${i === 6 ? ' today' : ''}">${dows[i]}<b>${9 + i}</b></div>`);
+      }
+      const hours = Array.from({ length: 13 }, (_, i) => 7 + i);
+      week.insertAdjacentHTML('beforeend',
+        `<div>${hours.map((h) => `<div class="t">${String(h).padStart(2, '0')}:00</div>`).join('')}</div>`);
+      const blocks = {
+        0: [[9, 10.5, 'Planning', ''], [17, 18.5, 'Gym', 'ok']],
+        1: [[10, 11, 'Standup', '']],
+        2: [[9.5, 10.25, 'Dentist', ''], [13, 15, 'Workshop', 'warn']],
+        3: [[12, 13, 'Lunch Tomek', 'ok']],
+        4: [[16, 17, 'Demo', '']],
+        5: [],
+        6: [[10, 12, 'Brunch with Ola', ''], [18.5, 20, 'Climbing', 'ok']],
+      };
+      for (let i = 0; i < 7; i++) {
+        const b = (blocks[i] || []).map(([s, e, t, c]) =>
+          `<div class="blk ${c}" style="top:${(s - 7) * 36}px;height:${(e - s) * 36 - 2}px">${t}</div>`).join('');
+        const now = i === 6 ? `<div class="now" style="top:${(14.2 - 7) * 36}px"></div>` : '';
+        week.insertAdjacentHTML('beforeend', `<div class="col" style="height:${13 * 36}px">${b}${now}</div>`);
+      }
+    </script>
+  </body>
+</html>

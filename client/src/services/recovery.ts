@@ -32,11 +32,13 @@ export interface RecoveryOffer {
   lists: number;
   notes: number;
   plans: number;
+  calendars: number;
   /** What the new account already holds (all 0 = empty), the Inbox not counted. */
   accountTodos: number;
   accountLists: number;
   accountNotes: number;
   accountPlans: number;
+  accountCalendars: number;
 }
 
 /** The new account holds nothing but its Inbox (docs/recovery-upload FR-163, FR-164). */
@@ -45,12 +47,13 @@ export function isAccountEmpty(offer: RecoveryOffer): boolean {
     offer.accountTodos === 0 &&
     offer.accountLists === 0 &&
     offer.accountNotes === 0 &&
-    offer.accountPlans === 0
+    offer.accountPlans === 0 &&
+    offer.accountCalendars === 0
   );
 }
 
 export type AcceptResult =
-  | { ok: true; lists: number; todos: number; notes: number; plans: number }
+  | { ok: true; lists: number; todos: number; notes: number; plans: number; calendars: number }
   | { ok: false; error: 'no_offer' | 'no_inbox' };
 
 export interface Recovery {
@@ -107,7 +110,11 @@ export function createRecovery(deps: { db: TodonessDB; repo: Repo }): Recovery {
       const accountNotes = (await db.notes.toArray()).filter((n) => n.deletedAt === null).length;
       const accountPlans = (await db.plans.toArray()).filter((p) => p.deletedAt === null).length;
       if (answers !== seen) return;
-      const empty = accountTodos + accountLists + accountNotes + accountPlans === 0;
+      const accountCalendars = (await db.calendars.toArray()).filter(
+        (c) => c.deletedAt === null,
+      ).length;
+      const empty =
+        accountTodos + accountLists + accountNotes + accountPlans + accountCalendars === 0;
       if (!empty) {
         const account = await takeSnapshot(db, snapshot.fromEmail);
         if (answers !== seen) return;
@@ -124,10 +131,12 @@ export function createRecovery(deps: { db: TodonessDB; repo: Repo }): Recovery {
         lists: snapshot.lists.length,
         notes: snapshot.notes?.length ?? 0,
         plans: snapshot.plans?.length ?? 0,
+        calendars: snapshot.calendars?.length ?? 0,
         accountTodos,
         accountLists,
         accountNotes,
         accountPlans,
+        accountCalendars,
       });
     },
 
@@ -147,7 +156,7 @@ export function createRecovery(deps: { db: TodonessDB; repo: Repo }): Recovery {
         set(undefined);
         return { ok: false, error: 'no_offer' };
       }
-      let counts: { lists: number; todos: number; notes: number; plans: number };
+      let counts: { lists: number; todos: number; notes: number; plans: number; calendars: number };
       try {
         counts = await repo.restoreSnapshot(snapshot, mode);
       } catch (err) {

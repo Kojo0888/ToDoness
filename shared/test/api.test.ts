@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { newId } from '../src/id';
 import {
+  BACKUP_KEEP_DEFAULT,
+  BACKUP_KEEP_MAX,
+  BACKUP_KEEP_MIN,
   adminUsersResponseSchema,
+  backupSettingsSchema,
+  backupStatusSchema,
   credentialsSchema,
   meResponseSchema,
   pushEnvelopeSchema,
@@ -177,5 +182,50 @@ describe('ntfy schemas', () => {
       ntfyStatusSchema.safeParse({ enabled: true, url: 'http://ntfy.lan', topic: 'abc' }).success,
     ).toBe(true);
     expect(ntfyStatusSchema.safeParse({ enabled: true }).success).toBe(false);
+  });
+});
+
+describe('backup settings (docs/backup/PRD.md FR-232 – FR-234)', () => {
+  const ok = { enabled: true, frequency: 'week', keep: 3 };
+
+  it('accepts a frequency of day, week or month and a number to keep from 1 to 100', () => {
+    expect(BACKUP_KEEP_DEFAULT).toBe(3);
+    expect([BACKUP_KEEP_MIN, BACKUP_KEEP_MAX]).toEqual([1, 100]);
+    for (const frequency of ['day', 'week', 'month']) {
+      expect(backupSettingsSchema.safeParse({ ...ok, frequency }).success).toBe(true);
+    }
+    expect(backupSettingsSchema.safeParse({ ...ok, keep: 1 }).success).toBe(true);
+    expect(backupSettingsSchema.safeParse({ ...ok, keep: 100 }).success).toBe(true);
+  });
+
+  it('refuses anything else, and unknown fields', () => {
+    for (const bad of [
+      { ...ok, frequency: 'year' },
+      { ...ok, keep: 0 },
+      { ...ok, keep: 101 },
+      { ...ok, keep: 1.5 },
+      { ...ok, enabled: 1 },
+      { ...ok, extra: true },
+      { enabled: true, frequency: 'day' },
+    ]) {
+      expect(backupSettingsSchema.safeParse(bad).success).toBe(false);
+    }
+  });
+
+  it('the status carries the settings, the folder, times and the list', () => {
+    const status = {
+      ...ok,
+      dir: '/data/backups',
+      writable: true,
+      running: false,
+      lastAt: 1,
+      nextAt: 2,
+      lastError: null,
+      backups: [{ name: 'todoness-backup-20261115-100000.zip', size: 10, createdAt: 1 }],
+    };
+    expect(backupStatusSchema.safeParse(status).success).toBe(true);
+    expect(backupStatusSchema.safeParse({ ...status, backups: [{ name: 'x' }] }).success).toBe(
+      false,
+    );
   });
 });

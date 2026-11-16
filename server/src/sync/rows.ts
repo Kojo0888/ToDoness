@@ -1,8 +1,11 @@
 /** Converting between database rows (snake_case, 0/1, JSON text) and shared types. */
 import type Database from 'better-sqlite3';
 import {
+  normalizeEventReminds,
   normalizeRemindBefore,
   type Activity,
+  type Calendar,
+  type CalendarEvent,
   type List,
   type ListModule,
   type Note,
@@ -293,5 +296,120 @@ export function saveActivity(db: Database.Database, userId: string, a: Activity)
     done: a.done ? 1 : 0,
     parentId: a.parentId ?? null,
     fieldHlc: JSON.stringify(a.fieldHlc),
+  });
+}
+
+interface CalendarDb {
+  id: string;
+  user_id: string;
+  name: string;
+  color: Calendar['color'];
+  order_key: string;
+  field_hlc: string;
+  created_at: number;
+  updated_at: number;
+  deleted_at: number | null;
+}
+
+export function getCalendar(db: Database.Database, id: string): Owned<Calendar> | undefined {
+  const r = db.prepare('SELECT * FROM calendars WHERE id = ?').get(id) as CalendarDb | undefined;
+  if (!r) return undefined;
+  return {
+    userId: r.user_id,
+    row: {
+      id: r.id,
+      name: r.name,
+      color: r.color,
+      orderKey: r.order_key,
+      fieldHlc: JSON.parse(r.field_hlc),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      deletedAt: r.deleted_at,
+    },
+  };
+}
+
+export function saveCalendar(db: Database.Database, userId: string, c: Calendar): void {
+  db.prepare(
+    `INSERT INTO calendars (id, user_id, name, color, order_key, field_hlc, created_at, updated_at, deleted_at)
+     VALUES (@id, @userId, @name, @color, @orderKey, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
+     ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name, color = excluded.color, order_key = excluded.order_key,
+       field_hlc = excluded.field_hlc, updated_at = excluded.updated_at,
+       deleted_at = excluded.deleted_at`,
+  ).run({ ...c, userId, fieldHlc: JSON.stringify(c.fieldHlc) });
+}
+
+/** The owner of a calendar, if it exists (deleted calendars still count). */
+export function calendarOwner(db: Database.Database, id: string): string | undefined {
+  const r = db.prepare('SELECT user_id FROM calendars WHERE id = ?').get(id) as
+    { user_id: string } | undefined;
+  return r?.user_id;
+}
+
+interface EventDb {
+  id: string;
+  user_id: string;
+  calendar_id: string;
+  title: string;
+  start_day: string;
+  days: number;
+  start_time: string | null;
+  end_time: string | null;
+  place: string;
+  repeat: CalendarEvent['repeat'];
+  repeat_until: string | null;
+  reminders: string;
+  tz: string;
+  field_hlc: string;
+  created_at: number;
+  updated_at: number;
+  deleted_at: number | null;
+}
+
+export function getEvent(db: Database.Database, id: string): Owned<CalendarEvent> | undefined {
+  const r = db.prepare('SELECT * FROM events WHERE id = ?').get(id) as EventDb | undefined;
+  if (!r) return undefined;
+  return {
+    userId: r.user_id,
+    row: {
+      id: r.id,
+      calendarId: r.calendar_id,
+      title: r.title,
+      start: r.start_day,
+      days: r.days,
+      startTime: r.start_time,
+      endTime: r.end_time,
+      place: r.place,
+      repeat: r.repeat,
+      repeatUntil: r.repeat_until,
+      reminders: normalizeEventReminds(r.reminders === '' ? [] : r.reminders.split(',')),
+      tz: r.tz,
+      fieldHlc: JSON.parse(r.field_hlc),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      deletedAt: r.deleted_at,
+    },
+  };
+}
+
+export function saveEvent(db: Database.Database, userId: string, e: CalendarEvent): void {
+  db.prepare(
+    `INSERT INTO events (id, user_id, calendar_id, title, start_day, days, start_time, end_time,
+                         place, repeat, repeat_until, reminders, tz, field_hlc, created_at,
+                         updated_at, deleted_at)
+     VALUES (@id, @userId, @calendarId, @title, @start, @days, @startTime, @endTime,
+             @place, @repeat, @repeatUntil, @reminders, @tz, @fieldHlc, @createdAt, @updatedAt, @deletedAt)
+     ON CONFLICT(id) DO UPDATE SET
+       calendar_id = excluded.calendar_id, title = excluded.title, start_day = excluded.start_day,
+       days = excluded.days, start_time = excluded.start_time, end_time = excluded.end_time,
+       place = excluded.place, repeat = excluded.repeat, repeat_until = excluded.repeat_until,
+       reminders = excluded.reminders, tz = excluded.tz, field_hlc = excluded.field_hlc, updated_at = excluded.updated_at,
+       deleted_at = excluded.deleted_at`,
+  ).run({
+    ...e,
+    userId,
+    reminders: e.reminders.join(','),
+    fieldHlc: JSON.stringify(e.fieldHlc),
   });
 }

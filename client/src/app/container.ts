@@ -12,6 +12,7 @@ import { createPublicData } from '../services/publicData';
 import { createReminderFeed } from '../services/reminderFeed';
 import {
   createReminderScheduler,
+  eventReminderText,
   reminderText,
   showSystemNotification,
 } from '../services/reminders';
@@ -79,6 +80,18 @@ export const reminders = createReminderScheduler({
       href: `/l/${reminder.todo.listId}/t/${reminder.todo.id}`,
     });
     return showSystemNotification({ title, body, tag: reminder.key });
+  },
+  notifyEvent(reminder) {
+    if (!localNotificationsOn(browserStorage())) return; // as for tasks (FR-229)
+    const { title, body } = eventReminderText(reminder, Date.now());
+    reminderFeed.push({
+      key: reminder.key,
+      title,
+      body,
+      href: `/calendar/e/${reminder.event.id}`,
+    });
+    // The tag is the one of the server's push, so the two are one notification (FR-225).
+    return showSystemNotification({ title, body, tag: reminder.tag });
   },
 });
 

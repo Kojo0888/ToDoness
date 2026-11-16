@@ -10,12 +10,14 @@ interface KeptCounts {
   lists: number;
   notes: number;
   plans?: number;
+  calendars?: number;
 }
 
-/** Notes and plans are only named when there are some. */
-const extras = (c: { notes: number; plans?: number }) => [
+/** Notes, plans and calendars are only named when there are some. */
+const extras = (c: { notes: number; plans?: number; calendars?: number }) => [
   ...(c.notes > 0 ? [count(c.notes, 'note')] : []),
   ...((c.plans ?? 0) > 0 ? [count(c.plans ?? 0, 'plan')] : []),
+  ...((c.calendars ?? 0) > 0 ? [count(c.calendars ?? 0, 'calendar')] : []),
 ];
 
 /** What was kept offline. */
@@ -32,6 +34,7 @@ export const t = {
     openTasks: (n: number) => `${n} open task${n === 1 ? '' : 's'}`,
     notesCount: (n: number) => `${n} note${n === 1 ? '' : 's'}`,
     activitiesCount: (n: number) => `${n} activit${n === 1 ? 'y' : 'ies'}`,
+    eventsCount: (n: number) => `${n} event${n === 1 ? '' : 's'}`,
   },
 
   login: {
@@ -90,7 +93,7 @@ export const t = {
     deviceNewer: 'Data on this device is newer',
     serverNewerHint: 'Server data is newer: the data on this device is deleted.',
     deviceNewerHint:
-      'Data on this device is newer: every task, list, note and plan on the server is replaced with it.',
+      'Data on this device is newer: every task, list, note, plan and calendar on the server is replaced with it.',
     question: 'Upload all data from this device to the server?',
     attachments: 'Attachments are only stored on the server and cannot be restored.',
     /** docs/recovery-upload FR-163, FR-164. */
@@ -109,6 +112,7 @@ export const t = {
     tasks: 'Tasks',
     notes: 'Notes',
     plan: 'Plan',
+    calendar: 'Calendar',
   },
 
   nav: {
@@ -251,6 +255,97 @@ export const t = {
     back: 'Back to plans',
     drag: (name: string) => `Drag to reorder plan: ${name}`,
     reorderFailed: 'Could not move the plan: it was changed or deleted meanwhile. Try again.',
+  },
+
+  manageCalendars: {
+    title: 'Manage calendars',
+    empty: 'You have no calendars yet.',
+    back: 'Back to the calendar',
+    drag: (name: string) => `Drag to reorder calendar: ${name}`,
+    reorderFailed: 'Could not move the calendar: it was changed or deleted meanwhile. Try again.',
+  },
+
+  calendar: {
+    calendars: 'Calendars',
+    manageCalendars: 'Manage calendars',
+    newCalendar: 'New calendar name',
+    addCalendar: 'Add calendar',
+    nameLabel: 'Calendar name',
+    empty: 'No calendars yet.',
+    firstCalendar: 'Name of your first calendar',
+    createCalendar: 'Create calendar',
+    deleteCalendar: 'Delete calendar',
+    deleteCalendarTitle: 'Delete this calendar?',
+    deleteCalendarText: (name: string, count: number) =>
+      count === 0
+        ? `"${name}" will be deleted.`
+        : `"${name}" and its ${count} event${count === 1 ? '' : 's'} will be deleted.`,
+    colourOf: (name: string) => `Colour of ${name}`,
+    colours: {
+      blue: 'Blue',
+      green: 'Green',
+      amber: 'Amber',
+      red: 'Red',
+      purple: 'Purple',
+      teal: 'Teal',
+    },
+    showCalendar: (name: string) => name,
+    view: 'Calendar view',
+    views: { month: 'Month', week: 'Week', agenda: 'Agenda' },
+    previous: 'Previous',
+    next: 'Next',
+    today: 'Today',
+    newEvent: 'New event',
+    showTasks: 'Show tasks',
+    tasksInfo: 'Tasks with a due date appear on their day. Tap one to open it.',
+    allDay: 'All day',
+    allDayRow: 'all day',
+    nothingPlanned: 'Nothing planned',
+    moreEvents: (n: number) => `+${n} more`,
+    taskDue: (listName: string) => `Task · ${listName}`,
+    weekOf: 'Week',
+    eventLabel: (title: string, when: string) => `${title}, ${when}`,
+    taskLabel: (title: string, when: string) => `Task: ${title}, ${when}`,
+    dayLabel: (day: string) => `Open ${day} in the agenda`,
+    daysCount: (n: number) => `${n} days`,
+    noCalendarsHint: 'Create a calendar to add events.',
+    // Event page
+    newEventTitle: 'New event',
+    editEventTitle: 'Edit event',
+    back: 'Back to the calendar',
+    title: 'Title',
+    place: 'Place',
+    date: 'Date',
+    starts: 'Starts',
+    ends: 'Ends',
+    lasts: 'Days',
+    calendar: 'Calendar',
+    save: 'Save',
+    cancel: 'Cancel',
+    deleteEvent: 'Delete event',
+    eventDeleted: 'Event deleted.',
+    notFound: 'This event does not exist (any more).',
+    saveFailed: 'Could not save the event. Check the date and the times.',
+    // Repeats and reminders (docs/calendar/PRD.md section 6)
+    repeats: 'Repeats',
+    repeatChoices: {
+      none: 'Never',
+      daily: 'Daily',
+      weekly: 'Weekly',
+      monthly: 'Monthly',
+      yearly: 'Yearly',
+    },
+    repeatUntil: 'Repeat until',
+    noEnd: 'No end',
+    reminders: 'Reminders',
+    remindersInfo:
+      'Shown on your devices, also when the app is closed. An all-day event counts as starting at 09:00.',
+    reminderChoices: {
+      start: 'At start',
+      '10min': '10 minutes before',
+      hour: '1 hour before',
+      day: '1 day before',
+    },
   },
 
   plan: {
@@ -578,6 +673,23 @@ export const t = {
     resetDone: (email: string) => `Password of ${email} was reset.`,
     needsConnection: 'The admin screen needs a connection to the server.',
     loadFailed: 'Could not load the users.',
+    backup: {
+      title: 'Backup data',
+      info: 'Saves all data and all attachments in one zip file in the backup folder of the server. The oldest backups are deleted. Restoring is done by hand (see the README).',
+      frequency: 'Backup frequency',
+      frequencies: { day: 'Daily', week: 'Weekly', month: 'Monthly' },
+      keep: 'Backups to keep',
+      folder: (dir: string) => `Folder: ${dir}`,
+      notWritable: 'The backup folder cannot be written to. Check BACKUP_DIR on the server.',
+      lastBackup: (when: string) => `Last backup: ${when}`,
+      noBackup: 'No backup yet.',
+      nextBackup: (when: string) => `Next backup: ${when}`,
+      running: 'Backup running…',
+      failed: (reason: string) => `The last backup failed: ${reason}`,
+      now: 'Back up now',
+      list: 'Backups',
+      saveFailed: 'Could not save the backup settings.',
+    },
   },
 
   reminder: {

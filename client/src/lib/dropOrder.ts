@@ -73,6 +73,8 @@ export const dropScope = {
   lists: 'lists',
   /** My note lists on the Manage note lists page. */
   noteLists: 'noteLists',
+  /** My calendars on the Manage calendars page. */
+  calendars: 'calendars',
   /** My plans on the Manage plans page. */
   plans: 'plans',
 };

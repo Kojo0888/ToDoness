@@ -41,3 +41,17 @@ export function timeUntil(ms: number): string {
   if (ms < 24 * 3_600_000) return `in ${plural(Math.round(ms / 3_600_000), 'hour')}`;
   return `in ${plural(Math.round(ms / (24 * 3_600_000)), 'day')}`;
 }
+
+/**
+ * The text of a reminder: "Starts in 30 minutes (14:00)", "Starting now (14:00)" or, for an
+ * all-day event, "All day on 2026-11-18" (FR-228).
+ */
+export function eventReminderBody(
+  e: { startTime: string | null; startMs: number; occurrence: string },
+  now: number,
+): string {
+  if (e.startTime === null) return `All day on ${e.occurrence}`;
+  return e.startMs <= now
+    ? `Starting now (${e.startTime})`
+    : `Starts ${timeUntil(e.startMs - now)} (${e.startTime})`;
+}

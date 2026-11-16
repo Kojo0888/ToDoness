@@ -157,3 +157,21 @@ export function useDropOrder<T extends { id: string }>(scope: string, items: T[]
   useEffect(() => dropOrder.settle(scope, key === '' ? [] : key.split('\n')), [scope, key]);
   return inOrder(items, dropOrder.orderFor(scope));
 }
+
+const PHONE_QUERY = '(max-width: 760px)';
+
+function subscribePhone(onChange: () => void): () => void {
+  if (typeof matchMedia !== 'function') return () => {};
+  const query = matchMedia(PHONE_QUERY);
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+}
+
+/** Is the window as narrow as a phone (the same 760 px the styles use)? */
+export function useIsPhone(): boolean {
+  return useSyncExternalStore(
+    subscribePhone,
+    () => typeof matchMedia === 'function' && matchMedia(PHONE_QUERY).matches,
+    () => false,
+  );
+}

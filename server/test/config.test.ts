@@ -14,6 +14,7 @@ describe('loadConfig', () => {
       production: false,
       maxAttachmentBytes: 100 * 1024 * 1024,
       attachmentsDir: join('./data', 'attachments'),
+      backupDir: join('./data', 'backups'),
       onlineWindowMs: 30_000,
       vapidPublicKey: undefined,
       vapidPrivateKey: undefined,
@@ -35,6 +36,7 @@ describe('loadConfig', () => {
       TRUST_PROXY: 'true',
       MAX_ATTACHMENT_MB: '25',
       ATTACHMENTS_DIR: '/files',
+      BACKUP_DIR: '/mnt/backups',
       ONLINE_WINDOW_SECONDS: '90',
       VAPID_PUBLIC_KEY: 'pub',
       VAPID_PRIVATE_KEY: 'priv',
@@ -53,6 +55,7 @@ describe('loadConfig', () => {
       production: true,
       maxAttachmentBytes: 25 * 1024 * 1024,
       attachmentsDir: '/files',
+      backupDir: '/mnt/backups',
       onlineWindowMs: 90_000,
       vapidPublicKey: 'pub',
       vapidPrivateKey: 'priv',
@@ -89,6 +92,19 @@ describe('loadConfig', () => {
 
   it('treats empty strings as not set', () => {
     expect(loadConfig({ PORT: '', CLIENT_DIR: '', TRUST_PROXY: '' }).port).toBe(3000);
+  });
+});
+
+describe('loadConfig – backup folder (docs/backup FR-235)', () => {
+  it('BACKUP_DIR defaults to a folder next to the database', () => {
+    expect(loadConfig({ DATABASE_PATH: '/data/todoness.db' }).backupDir).toBe(
+      join('/data', 'backups'),
+    );
+  });
+
+  it('BACKUP_DIR can point anywhere', () => {
+    expect(loadConfig({ BACKUP_DIR: '/mnt/nas/todoness' }).backupDir).toBe('/mnt/nas/todoness');
+    expect(loadConfig({ BACKUP_DIR: '' }).backupDir).toBe(join('./data', 'backups'));
   });
 });
 
