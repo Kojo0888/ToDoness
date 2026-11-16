@@ -338,7 +338,7 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
     for (;;) {
       const since = (await db.getMeta<number>('lastServerSeq')) ?? 0;
       const res = await request(
-        `/api/sync/pull?since=${since}&limit=${pullLimit}&reminders=list&lists=modules&plans=1&activities=done,groups&calendar=1&events=repeat`,
+        `/api/sync/pull?since=${since}&limit=${pullLimit}&reminders=list&lists=modules&plans=1&activities=done,groups&calendar=1&calendars=public&events=repeat,description`,
       );
       if (!res.ok) throw new SyncError('server', `Server answered ${res.status}`);
 

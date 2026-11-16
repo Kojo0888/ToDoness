@@ -30,30 +30,30 @@ through `useLiveQuery`.
 
 ### `shared/src/`
 
-| File              | Contents                                                                                                                                                   |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `schemas.ts`      | **All data shapes**: row schemas, create / update patch schemas, sync op and pull schemas, limits (`*_MAX`)                                                |
-| `merge.ts`        | `applyOp`: applies an operation to a row; defaults for new rows; required fields on create                                                                 |
-| `calendar.ts`     | Calendar module: `isTime`, `eventSpan`, `eventsOnDay`, `compareEvents`, repeats (`occurrenceDays`), time zones (`zonedMs`) and event reminder rules        |
-| `plan.ts`         | Calendar days (`YYYY-MM-DD`), activity groups (`planTree`, `spansOf`) and dependency rules: `liveLinks`, `schedulePlan`, `sortedActivityIds`, `wouldLoop`… |
-| `hlc.ts`, `id.ts` | Hybrid logical clock, ids created on the device                                                                                                            |
-| `reminders.ts`    | Reminder times of a task (and the text of an event reminder)                                                                                               |
-| `api.ts`          | Request / response envelopes of the HTTP API                                                                                                               |
+| File              | Contents                                                                                                                                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `schemas.ts`      | **All data shapes**: row schemas, create / update patch schemas, sync op and pull schemas, limits (`*_MAX`)                                                                                                   |
+| `merge.ts`        | `applyOp`: applies an operation to a row; defaults for new rows; required fields on create                                                                                                                    |
+| `calendar.ts`     | Calendar module: `isTime`, `eventSpan` (multi-day timed events), `dayClip`, `eventsOnDay`, `compareEvents`, repeats (`occurrenceDays`), time zones (`zonedMs`), event reminder rules, `DEFAULT_CALENDAR_NAME` |
+| `plan.ts`         | Calendar days (`YYYY-MM-DD`), activity groups (`planTree`, `spansOf`) and dependency rules: `liveLinks`, `schedulePlan`, `sortedActivityIds`, `wouldLoop`…                                                    |
+| `hlc.ts`, `id.ts` | Hybrid logical clock, ids created on the device                                                                                                                                                               |
+| `reminders.ts`    | Reminder times of a task (and the text of an event reminder)                                                                                                                                                  |
+| `api.ts`          | Request / response envelopes of the HTTP API                                                                                                                                                                  |
 
 ### `server/src/`
 
-| Path                              | Contents                                                                                                                                                    |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `index.ts`, `app.ts`, `config.ts` | Process entry, Hono app composition, environment configuration                                                                                              |
-| `routes/*.ts`                     | One file per API area: `auth`, `admin`, `sync` (push / pull, **compat flags for older apps**), `public`, `attachments`, `push`, `ntfy`, `meta`              |
-| `sync/apply-ops.ts`               | Applying pushed operations: ownership checks, merge, `change_log`                                                                                           |
-| `sync/rows.ts`                    | Row ↔ SQLite mapping for every entity (`get*` / `save*`)                                                                                                    |
-| `db/migrations/NNN_*.sql`         | Numbered SQL migrations (applied by `db/migrate.ts` via `PRAGMA user_version`)                                                                              |
-| `auth/`                           | Users, sessions, passwords, rate limits (sign-up: 20 per hour per address), presence                                                                        |
-| `backup/`                         | Automatic backups (docs/backup): `service.ts` (settings in `app_settings`, one backup, retention, schedule), `zip.ts` (yazl), `scheduler.ts` (every minute) |
-| `push/`                           | Web push keys and sending, ntfy, the reminder sweeper (`reminders.ts` tasks and delivery, `eventReminders.ts` event occurrences)                            |
-| `http/`                           | Errors, static files, shutdown, context types                                                                                                               |
-| `attachments/storage.ts`          | Uploaded files on disk                                                                                                                                      |
+| Path                              | Contents                                                                                                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `index.ts`, `app.ts`, `config.ts` | Process entry, Hono app composition, environment configuration                                                                                               |
+| `routes/*.ts`                     | One file per API area: `auth`, `admin`, `sync` (push / pull, **compat flags for older apps**), `public`, `attachments`, `push`, `ntfy`, `meta`               |
+| `sync/apply-ops.ts`               | Applying pushed operations: ownership checks, merge, `change_log`                                                                                            |
+| `sync/rows.ts`                    | Row ↔ SQLite mapping for every entity (`get*` / `save*`)                                                                                                     |
+| `db/migrations/NNN_*.sql`         | Numbered SQL migrations (applied by `db/migrate.ts` via `PRAGMA user_version`)                                                                               |
+| `auth/`                           | Users (`users.ts`: Inbox, "My notes" and "My calendar" created by the server), sessions, passwords, rate limits (sign-up: 20 per hour per address), presence |
+| `backup/`                         | Automatic backups (docs/backup): `service.ts` (settings in `app_settings`, one backup, retention, schedule), `zip.ts` (yazl), `scheduler.ts` (every minute)  |
+| `push/`                           | Web push keys and sending, ntfy, the reminder sweeper (`reminders.ts` tasks and delivery, `eventReminders.ts` event occurrences)                             |
+| `http/`                           | Errors, static files, shutdown, context types                                                                                                                |
+| `attachments/storage.ts`          | Uploaded files on disk                                                                                                                                       |
 
 ### `client/src/`
 
@@ -76,7 +76,7 @@ through `useLiveQuery`.
 | `components/lists/`    | Tasks module: `ListPage`, `TodoRow`, `TaskDetail`, `QuickAdd`, `ManageLists` (task and note lists, over `ManageItems`), `ListMenu`                                                                                                                                                                                                                                                                                           |
 | `components/notes/`    | Notes module: `NotesPage` (cards: text left, controls column right), `NoteDetailPage` (`/notes/n/:id`), `NoteEditor`, `NoteSearch`, `PublicNotesPage`                                                                                                                                                                                                                                                                        |
 | `components/plan/`     | Plan module: `PlansHome`, `PlanPage` (toolbar, undo), `Timeline` (grid, blocks, drag, arrows), `ActivityPage` (details view), `PlanOptions` (gear panel), `ManagePlans`                                                                                                                                                                                                                                                      |
-| `components/calendar/` | Calendar module: `CalendarPage` (toolbar, views), `MonthView` (grid + phone), `WeekView`, `AgendaView`, `EventPage` (new / edit), `ManageCalendars`, `useCalendarPrefs` (device settings store), `items.ts` (events + due tasks as one list)                                                                                                                                                                                 |
+| `components/calendar/` | Calendar module: `CalendarPage` (toolbar, views), `MonthView` (grid + phone), `WeekView`, `AgendaView`, `EventPage` (new / edit), `ManageCalendars` (with the Public switch), `PublicCalendarsPage` (other users' public calendars, read-only), `useCalendarPrefs` (device settings store), `items.ts` (events + due tasks as one list)                                                                                      |
 | `components/public/`   | Other users' public lists                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `components/account/`  | Login, settings, admin, reminders, ntfy, recovery dialog                                                                                                                                                                                                                                                                                                                                                                     |
 | `styles.css`           | All styles, one file, sections per area (search `/* ---------- Plan module`); colours only from `:root` variables                                                                                                                                                                                                                                                                                                            |
@@ -95,7 +95,7 @@ sign-up rate limit (≈ 20 per test file).
 `docs/<feature>/PRD.md` (requirements FR-n, decisions) and `ImplementationPlan.md` (design,
 steps, "changed on the way"): `mvp`, `v1` (+ `Decisions.md`, `TechStack.md`), `notes`,
 `note-lists`, `ui-refresh`, `plan`, `recovery-upload`, `plan-sort`, `notes-details`, `backup`, `calendar` (+ `mockups.html`). Requirement numbers continue across documents
-(latest: `docs/backup/PRD.md`, FR-232 – FR-240; calendar FR-201 – FR-231). Older docs may name file paths from before the current layout.
+(latest: `docs/calendar/PRD.md` section 7, FR-241 – FR-248; backup FR-232 – FR-240; calendar FR-201 – FR-231). Older docs may name file paths from before the current layout.
 
 ## 3. Recipes: which files a typical change touches
 

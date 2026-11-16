@@ -91,7 +91,7 @@ describe('events – repo', () => {
     await expectValidOutbox(s.db);
   });
 
-  it('keeps times, and a timed event is always one day', async () => {
+  it('keeps times, and the number of days of a timed event (FR-245)', async () => {
     const s = await setup();
     const e = await s.event('Dentist', TODAY, {
       startTime: '09:30',
@@ -99,7 +99,7 @@ describe('events – repo', () => {
       days: 4,
       place: ' Clinic ',
     });
-    expect(e).toMatchObject({ startTime: '09:30', endTime: '10:15', days: 1, place: 'Clinic' });
+    expect(e).toMatchObject({ startTime: '09:30', endTime: '10:15', days: 4, place: 'Clinic' });
   });
 
   it('an end time without a start time is dropped', async () => {

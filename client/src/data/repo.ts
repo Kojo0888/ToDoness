@@ -81,6 +81,8 @@ export interface NewEvent {
   startTime?: string | null;
   endTime?: string | null;
   place?: string;
+  /** Free text (docs/calendar/PRD.md FR-246). */
+  description?: string;
   /** docs/calendar/PRD.md section 6. */
   repeat?: Repeat;
   /** The last day of a repeating event; `null` = forever. */
@@ -89,8 +91,8 @@ export interface NewEvent {
 }
 
 /**
- * The fields of an event as they are stored (decision C2): a timed event is one day and an
- * end time needs a start time. `patch` is changed on top of `base`.
+ * The fields of an event as they are stored: an end time needs a start time; `days` is the
+ * number of days of every event (decision C11). `patch` is changed on top of `base`.
  */
 function normalizedEvent(base: Partial<NewEvent>, patch: Partial<NewEvent>) {
   const m = { ...base, ...patch };
@@ -105,7 +107,7 @@ function normalizedEvent(base: Partial<NewEvent>, patch: Partial<NewEvent>) {
     ...m,
     startTime,
     endTime: startTime === null ? null : (m.endTime ?? null),
-    days: startTime === null ? (m.days ?? 1) : 1,
+    days: m.days ?? 1,
     repeat,
     repeatUntil,
     reminders: normalizeEventReminds(m.reminders ?? []),
@@ -193,6 +195,8 @@ export interface Repo {
   createCalendar(name: string, color?: CalendarColor): Promise<Calendar>;
   renameCalendar(id: string, name: string): Promise<Calendar>;
   recolorCalendar(id: string, color: CalendarColor): Promise<Calendar>;
+  /** Makes a calendar readable (read-only) for every user, or private again (FR-241). */
+  setCalendarPublic(id: string, isPublic: boolean): Promise<Calendar>;
   /** Puts a calendar directly before another one (`null` = at the end). */
   reorderCalendar(id: string, beforeId: string | null): Promise<Calendar>;
   /** Deletes a calendar and its events (FR-205). */
@@ -771,6 +775,13 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
         return commit<Calendar>('calendar', 'update', id, { color });
       }),
 
+    setCalendarPublic: (id, isPublic) =>
+      inTx(async () => {
+        const c = await liveCalendar(id);
+        if (c.isPublic === isPublic) return c;
+        return commit<Calendar>('calendar', 'update', id, { isPublic });
+      }),
+
     reorderCalendar: (id, beforeId) =>
       inTx(async () => {
         const c = await liveCalendar(id);
@@ -808,6 +819,7 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
           startTime: f.startTime,
           endTime: f.endTime,
           place: f.place ?? '',
+          description: f.description ?? '',
           repeat: f.repeat,
           repeatUntil: f.repeatUntil,
           reminders: f.reminders,
@@ -829,6 +841,7 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
           'startTime',
           'endTime',
           'place',
+          'description',
           'repeat',
           'repeatUntil',
         ] as const) {
@@ -1305,6 +1318,7 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
             name: c.name,
             color: c.color,
             orderKey: c.orderKey,
+            isPublic: c.isPublic ?? false, // missing in a copy kept before public calendars
           });
         }
         for (const e of snapshot.events ?? []) {
@@ -1317,6 +1331,7 @@ export function createRepo(db: TodonessDB, opts: { now?: () => number } = {}): R
             startTime: e.startTime,
             endTime: e.endTime,
             place: e.place,
+            description: e.description ?? '', // missing in a copy kept before descriptions
             repeat: e.repeat ?? 'none', // missing in a copy kept before repeating events
             repeatUntil: e.repeatUntil ?? null,
             reminders: normalizeEventReminds(e.reminders ?? []),

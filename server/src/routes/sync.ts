@@ -10,7 +10,7 @@ import {
 } from '@todoness/shared';
 import type { HlcClock } from '@todoness/shared';
 import { requireAuth } from '../auth/middleware';
-import { ensureNotesList } from '../auth/users';
+import { ensureCalendar, ensureNotesList } from '../auth/users';
 import { applyPush } from '../sync/apply-ops';
 import type { AppEnv } from '../http/types';
 
@@ -77,11 +77,20 @@ export function syncRoutes({
     const knowsGroups = activityFlags.has('groups');
     // Apps from before repeating events and reminders (docs/calendar/PRD.md FR-231) refuse
     // the four new event fields; the current app asks with `events=repeat`.
-    const knowsEventRepeat = (c.req.query('events') ?? '').split(',').includes('repeat');
+    const eventFlags = new Set((c.req.query('events') ?? '').split(','));
+    const knowsEventRepeat = eventFlags.has('repeat');
+    // Apps from before public calendars and event descriptions (docs/calendar/PRD.md FR-248)
+    // refuse `isPublic` and `description`; the current app asks with `calendars=public` and
+    // `events=…,description`.
+    const knowsPublicCalendars = c.req.query('calendars') === 'public';
+    const knowsDescription = eventFlags.has('description');
     const userId = c.get('user').id;
 
     // Accounts from before note lists get "My notes" at their first sync (FR-124).
-    db.transaction(() => ensureNotesList(db, userId, now(), () => serverClock.now())).immediate();
+    db.transaction(() => {
+      ensureNotesList(db, userId, now(), () => serverClock.now());
+      ensureCalendar(db, userId, now(), () => serverClock.now());
+    }).immediate();
 
     const rows = db
       .prepare(
@@ -129,7 +138,9 @@ export function syncRoutes({
             const q = knowsModules ? p : withoutModules(r.entity, p);
             const d = knowsDone ? q : withoutField(r.entity, q, 'done');
             const g = knowsGroups ? d : withoutField(r.entity, d, 'parentId');
-            return knowsEventRepeat ? g : withoutEventRepeat(r.entity, g);
+            const e = knowsEventRepeat ? g : withoutEventRepeat(r.entity, g);
+            const f = knowsDescription ? e : withoutField(r.entity, e, 'description');
+            return knowsPublicCalendars ? f : withoutField(r.entity, f, 'isPublic');
           })(remindersAsList ? JSON.parse(r.patch) : legacyPatch(r.entity, JSON.parse(r.patch))),
           hlc: r.hlc,
         })),
@@ -167,9 +178,16 @@ function withoutModules(entity: string, patch: Record<string, unknown>): Record<
 function withoutField(
   entity: string,
   patch: Record<string, unknown>,
-  field: 'done' | 'parentId',
+  field: 'done' | 'parentId' | 'description' | 'isPublic',
 ): Record<string, unknown> {
-  if (entity !== 'activity' || !(field in patch)) return patch;
+  // The fields that only one entity has (a note's or a task's own fields are not touched).
+  const owner = {
+    done: 'activity',
+    parentId: 'activity',
+    description: 'event',
+    isPublic: 'calendar',
+  };
+  if (entity !== owner[field] || !(field in patch)) return patch;
   const rest = { ...patch };
   delete rest[field];
   return rest;

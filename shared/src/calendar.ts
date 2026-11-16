@@ -16,6 +16,9 @@ export function timeMinutes(time: string): number {
   return Number(time.slice(0, 2)) * 60 + Number(time.slice(3, 5));
 }
 
+/** The calendar every account starts with (docs/calendar/PRD.md FR-244). */
+export const DEFAULT_CALENDAR_NAME = 'My calendar';
+
 /** The part of an event the views need. */
 export interface EventTime {
   start: string;
@@ -39,9 +42,11 @@ const DEFAULT_MINUTES = 60;
 const DAY_MINUTES = 1440;
 
 /**
- * A timed event lasts one day whatever `days` says; a missing, equal or earlier end time
- * makes it one hour (never past midnight); an end time without a start time is ignored.
- * After concurrent edits any combination can be stored, so readers do this, not the merge.
+ * An all-day event covers `days` days. A timed event covers `days` days too (its end date,
+ * decision C11): on one day a missing, equal or earlier end time makes it one hour (never
+ * past midnight); on several days it ends at the end time on the last day (the end of that
+ * day without one). An end time without a start time is ignored. After concurrent edits any
+ * combination can be stored, so readers do this, not the merge.
  */
 export function eventSpan(
   e: Pick<EventTime, 'start' | 'days' | 'startTime' | 'endTime'>,
@@ -56,8 +61,24 @@ export function eventSpan(
   }
   const from = timeMinutes(e.startTime);
   const end = e.endTime === null ? undefined : timeMinutes(e.endTime);
+  if (e.days > 1) {
+    return {
+      start: e.start,
+      endDay: addDays(e.start, e.days - 1),
+      from,
+      to: end ?? DAY_MINUTES,
+    };
+  }
   const to = end !== undefined && end > from ? end : Math.min(from + DEFAULT_MINUTES, DAY_MINUTES);
   return { start: e.start, endDay: e.start, from, to };
+}
+
+/** The part of a span that falls on `day`, in minutes: the whole day inside a longer event. */
+export function dayClip(span: EventSpan, day: string): { from: number; to: number } | null {
+  if (span.from === null || span.to === null) return null;
+  const first = day === span.start;
+  const last = day === span.endDay;
+  return { from: first ? span.from : 0, to: last ? span.to : DAY_MINUTES };
 }
 
 /** All-day (and running over several days) first, then by start time, then by title. */
@@ -185,10 +206,10 @@ const OCCURRENCES_MAX = 2000;
 
 /**
  * The first days of the occurrences that touch the days `from` … `to` (both included): they
- * start inside, or start earlier and run into it. A timed event is one day (decision C2).
+ * start inside, or start earlier and run into it. An event is `days` days long.
  */
 export function occurrenceDays(e: Repeating, from: string, to: string): string[] {
-  const length = e.startTime === null ? Math.max(1, e.days) : 1;
+  const length = Math.max(1, e.days);
   const touches = (s: string) =>
     dayNumber(s) <= dayNumber(to) && dayNumber(addDays(s, length - 1)) >= dayNumber(from);
   if (e.repeat === 'none') return touches(e.start) ? [e.start] : [];

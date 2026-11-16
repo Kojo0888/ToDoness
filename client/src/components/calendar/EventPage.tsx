@@ -3,10 +3,13 @@ import { useState, type FormEvent } from 'react';
 import { Link, useLocation, useSearch } from 'wouter';
 import {
   EVENT_DAYS_MAX,
+  EVENT_DESCRIPTION_MAX,
   EVENT_PLACE_MAX,
   EVENT_REMINDS,
   EVENT_TITLE_MAX,
   REPEATS,
+  addDays,
+  dayNumber,
   isDay,
   localDay,
   type Calendar,
@@ -30,7 +33,8 @@ const DEFAULT_END = '10:00';
 
 /**
  * A new event (`/calendar/new?day=…`) or an existing one (`/calendar/e/:id`), docs/calendar
- * PRD.md FR-208: native date and time inputs, an All day switch and the calendar.
+ * PRD.md FR-208: native date and time inputs, an All day switch and the calendar. Start and
+ * end are a date each (and a time each when the event is not all day), FR-245.
  */
 export function EventPage({ eventId }: { eventId?: string }) {
   const calendars = useLiveQuery(() => getCalendars(db), []);
@@ -79,7 +83,9 @@ function EventForm({
   const [date, setDate] = useState(event?.start ?? day);
   const [startTime, setStartTime] = useState(event?.startTime ?? DEFAULT_START);
   const [endTime, setEndTime] = useState(event?.endTime ?? DEFAULT_END);
-  const [days, setDays] = useState(event?.days ?? 1);
+  // The end date is kept whether or not the event is all day (FR-245).
+  const [endDate, setEndDate] = useState(event ? addDays(event.start, event.days - 1) : day);
+  const [description, setDescription] = useState(event?.description ?? '');
   const [calendarId, setCalendarId] = useState(event?.calendarId ?? calendars[0]?.id ?? '');
   const [repeat, setRepeat] = useState<Repeat>(event?.repeat ?? 'none');
   const [repeatUntil, setRepeatUntil] = useState(event?.repeatUntil ?? '');
@@ -88,13 +94,17 @@ function EventForm({
 
   async function save(e: FormEvent) {
     e.preventDefault();
-    if (!title.trim() || !calendarId) return setError(true);
+    const days = dayNumber(endDate) - dayNumber(date) + 1;
+    if (!title.trim() || !calendarId || !(days >= 1 && days <= EVENT_DAYS_MAX)) {
+      return setError(true);
+    }
     const fields = {
       calendarId,
       title,
       place,
+      description,
       start: date,
-      days: allDay ? days : 1,
+      days,
       startTime: allDay ? null : startTime,
       endTime: allDay || !endTime ? null : endTime,
       repeat,
@@ -149,35 +159,39 @@ function EventForm({
 
         <div className="event-row">
           <label>
-            {t.calendar.date}
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            {t.calendar.startDate}
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => {
+                setDate(e.target.value);
+                // The end never comes before the start: it moves along.
+                if (isDay(e.target.value) && endDate < e.target.value) setEndDate(e.target.value);
+              }}
+            />
           </label>
-          {allDay ? (
+          {!allDay && (
             <label>
-              {t.calendar.lasts}
-              <input
-                type="number"
-                min={1}
-                max={EVENT_DAYS_MAX}
-                value={days}
-                onChange={(e) => setDays(Math.max(1, Math.floor(Number(e.target.value)) || 1))}
-              />
+              {t.calendar.starts}
+              <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
             </label>
-          ) : (
-            <>
-              <label>
-                {t.calendar.starts}
-                <input
-                  type="time"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                />
-              </label>
-              <label>
-                {t.calendar.ends}
-                <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-              </label>
-            </>
+          )}
+        </div>
+        <div className="event-row">
+          <label>
+            {t.calendar.endDate}
+            <input
+              type="date"
+              value={endDate}
+              min={date}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </label>
+          {!allDay && (
+            <label>
+              {t.calendar.ends}
+              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+            </label>
           )}
         </div>
 
@@ -188,6 +202,16 @@ function EventForm({
             value={place}
             maxLength={EVENT_PLACE_MAX}
             onChange={(e) => setPlace(e.target.value)}
+          />
+        </label>
+
+        <label>
+          {t.calendar.description}
+          <textarea
+            value={description}
+            maxLength={EVENT_DESCRIPTION_MAX}
+            rows={4}
+            onChange={(e) => setDescription(e.target.value)}
           />
         </label>
 
@@ -289,18 +313,19 @@ function EventForm({
           </p>
         )}
 
+        {/* Cancel and Save on the right, Save last; Delete stays on the left (FR-247). */}
         <div className="event-actions">
-          <button type="submit" className="primary">
-            {t.calendar.save}
-          </button>
-          <Link href={CALENDAR_PATH} className="btn">
-            {t.calendar.cancel}
-          </Link>
           {event && (
-            <button type="button" className="danger" onClick={() => void remove()}>
+            <button type="button" className="danger event-delete" onClick={() => void remove()}>
               {t.calendar.deleteEvent}
             </button>
           )}
+          <Link href={CALENDAR_PATH} className="btn">
+            {t.calendar.cancel}
+          </Link>
+          <button type="submit" className="primary">
+            {t.calendar.save}
+          </button>
         </div>
       </form>
     </section>

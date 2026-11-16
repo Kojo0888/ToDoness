@@ -68,9 +68,10 @@ describe('calendars through sync', () => {
 
     const phone = await loginDevice(c.app, 'ann@corp.test', 'cccc');
     const changes = await phone.pullAll();
-    expect(changes.filter((ch) => ch.entity === 'calendar').map((ch) => ch.entityId)).toEqual([
+    // "My calendar" (FR-244) comes first, then the pushed one.
+    expect(changes.filter((ch) => ch.entity === 'calendar').map((ch) => ch.entityId)).toContain(
       c.calendarId,
-    ]);
+    );
     const events = changes.filter((ch) => ch.entity === 'event');
     expect(events[0]!.patch).toMatchObject({ calendarId: c.calendarId, title: 'Sprint review' });
   });
@@ -115,9 +116,10 @@ describe('calendars through sync', () => {
     expect(r.rejected.map((x) => x.reason)).toEqual(['not_found']);
     expect(row(c, 'calendars', c.calendarId)!.name).toBe('Work');
     const bobChanges = await c.bob.device.pullAll();
-    expect(bobChanges.filter((ch) => ch.entity === 'calendar' || ch.entity === 'event')).toEqual(
-      [],
-    );
+    // Bob only has his own "My calendar", nothing of Ann's calendar or events.
+    expect(
+      bobChanges.filter((ch) => ch.entityId === c.calendarId || ch.entity === 'event'),
+    ).toEqual([]);
   });
 
   it('rejects invalid data (bad time, bad colour)', async () => {

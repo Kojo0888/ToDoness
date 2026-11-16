@@ -187,8 +187,7 @@ describe('recovery after the server lost its database (FR-77 – FR-82)', () => 
       .getByRole('group', { name: 'Modules' })
       .getByRole('link', { name: 'Calendar' })
       .click();
-    await page.getByLabel('Name of your first calendar').fill('Work');
-    await page.getByRole('button', { name: 'Create calendar' }).click();
+    // The account came with "My calendar" (docs/calendar FR-244).
     await page.getByRole('link', { name: 'New event' }).click();
     await page.getByLabel('Title').fill('Dentist');
     await page.getByRole('button', { name: 'Save' }).click();

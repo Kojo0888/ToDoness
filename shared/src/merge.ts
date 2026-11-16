@@ -74,13 +74,18 @@ const ACTIVITY_DEFAULTS = {
   deletedAt: null,
 } as const satisfies Partial<Activity>;
 
-const CALENDAR_DEFAULTS = { color: 'blue', deletedAt: null } as const satisfies Partial<Calendar>;
+const CALENDAR_DEFAULTS = {
+  color: 'blue',
+  isPublic: false,
+  deletedAt: null,
+} as const satisfies Partial<Calendar>;
 
 const EVENT_DEFAULTS = {
   days: 1,
   startTime: null,
   endTime: null,
   place: '',
+  description: '',
   repeat: 'none',
   repeatUntil: null,
   reminders: [] as CalendarEvent['reminders'],

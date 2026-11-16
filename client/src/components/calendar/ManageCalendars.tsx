@@ -4,6 +4,7 @@ import { getCalendars } from '../../data/queries';
 import { db, repo } from '../../app/container';
 import { dropScope } from '../../lib/dropOrder';
 import { t } from '../../app/strings';
+import { InfoTip } from '../common/InfoTip';
 import { ManageItems, type ManageText } from '../common/ManageItems';
 import { CALENDAR_PATH } from './paths';
 
@@ -23,6 +24,7 @@ const TEXT: ManageText = {
 export function ManageCalendars() {
   const calendars = useLiveQuery(() => getCalendars(db), [], []);
   const colourOf = new Map(calendars.map((c) => [c.id, c.color]));
+  const publicOf = new Map(calendars.map((c) => [c.id, c.isPublic]));
   return (
     <ManageItems
       items={calendars}
@@ -41,23 +43,39 @@ export function ManageCalendars() {
           .count()
       }
       extra={(item) => (
-        <div
-          className="chip-group cal-colours"
-          role="group"
-          aria-label={t.calendar.colourOf(item.name)}
-        >
-          {CALENDAR_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              className={`cal-swatch cal-${c}`}
-              aria-label={t.calendar.colours[c]}
-              title={t.calendar.colours[c]}
-              aria-pressed={colourOf.get(item.id) === c}
-              onClick={() => void repo.recolorCalendar(item.id, c)}
+        <>
+          <label className="switch cal-public">
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label={t.calendar.publicOf(item.name)}
+              checked={publicOf.get(item.id) ?? false}
+              onChange={(e) => void repo.setCalendarPublic(item.id, e.target.checked)}
             />
-          ))}
-        </div>
+            {t.calendar.publicSwitch}
+            <InfoTip
+              text={t.calendar.publicInfo}
+              label={t.common.moreInfo(t.calendar.publicSwitch)}
+            />
+          </label>
+          <div
+            className="chip-group cal-colours"
+            role="group"
+            aria-label={t.calendar.colourOf(item.name)}
+          >
+            {CALENDAR_COLORS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className={`cal-swatch cal-${c}`}
+                aria-label={t.calendar.colours[c]}
+                title={t.calendar.colours[c]}
+                aria-pressed={colourOf.get(item.id) === c}
+                onClick={() => void repo.recolorCalendar(item.id, c)}
+              />
+            ))}
+          </div>
+        </>
       )}
     />
   );

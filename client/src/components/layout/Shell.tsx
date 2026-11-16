@@ -10,6 +10,7 @@ import { Admin } from '../account/Admin';
 import { CalendarPage } from '../calendar/CalendarPage';
 import { EventPage } from '../calendar/EventPage';
 import { ManageCalendars } from '../calendar/ManageCalendars';
+import { PublicCalendarsPage } from '../calendar/PublicCalendarsPage';
 import { DragAndDrop } from '../common/DragAndDrop';
 import { ListPage } from '../lists/ListPage';
 import { NoteDetailPage } from '../notes/NoteDetailPage';
@@ -138,6 +139,9 @@ export function Shell({ user }: { user: StoredUser }) {
               </Route>
               <Route path="/calendar/new">
                 <EventPage />
+              </Route>
+              <Route path="/calendar/public">
+                <PublicCalendarsPage />
               </Route>
               <Route path="/calendar/manage">
                 <ManageCalendars />

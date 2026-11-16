@@ -4,6 +4,7 @@
  * restore itself is `Repo.restoreSnapshot`, because only the repo changes data.
  */
 import {
+  DEFAULT_CALENDAR_NAME,
   normalizeEventReminds,
   normalizeRemindBefore,
   type Activity,
@@ -50,6 +51,19 @@ export interface RecoverySnapshot {
  * live lists, live notes, live plans and the live activities of those plans. `undefined`
  * when there is nothing, so the user is not asked about nothing. Deleted rows are not restored.
  */
+/**
+ * The live calendars that hold user data: the untouched "My calendar" every account starts
+ * with (docs/calendar FR-244) – no events, still its name – does not count, or an account
+ * would never look empty.
+ */
+export async function userCalendars(db: TodonessDB): Promise<Calendar[]> {
+  const live = (await db.calendars.toArray()).filter((c) => c.deletedAt === null);
+  const used = new Set(
+    (await db.events.toArray()).filter((e) => e.deletedAt === null).map((e) => e.calendarId),
+  );
+  return live.filter((c) => c.name !== DEFAULT_CALENDAR_NAME || used.has(c.id));
+}
+
 export async function takeSnapshot(
   db: TodonessDB,
   fromEmail: string,
@@ -67,7 +81,7 @@ export async function takeSnapshot(
   const activities = (await db.activities.toArray()).filter(
     (a) => a.deletedAt === null && planIds.has(a.planId),
   );
-  const calendars = (await db.calendars.toArray()).filter((c) => c.deletedAt === null);
+  const calendars = await userCalendars(db);
   const calendarIds = new Set(calendars.map((c) => c.id));
   const events = (await db.events.toArray()).filter(
     (e) => e.deletedAt === null && calendarIds.has(e.calendarId),
@@ -122,7 +136,8 @@ function uploaded(copy: RecoverySnapshot): Map<string, string> {
       a.orderKey,
     ]);
   }
-  for (const c of copy.calendars ?? []) add(`calendar:${c.id}`, [c.name, c.color, c.orderKey]);
+  for (const c of copy.calendars ?? [])
+    add(`calendar:${c.id}`, [c.name, c.color, c.orderKey, c.isPublic ?? false]);
   const calendarIds = new Set((copy.calendars ?? []).map((c) => c.id));
   for (const e of copy.events ?? []) {
     if (!calendarIds.has(e.calendarId)) continue;
@@ -134,6 +149,7 @@ function uploaded(copy: RecoverySnapshot): Map<string, string> {
       e.startTime,
       e.endTime,
       e.place,
+      e.description ?? '',
       e.repeat ?? 'none', // missing in a copy kept before repeating events
       e.repeatUntil ?? null,
       normalizeEventReminds(e.reminders ?? []),
