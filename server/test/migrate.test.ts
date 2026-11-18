@@ -469,7 +469,7 @@ describe('migration 012 (repeating events and reminders)', () => {
       INSERT INTO calendars (id, user_id, name, order_key, created_at, updated_at) VALUES ('c1','u1','Work','a0',1,1);
       INSERT INTO events (id, user_id, calendar_id, title, start_day, created_at, updated_at)
         VALUES ('e1','u1','c1','Review','2026-11-17',1,1);`);
-    expect(migrate(db, MIGRATIONS_DIR)).toBe(2); // 012 and 013
+    expect(migrate(db, MIGRATIONS_DIR)).toBe(3); // 012, 013 and 014
     expect(db.prepare('SELECT repeat, repeat_until, reminders, tz FROM events').get()).toEqual({
       repeat: 'none',
       repeat_until: null,
@@ -498,5 +498,52 @@ describe('migration 012 (repeating events and reminders)', () => {
     expect(
       (db.prepare('SELECT COUNT(*) n FROM sent_event_reminders').get() as { n: number }).n,
     ).toBe(0);
+  });
+});
+
+describe('migration 014 (attachments of notes and events)', () => {
+  const upTo = (version: number) => {
+    const dir = mkdtempSync(join(tmpdir(), 'todoness-mig-'));
+    for (const f of readdirSync(MIGRATIONS_DIR)) {
+      if (Number(f.slice(0, 3)) <= version) copyFileSync(join(MIGRATIONS_DIR, f), join(dir, f));
+    }
+    return dir;
+  };
+  const seed = `INSERT INTO users (id, email, role, created_at, updated_at) VALUES ('u1','a@b.co','user',1,1);
+    INSERT INTO lists (id, user_id, name, order_key, created_at, updated_at) VALUES ('l1','u1','L','a0',1,1);
+    INSERT INTO todos (id, user_id, list_id, title, order_key, created_at, updated_at) VALUES ('t1','u1','l1','T','a0',1,1);
+    INSERT INTO notes (id, user_id, text, order_key, created_at, updated_at) VALUES ('n1','u1','x','a0',1,1);
+    INSERT INTO calendars (id, user_id, name, order_key, created_at, updated_at) VALUES ('c1','u1','C','a0',1,1);
+    INSERT INTO events (id, user_id, calendar_id, title, start_day, created_at, updated_at) VALUES ('e1','u1','c1','E','2026-11-17',1,1);`;
+  const attach = (id: string, col: string, parent: string) =>
+    `INSERT INTO attachments (id, user_id, ${col}, name, size, content_type, created_at)
+       VALUES ('${id}','u1','${parent}','f.txt',3,'text/plain',1)`;
+
+  it('keeps the existing task attachments', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, upTo(13));
+    db.exec(seed + attach('a1', 'todo_id', 't1'));
+    migrate(db, MIGRATIONS_DIR);
+    expect(db.prepare('SELECT id, todo_id, note_id, event_id FROM attachments').all()).toEqual([
+      { id: 'a1', todo_id: 't1', note_id: null, event_id: null },
+    ]);
+  });
+
+  it('accepts exactly one parent and cascades', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, MIGRATIONS_DIR);
+    db.exec(seed + attach('a1', 'note_id', 'n1') + ';' + attach('a2', 'event_id', 'e1'));
+    expect(() =>
+      db.exec(`INSERT INTO attachments (id, user_id, name, size, content_type, created_at)
+        VALUES ('a3','u1','f.txt',3,'text/plain',1)`),
+    ).toThrow();
+    expect(() =>
+      db.exec(`INSERT INTO attachments (id, user_id, todo_id, note_id, name, size, content_type, created_at)
+        VALUES ('a4','u1','t1','n1','f.txt',3,'text/plain',1)`),
+    ).toThrow();
+    db.exec("DELETE FROM users WHERE id = 'u1'");
+    expect((db.prepare('SELECT COUNT(*) n FROM attachments').get() as { n: number }).n).toBe(0);
   });
 });

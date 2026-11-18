@@ -303,6 +303,111 @@ describe('clean-up (FR-54)', () => {
   });
 });
 
+describe.each([['notes'], ['events']] as const)('attachments of %s (FR-249 – FR-253)', (kind) => {
+  async function makeParent(d: Device, n: number) {
+    const id = newId();
+    if (kind === 'notes') {
+      await d.push([op('note', 'create', id, { text: 'Hi', orderKey: 'a0' }, hlcAt(n))]);
+    } else {
+      const cal = newId();
+      await d.push([
+        op('calendar', 'create', cal, { name: 'Work', orderKey: 'a0' }, hlcAt(n)),
+        op(
+          'event',
+          'create',
+          id,
+          { calendarId: cal, title: 'Party', start: '2026-11-17' },
+          hlcAt(n + 1),
+        ),
+      ]);
+    }
+    return id;
+  }
+  const entity = kind === 'notes' ? 'note' : 'event';
+  const up = (c: TestClient, id: string, body: Uint8Array, name = 'a.txt') =>
+    c.upload(`/api/${kind}/${id}/attachments?name=${encodeURIComponent(name)}`, body, {
+      'content-type': 'text/plain',
+    });
+
+  it('stores, lists, downloads and removes a file', async () => {
+    const id = await makeParent(s.ann.device, 10);
+    const data = new TextEncoder().encode('hello');
+    const res = await up(s.ann.device.http, id, data, 'hello.txt');
+    expect(res.status).toBe(201);
+    const meta = await res.json();
+    expect(meta).toMatchObject({ name: 'hello.txt', size: 5, contentType: 'text/plain' });
+
+    const list = await s.ann.device.http.get(`/api/${kind}/${id}/attachments`);
+    expect((await list.json()).attachments).toEqual([meta]);
+
+    const file = await s.ann.device.http.get(`/api/attachments/${meta.id}`);
+    expect(new Uint8Array(await file.arrayBuffer())).toEqual(data);
+    expect(file.headers.get('content-disposition')).toMatch(/^attachment; /);
+
+    expect((await s.ann.device.http.delete(`/api/attachments/${meta.id}`)).status).toBe(204);
+    expect(count(s)).toBe(0);
+    expect(filesOnDisk(s)).toEqual([]);
+  });
+
+  it('keeps the size limit, the empty-file and the name rules', async () => {
+    const id = await makeParent(s.ann.device, 10);
+    expect((await up(s.ann.device.http, id, bytes(MB + 1))).status).toBe(413);
+    expect((await up(s.ann.device.http, id, new Uint8Array(0))).status).toBe(400);
+    expect((await up(s.ann.device.http, id, bytes(3), '  ')).status).toBe(400);
+    expect(count(s)).toBe(0);
+    expect(filesOnDisk(s)).toEqual([]);
+  });
+
+  it('is owner only, also when the note is public', async () => {
+    const id = await makeParent(s.ann.device, 10);
+    if (kind === 'notes') {
+      await s.ann.device.push([op('note', 'update', id, { isPublic: true }, hlcAt(20))]);
+    }
+    const meta = await (await up(s.ann.device.http, id, bytes(3))).json();
+    const bob = s.bob.device.http;
+    expect((await up(bob, id, bytes(3))).status).toBe(404);
+    expect((await bob.get(`/api/${kind}/${id}/attachments`)).status).toBe(404);
+    expect((await bob.get(`/api/attachments/${meta.id}`)).status).toBe(404);
+    expect((await bob.delete(`/api/attachments/${meta.id}`)).status).toBe(404);
+  });
+
+  it('answers 404 for unknown ids and 401 without a login', async () => {
+    expect((await up(s.ann.device.http, newId(), bytes(3))).status).toBe(404);
+    expect((await up(s.ann.device.http, 'not-an-id', bytes(3))).status).toBe(404);
+    const anon = new TestClient(s.app);
+    expect((await up(anon, newId(), bytes(3))).status).toBe(401);
+    expect((await anon.get(`/api/${kind}/${newId()}/attachments`)).status).toBe(401);
+  });
+
+  it('a task id does not work on this route and the other way round', async () => {
+    const id = await makeParent(s.ann.device, 10);
+    expect((await up(s.ann.device.http, s.todoId, bytes(3))).status).toBe(404);
+    const res = await upload(s.ann.device.http, id, bytes(3));
+    expect(res.status).toBe(404);
+  });
+
+  it('a deleted one keeps its files for Undo but takes no new ones', async () => {
+    const id = await makeParent(s.ann.device, 10);
+    const meta = await (await up(s.ann.device.http, id, bytes(3))).json();
+    await s.ann.device.push([op(entity, 'delete', id, {}, hlcAt(30))]);
+    expect(count(s)).toBe(1);
+    expect((await s.ann.device.http.get(`/api/attachments/${meta.id}`)).status).toBe(200);
+    expect((await up(s.ann.device.http, id, bytes(3))).status).toBe(404);
+    await s.ann.device.push([op(entity, 'restore', id, {}, hlcAt(31))]);
+    const list = await (await s.ann.device.http.get(`/api/${kind}/${id}/attachments`)).json();
+    expect(list.attachments[0].id).toBe(meta.id);
+  });
+
+  it('deleting the user removes the files and the records', async () => {
+    const bobId = await makeParent(s.bob.device, 10);
+    await up(s.bob.device.http, bobId, bytes(3));
+    expect(count(s)).toBe(1);
+    expect((await s.ann.device.http.delete(`/api/admin/users/${s.bob.me.id}`)).status).toBe(204);
+    expect(count(s)).toBe(0);
+    expect(existsSync(join(s.dir, s.bob.me.id))).toBe(false);
+  });
+});
+
 function count(c: Ctx) {
   return (c.db.prepare('SELECT COUNT(*) n FROM attachments').get() as { n: number }).n;
 }

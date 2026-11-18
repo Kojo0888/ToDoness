@@ -516,7 +516,7 @@ export const t = {
     removeFailed: 'Could not remove the attachment.',
     errors: {
       too_large: 'The file is larger than the server allows.',
-      not_found: 'The task is not on the server yet. Wait for the sync and try again.',
+      not_found: 'It is not on the server yet. Wait for the sync and try again.',
       unauthorized: 'Your login is no longer valid. Log in again.',
       forbidden: 'Only the owner can add files.',
       invalid: 'The server did not accept this file.',

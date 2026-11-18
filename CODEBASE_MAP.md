@@ -53,7 +53,7 @@ through `useLiveQuery`.
 | `backup/`                         | Automatic backups (docs/backup): `service.ts` (settings in `app_settings`, one backup, retention, schedule), `zip.ts` (yazl), `scheduler.ts` (every minute)  |
 | `push/`                           | Web push keys and sending, ntfy, the reminder sweeper (`reminders.ts` tasks and delivery, `eventReminders.ts` event occurrences)                             |
 | `http/`                           | Errors, static files, shutdown, context types                                                                                                                |
-| `attachments/storage.ts`          | Uploaded files on disk                                                                                                                                       |
+| `attachments/storage.ts`          | Uploaded files on disk (routes in `routes/attachments.ts`: one table, a task, note or event as parent)                                                       |
 
 ### `client/src/`
 
@@ -94,8 +94,8 @@ sign-up rate limit (≈ 20 per test file).
 
 `docs/<feature>/PRD.md` (requirements FR-n, decisions) and `ImplementationPlan.md` (design,
 steps, "changed on the way"): `mvp`, `v1` (+ `Decisions.md`, `TechStack.md`), `notes`,
-`note-lists`, `ui-refresh`, `plan`, `recovery-upload`, `plan-sort`, `notes-details`, `backup`, `calendar` (+ `mockups.html`). Requirement numbers continue across documents
-(latest: `docs/calendar/PRD.md` section 7, FR-241 – FR-248; backup FR-232 – FR-240; calendar FR-201 – FR-231). Older docs may name file paths from before the current layout.
+`note-lists`, `ui-refresh`, `plan`, `recovery-upload`, `plan-sort`, `notes-details`, `backup`, `calendar` (+ `mockups.html`), `attachments` (files on tasks, notes, events). Requirement numbers continue across documents
+(latest: `docs/attachments/PRD.md`, FR-249 – FR-254; `docs/calendar/PRD.md` section 7, FR-241 – FR-248; backup FR-232 – FR-240; calendar FR-201 – FR-231). Older docs may name file paths from before the current layout.
 
 ## 3. Recipes: which files a typical change touches
 
