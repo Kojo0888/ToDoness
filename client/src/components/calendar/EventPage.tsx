@@ -22,6 +22,7 @@ import { RepoError } from '../../data/repo';
 import { db, repo } from '../../app/container';
 import { t } from '../../app/strings';
 import { AppBar } from '../common/icons';
+import { AttachmentsSection } from '../lists/Attachments';
 import { InfoTip } from '../common/InfoTip';
 import { useUndoToast } from '../common/Toast';
 import { CALENDAR_PATH } from './paths';
@@ -306,6 +307,9 @@ function EventForm({
             </select>
           </label>
         )}
+
+        {/* Files need a saved event (FR-250). */}
+        {event && <AttachmentsSection parent={{ kind: 'events', id: event.id }} />}
 
         {error && (
           <p className="error" role="alert">

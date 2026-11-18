@@ -95,6 +95,21 @@ describe('uploadAttachment', () => {
     expect(xhr.sent).toBe(f);
   });
 
+  it('posts to the route of a note or an event', async () => {
+    for (const [kind, id] of [
+      ['notes', 'N1'],
+      ['events', 'E1'],
+    ] as const) {
+      const { xhr, create } = fakeXhr((x) => {
+        x.status = 201;
+        x.responseText = JSON.stringify(META);
+        x.onload?.();
+      });
+      await uploadAttachment({ kind, id }, file('a b.txt'), { createXhr: create });
+      expect(xhr.opened).toEqual(['POST', `/api/${kind}/${id}/attachments?name=a%20b.txt`]);
+    }
+  });
+
   it('uses a generic type for files without one', async () => {
     const { xhr, create } = fakeXhr((x) => {
       x.status = 201;

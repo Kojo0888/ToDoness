@@ -1,4 +1,4 @@
-/** Attachments on tasks (docs/v1/PRD.md section 4.5). */
+/** Attachments on tasks (docs/v1/PRD.md section 4.5), notes and events (docs/attachments). */
 import type Database from 'better-sqlite3';
 import { createReadStream } from 'node:fs';
 import { Readable } from 'node:stream';
@@ -58,10 +58,49 @@ export function todoAccess(
   return { access: visible ? 'reader' : 'none', deleted, ownerId: row.user_id };
 }
 
+export type ParentKind = 'todos' | 'notes' | 'events';
+
+/** Notes and events: the owner only (docs/attachments FR-252). */
+function ownedAccess(
+  db: Database.Database,
+  table: 'notes' | 'events',
+  id: string,
+  userId: string,
+): TodoAccess | undefined {
+  const row = db.prepare(`SELECT user_id, deleted_at FROM ${table} WHERE id = ?`).get(id) as
+    { user_id: string; deleted_at: number | null } | undefined;
+  if (!row) return undefined;
+  const owner = row.user_id === userId;
+  return {
+    access: owner ? 'owner' : 'none',
+    deleted: row.deleted_at !== null,
+    ownerId: row.user_id,
+  };
+}
+
+function parentAccess(
+  db: Database.Database,
+  kind: ParentKind,
+  id: string,
+  userId: string,
+): TodoAccess | undefined {
+  return kind === 'todos'
+    ? todoAccess(db, id, userId)
+    : ownedAccess(db, kind === 'notes' ? 'notes' : 'events', id, userId);
+}
+
+const PARENT_COLUMN: Record<ParentKind, 'todo_id' | 'note_id' | 'event_id'> = {
+  todos: 'todo_id',
+  notes: 'note_id',
+  events: 'event_id',
+};
+
 interface AttachmentRow {
   id: string;
   user_id: string;
-  todo_id: string;
+  todo_id: string | null;
+  note_id: string | null;
+  event_id: string | null;
   name: string;
   size: number;
   content_type: string;
@@ -108,82 +147,104 @@ function contentDisposition(name: string): string {
 export function attachmentRoutes({ db, config, now }: Deps) {
   const app = new Hono<AppEnv>();
   const auth = requireAuth(db, now);
-  app.use('/todos/*', auth);
+  for (const kind of ['todos', 'notes', 'events'] as const) app.use(`/${kind}/*`, auth);
   app.use('/attachments/*', auth);
 
-  const listOf = db.prepare(
-    'SELECT * FROM attachments WHERE todo_id = ? ORDER BY created_at, rowid',
-  );
   const getRow = (id: string) =>
     db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as AttachmentRow | undefined;
 
-  app.get('/todos/:todoId/attachments', (c) => {
-    const todoId = idSchema.safeParse(c.req.param('todoId'));
-    const a = todoId.success ? todoAccess(db, todoId.data, c.get('user').id) : undefined;
-    if (!todoId.success || !a || a.access === 'none') return c.json({ error: 'not_found' }, 404);
-    const rows = listOf.all(todoId.data) as AttachmentRow[];
-    return c.json({ attachments: rows.map(toApi) });
-  });
+  for (const kind of ['todos', 'notes', 'events'] as const) {
+    const column = PARENT_COLUMN[kind];
+    const listOf = db.prepare(
+      `SELECT * FROM attachments WHERE ${column} = ? ORDER BY created_at, rowid`,
+    );
 
-  app.post('/todos/:todoId/attachments', async (c) => {
-    const user = c.get('user');
-    const todoId = idSchema.safeParse(c.req.param('todoId'));
-    const a = todoId.success ? todoAccess(db, todoId.data, user.id) : undefined;
-    if (!todoId.success || !a || a.access === 'none' || (a.access === 'owner' && a.deleted)) {
-      return c.json({ error: 'not_found' }, 404);
-    }
-    // Owner, or anyone for a task in a public list (FR-53).
+    app.get(`/${kind}/:parentId/attachments`, (c) => {
+      const parentId = idSchema.safeParse(c.req.param('parentId'));
+      const a = parentId.success
+        ? parentAccess(db, kind, parentId.data, c.get('user').id)
+        : undefined;
+      if (!parentId.success || !a || a.access === 'none')
+        return c.json({ error: 'not_found' }, 404);
+      const rows = listOf.all(parentId.data) as AttachmentRow[];
+      return c.json({ attachments: rows.map(toApi) });
+    });
 
-    const name = cleanFileName(c.req.query('name'));
-    if (!name) return c.json({ error: 'invalid_name' }, 400);
+    app.post(`/${kind}/:parentId/attachments`, async (c) => {
+      const user = c.get('user');
+      const parentId = idSchema.safeParse(c.req.param('parentId'));
+      const a = parentId.success ? parentAccess(db, kind, parentId.data, user.id) : undefined;
+      if (!parentId.success || !a || a.access === 'none' || (a.access === 'owner' && a.deleted)) {
+        return c.json({ error: 'not_found' }, 404);
+      }
+      // Owner, or anyone for a task in a public list (FR-53).
 
-    // Refuse early when the sender says the file is too big (and again while receiving).
-    const declared = Number(c.req.header('content-length'));
-    if (Number.isFinite(declared) && declared > config.maxAttachmentBytes) {
-      return c.json({ error: 'file_too_large' }, 413);
-    }
-    const body = c.req.raw.body;
-    if (!body) return c.json({ error: 'empty_file' }, 400);
+      const name = cleanFileName(c.req.query('name'));
+      if (!name) return c.json({ error: 'invalid_name' }, 400);
 
-    const id = newId(now());
-    let size: number;
-    try {
-      size = await saveUpload(config.attachmentsDir, user.id, id, body, config.maxAttachmentBytes);
-    } catch (err) {
-      if (err instanceof FileTooLargeError) return c.json({ error: 'file_too_large' }, 413);
-      return c.json({ error: 'upload_failed' }, 400);
-    }
-    if (size === 0) {
-      await removeFile(config.attachmentsDir, user.id, id);
-      return c.json({ error: 'empty_file' }, 400);
-    }
+      // Refuse early when the sender says the file is too big (and again while receiving).
+      const declared = Number(c.req.header('content-length'));
+      if (Number.isFinite(declared) && declared > config.maxAttachmentBytes) {
+        return c.json({ error: 'file_too_large' }, 413);
+      }
+      const body = c.req.raw.body;
+      if (!body) return c.json({ error: 'empty_file' }, 400);
 
-    const row: AttachmentRow = {
-      id,
-      user_id: user.id,
-      todo_id: todoId.data,
-      name,
-      size,
-      content_type: cleanContentType(c.req.header('content-type')),
-      created_at: now(),
-    };
-    try {
-      db.prepare(
-        `INSERT INTO attachments (id, user_id, todo_id, name, size, content_type, created_at)
-         VALUES (@id, @user_id, @todo_id, @name, @size, @content_type, @created_at)`,
-      ).run(row);
-    } catch (err) {
-      await removeFile(config.attachmentsDir, user.id, id); // e.g. the user was deleted meanwhile
-      throw err;
-    }
-    return c.json(toApi(row), 201);
-  });
+      const id = newId(now());
+      let size: number;
+      try {
+        size = await saveUpload(
+          config.attachmentsDir,
+          user.id,
+          id,
+          body,
+          config.maxAttachmentBytes,
+        );
+      } catch (err) {
+        if (err instanceof FileTooLargeError) return c.json({ error: 'file_too_large' }, 413);
+        return c.json({ error: 'upload_failed' }, 400);
+      }
+      if (size === 0) {
+        await removeFile(config.attachmentsDir, user.id, id);
+        return c.json({ error: 'empty_file' }, 400);
+      }
+
+      const row: AttachmentRow = {
+        id,
+        user_id: user.id,
+        todo_id: null,
+        note_id: null,
+        event_id: null,
+        name,
+        size,
+        content_type: cleanContentType(c.req.header('content-type')),
+        created_at: now(),
+      };
+      row[column] = parentId.data;
+      try {
+        db.prepare(
+          `INSERT INTO attachments (id, user_id, ${column}, name, size, content_type, created_at)
+           VALUES (@id, @user_id, @${column}, @name, @size, @content_type, @created_at)`,
+        ).run(row);
+      } catch (err) {
+        await removeFile(config.attachmentsDir, user.id, id); // e.g. the user was deleted meanwhile
+        throw err;
+      }
+      return c.json(toApi(row), 201);
+    });
+  }
+
+  function accessOfRow(row: AttachmentRow, userId: string) {
+    if (row.todo_id) return parentAccess(db, 'todos', row.todo_id, userId);
+    if (row.note_id) return parentAccess(db, 'notes', row.note_id, userId);
+    return row.event_id ? parentAccess(db, 'events', row.event_id, userId) : undefined;
+  }
 
   /** The row and what the caller may do with it, or a ready 404. */
   function find(userId: string, rawId: string) {
     const id = idSchema.safeParse(rawId);
     const row = id.success ? getRow(id.data) : undefined;
-    const a = row ? todoAccess(db, row.todo_id, userId) : undefined;
+    const a = row ? accessOfRow(row, userId) : undefined;
     if (!row || !a || a.access === 'none') return undefined;
     return { row, access: a.access };
   }

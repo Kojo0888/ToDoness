@@ -69,12 +69,22 @@ export async function fetchMaxAttachmentBytes(): Promise<number | undefined> {
 // List and remove
 // ---------------------------------------------------------------------------
 
+/** What a file belongs to. A plain string means a task (the first kind that had files). */
+export type AttachmentParent = { kind: 'todos' | 'notes' | 'events'; id: string } | string;
+
+const parentUrl = (parent: AttachmentParent) => {
+  const { kind, id } = typeof parent === 'string' ? { kind: 'todos', id: parent } : parent;
+  return `/api/${kind}/${encodeURIComponent(id)}/attachments`;
+};
+
 export const downloadUrl = (id: string) => `/api/attachments/${encodeURIComponent(id)}`;
 
-/** `undefined` = could not be loaded (offline, or the task is not on the server yet). */
-export async function fetchAttachments(todoId: string): Promise<Attachment[] | undefined> {
+/** `undefined` = could not be loaded (offline, or it is not on the server yet). */
+export async function fetchAttachments(
+  parent: AttachmentParent,
+): Promise<Attachment[] | undefined> {
   try {
-    const res = await fetch(`/api/todos/${encodeURIComponent(todoId)}/attachments`);
+    const res = await fetch(parentUrl(parent));
     if (res.status === 404) return []; // not on the server yet: no files can exist
     if (!res.ok) return undefined;
     const parsed = attachmentsResponseSchema.safeParse(await res.json());
@@ -140,7 +150,7 @@ export interface UploadOptions {
 }
 
 export function uploadAttachment(
-  todoId: string,
+  parent: AttachmentParent,
   file: File,
   {
     onProgress,
@@ -150,10 +160,7 @@ export function uploadAttachment(
 ): Promise<UploadResult> {
   return new Promise((resolve) => {
     const xhr = createXhr();
-    xhr.open(
-      'POST',
-      `/api/todos/${encodeURIComponent(todoId)}/attachments?name=${encodeURIComponent(file.name)}`,
-    );
+    xhr.open('POST', `${parentUrl(parent)}?name=${encodeURIComponent(file.name)}`);
     xhr.setRequestHeader('content-type', file.type || 'application/octet-stream');
 
     xhr.upload.onprogress = (e) => {

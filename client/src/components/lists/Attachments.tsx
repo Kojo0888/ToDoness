@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Attachment } from '@todoness/shared';
 import {
+  type AttachmentParent,
   attachmentPickers,
   checkFileSize,
   downloadUrl,
@@ -36,8 +37,19 @@ interface Running {
   progress: number;
 }
 
-/** The owner's attachments of one task: list, add, remove (FR-48 – FR-55). */
-export function AttachmentsSection({ todoId }: { todoId: string }) {
+/**
+ * The attachments of one task, note or event: list, add, remove (FR-48 – FR-55, FR-249 –
+ * FR-254). A plain `todoId` is a task.
+ */
+export function AttachmentsSection({
+  todoId,
+  parent: given,
+}: {
+  todoId?: string;
+  parent?: Exclude<AttachmentParent, string>;
+}) {
+  const parent = given ?? { kind: 'todos' as const, id: todoId ?? '' };
+  const { kind, id: parentId } = parent;
   const online = useOnline();
   const [items, setItems] = useState<Attachment[] | undefined>(undefined);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -51,10 +63,10 @@ export function AttachmentsSection({ todoId }: { todoId: string }) {
   const pickers = attachmentPickers(touchScreen);
 
   const reload = useCallback(async () => {
-    const list = await fetchAttachments(todoId);
+    const list = await fetchAttachments({ kind, id: parentId });
     setLoadFailed(list === undefined);
     if (list !== undefined) setItems(list);
-  }, [todoId]);
+  }, [kind, parentId]);
 
   useEffect(() => {
     if (!online) return;
@@ -69,8 +81,8 @@ export function AttachmentsSection({ todoId }: { todoId: string }) {
     if (files.length === 0) return;
 
     const limit = max ?? (await fetchMaxAttachmentBytes());
-    // The task may only exist on this device so far: send it first.
-    if ((await db.outbox.where('entityId').equals(todoId).count()) > 0) await engine.sync();
+    // It may only exist on this device so far: send it first (FR-254).
+    if ((await db.outbox.where('entityId').equals(parentId).count()) > 0) await engine.sync();
 
     for (const file of files) {
       if (limit !== undefined) {
@@ -85,7 +97,7 @@ export function AttachmentsSection({ todoId }: { todoId: string }) {
         }
       }
       setRunning({ name: file.name, progress: 0 });
-      const result = await uploadAttachment(todoId, file, {
+      const result = await uploadAttachment({ kind, id: parentId }, file, {
         onProgress: (progress) => setRunning({ name: file.name, progress }),
       });
       setRunning(null);

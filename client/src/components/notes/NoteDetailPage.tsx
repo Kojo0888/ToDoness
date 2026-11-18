@@ -8,6 +8,7 @@ import { t } from '../../app/strings';
 import { AppBar, TrashIcon } from '../common/icons';
 import { InfoTip } from '../common/InfoTip';
 import { useUndoToast } from '../common/Toast';
+import { AttachmentsSection } from '../lists/Attachments';
 import { NoteEditor } from './NoteEditor';
 import { formatChanged } from './NotesPage';
 
@@ -77,6 +78,8 @@ function NoteDetail({ note, backTo }: { note: Note; backTo: string }) {
           {t.notes.detail.lastModified(formatChanged(note.updatedAt))}
         </p>
       </div>
+
+      <AttachmentsSection parent={{ kind: 'notes', id: note.id }} />
 
       <button type="button" className="danger" onClick={() => void remove()}>
         <TrashIcon /> {t.notes.delete}
