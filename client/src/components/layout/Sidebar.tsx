@@ -25,6 +25,7 @@ import { MANAGE_PLANS_PATH } from '../plan/ManagePlans';
 import { planPath } from '../plan/PlansHome';
 import { ModuleSwitch } from './ModuleSwitch';
 import { SyncBadge } from './SyncBadge';
+import { useSubmitGuard } from '../../lib/submitGuard';
 
 interface Props {
   user: StoredUser;
@@ -407,13 +408,17 @@ function NewItemForm({
 }) {
   const [, navigate] = useLocation();
   const [name, setName] = useState('');
+  // One press, one item (docs/unstable-connection FR-255): a slow device must not create many.
+  const guard = useSubmitGuard();
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
+    const result = await guard.run(() => create(trimmed));
+    if (!result.ran) return;
     setName('');
-    navigate(await create(trimmed));
+    navigate(result.value);
     onNavigate();
   }
 
@@ -427,7 +432,9 @@ function NewItemForm({
         maxLength={maxLength}
         onChange={(e) => setName(e.target.value)}
       />
-      <button type="submit">{addLabel}</button>
+      <button type="submit" disabled={guard.busy} aria-busy={guard.busy}>
+        {addLabel}
+      </button>
     </form>
   );
 }

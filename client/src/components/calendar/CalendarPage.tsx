@@ -13,6 +13,7 @@ import {
   type CalendarView,
 } from '../../lib/calendarGrid';
 import { t } from '../../app/strings';
+import { useSubmitGuard } from '../../lib/submitGuard';
 import { InfoTip } from '../common/InfoTip';
 import { AgendaView } from './AgendaView';
 import { dayLong, monthTitle, weekTitle } from './format';
@@ -157,12 +158,13 @@ export function CalendarPage() {
 /** With no calendar yet: a field to name the first one (FR-206). */
 function FirstCalendar() {
   const [name, setName] = useState('');
+  const guard = useSubmitGuard(); // one press, one calendar (docs/unstable-connection FR-255)
 
   async function create(e: FormEvent) {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    await repo.createCalendar(trimmed);
+    await guard.run(() => repo.createCalendar(trimmed));
   }
 
   return (
@@ -178,7 +180,7 @@ function FirstCalendar() {
           maxLength={CALENDAR_NAME_MAX}
           onChange={(e) => setName(e.target.value)}
         />
-        <button type="submit" className="primary">
+        <button type="submit" className="primary" disabled={guard.busy} aria-busy={guard.busy}>
           {t.calendar.createCalendar}
         </button>
       </form>

@@ -500,3 +500,87 @@ describe('the browser flag shown in the diagnostics', () => {
     expect(connectivity.getSnapshot().online).toBe(false);
   });
 });
+
+describe('unstable connection (docs/unstable-connection FR-260, FR-261)', () => {
+  const setup = async (results: SyncResult[] = [ok]) => {
+    const engine = fakeEngine(results);
+    const env = fakeEnv();
+    const connectivity = createConnectivity(true);
+    const runner = createSyncRunner({
+      engine,
+      env,
+      connectivity,
+      intervalMs: 5000,
+      debounceMs: 1000,
+      unstableIntervalMs: 15_000,
+    });
+    runner.start();
+    await flush(); // the first sync at start
+    return { engine, env, connectivity, runner };
+  };
+
+  it('a stable connection syncs on the 5 s timer and after local changes as before', async () => {
+    const { engine, runner } = await setup();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(engine.sync).toHaveBeenCalledTimes(2);
+    runner.notifyChange();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(engine.sync).toHaveBeenCalledTimes(3);
+  });
+
+  it('while unstable, the timer and local changes try at most once per 15 s', async () => {
+    const { engine, connectivity, runner } = await setup();
+    connectivity.reportUnstable(true);
+    for (let i = 0; i < 5; i++) {
+      runner.notifyChange();
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    await vi.advanceTimersByTimeAsync(9000); // 14 s after the start sync
+    expect(engine.sync).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1100); // 15 s: one deferred try, not several
+    expect(engine.sync).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(engine.sync).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(engine.sync).toHaveBeenCalledTimes(3);
+  });
+
+  it('the browser online event and the tab becoming visible are throttled as well', async () => {
+    const { engine, env, connectivity } = await setup();
+    connectivity.reportUnstable(true);
+    env.fire('visible');
+    env.fire('online');
+    await flush();
+    expect(engine.sync).toHaveBeenCalledTimes(1);
+  });
+
+  it('a failed try while unstable is retried no sooner than 15 s later', async () => {
+    const { engine, connectivity } = await setup([offline, ok]);
+    connectivity.reportUnstable(true);
+    await vi.advanceTimersByTimeAsync(14_000);
+    expect(engine.sync).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(engine.sync).toHaveBeenCalledTimes(2);
+  });
+
+  it('an explicit trigger is not throttled', async () => {
+    const { engine, connectivity, runner } = await setup();
+    connectivity.reportUnstable(true);
+    runner.trigger();
+    await flush();
+    expect(engine.sync).toHaveBeenCalledTimes(2);
+  });
+
+  it('when the connection is stable again, it syncs at once and resumes the normal rhythm', async () => {
+    const { engine, connectivity, runner } = await setup();
+    connectivity.reportUnstable(true);
+    runner.notifyChange();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(engine.sync).toHaveBeenCalledTimes(1);
+    connectivity.reportUnstable(false);
+    await flush();
+    expect(engine.sync).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(engine.sync).toHaveBeenCalledTimes(3);
+  });
+});

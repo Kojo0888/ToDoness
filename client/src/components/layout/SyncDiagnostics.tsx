@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { useDataComparison, useOnline, useSyncStatus } from '../../app/hooks';
+import { useDataComparison, useOnline, useSyncStatus, useUnstable } from '../../app/hooks';
 import { db, syncDiag } from '../../app/container';
 import { t } from '../../app/strings';
 import { countPending, getQueuedChanges } from '../../data/queries';
@@ -42,7 +42,8 @@ export function SyncDiagnostics() {
   const online = useOnline();
   const pending = useLiveQuery(() => countPending(db), [], 0);
   const comparing = useDataComparison();
-  const summary = syncSummary({ online, state: status.state, pending, comparing });
+  const unstable = useUnstable();
+  const summary = syncSummary({ online, state: status.state, pending, comparing, unstable });
   const toggle = () => {
     saveOpen(!open);
     setOpen(!open);

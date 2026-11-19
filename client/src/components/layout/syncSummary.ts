@@ -12,12 +12,15 @@ export function syncSummary({
   state,
   pending,
   comparing = false,
+  unstable = false,
 }: {
   online: boolean;
   state: SyncStatus['state'];
   pending: number;
   /** The device's data is compared with the server's (docs/recovery-upload FR-172). */
   comparing?: boolean;
+  /** Slow or partial answers (docs/unstable-connection FR-259). */
+  unstable?: boolean;
 }): { text: string; tone: SyncTone } {
   const withPending = (text: string) =>
     pending > 0 ? `${text} · ${t.sync.pending(pending)}` : text;
@@ -26,6 +29,7 @@ export function syncSummary({
   if (state === 'auth_required') {
     return { text: withPending(t.syncDiag.states.auth_required), tone: 'warn' };
   }
+  if (unstable) return { text: withPending(t.sync.unstable), tone: 'warn' };
   // Problems that need the user show first; then the comparison, until it is answered.
   if (comparing) return { text: t.sync.comparing, tone: 'compare' };
   if (state === 'syncing') return { text: t.sync.syncing, tone: 'busy' };

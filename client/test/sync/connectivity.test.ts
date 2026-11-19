@@ -30,4 +30,26 @@ describe('connectivity (what the app itself found out, not the browser flag)', (
     c.report(true);
     expect(listener).toHaveBeenCalledTimes(1);
   });
+
+  describe('unstable (docs/unstable-connection)', () => {
+    it('starts stable; reportUnstable changes it and says whether it changed', () => {
+      const c = createConnectivity(true);
+      expect(c.getSnapshot()).toEqual({ online: true, unstable: false });
+      expect(c.reportUnstable(false)).toBe(false);
+      expect(c.reportUnstable(true)).toBe(true);
+      expect(c.getSnapshot().unstable).toBe(true);
+      expect(c.reportUnstable(true)).toBe(false);
+    });
+
+    it('notifies subscribers, and keeps online when only unstable changes', () => {
+      const c = createConnectivity(true);
+      const listener = vi.fn();
+      c.subscribe(listener);
+      c.reportUnstable(true);
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(c.getSnapshot().online).toBe(true);
+      c.report(false);
+      expect(c.getSnapshot()).toEqual({ online: false, unstable: true });
+    });
+  });
 });

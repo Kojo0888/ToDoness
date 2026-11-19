@@ -7,11 +7,15 @@
 
 export interface ConnectivitySnapshot {
   online: boolean;
+  /** Reachable, but slow or answering only in part (docs/unstable-connection). */
+  unstable: boolean;
 }
 
 export interface Connectivity {
   /** Returns true if the value changed. */
   report(online: boolean): boolean;
+  /** Returns true if the value changed. */
+  reportUnstable(unstable: boolean): boolean;
   subscribe(listener: () => void): () => void;
   /** A new object only when the value changes (what `useSyncExternalStore` needs). */
   getSnapshot(): ConnectivitySnapshot;
@@ -19,12 +23,18 @@ export interface Connectivity {
 
 /** `initial`: the browser's hint until the first request or check has answered. */
 export function createConnectivity(initial: boolean): Connectivity {
-  let snapshot: ConnectivitySnapshot = { online: initial };
+  let snapshot: ConnectivitySnapshot = { online: initial, unstable: false };
   const listeners = new Set<() => void>();
   return {
     report(online) {
       if (snapshot.online === online) return false;
-      snapshot = { online };
+      snapshot = { ...snapshot, online };
+      for (const l of listeners) l();
+      return true;
+    },
+    reportUnstable(unstable) {
+      if (snapshot.unstable === unstable) return false;
+      snapshot = { ...snapshot, unstable };
       for (const l of listeners) l();
       return true;
     },

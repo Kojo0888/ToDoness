@@ -5,6 +5,7 @@ import { PLAN_NAME_MAX } from '@todoness/shared';
 import { getPlans } from '../../data/queries';
 import { db, repo } from '../../app/container';
 import { t } from '../../app/strings';
+import { useSubmitGuard } from '../../lib/submitGuard';
 
 export const planPath = (id: string) => `/plan/${id}`;
 
@@ -16,6 +17,7 @@ export function PlansHome() {
   const [, navigate] = useLocation();
   const plans = useLiveQuery(() => getPlans(db), []);
   const [name, setName] = useState('');
+  const guard = useSubmitGuard(); // one press, one plan (docs/unstable-connection FR-255)
 
   if (plans === undefined) return null;
   if (plans[0]) return <Redirect to={planPath(plans[0].id)} replace />;
@@ -24,8 +26,8 @@ export function PlansHome() {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    const plan = await repo.createPlan(trimmed);
-    navigate(planPath(plan.id));
+    const result = await guard.run(() => repo.createPlan(trimmed));
+    if (result.ran) navigate(planPath(result.value.id));
   }
 
   return (
@@ -41,7 +43,7 @@ export function PlansHome() {
           maxLength={PLAN_NAME_MAX}
           onChange={(e) => setName(e.target.value)}
         />
-        <button type="submit" className="primary">
+        <button type="submit" className="primary" disabled={guard.busy} aria-busy={guard.busy}>
           {t.plan.createPlan}
         </button>
       </form>

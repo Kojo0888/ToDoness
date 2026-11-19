@@ -41,6 +41,11 @@ export function useOnline() {
   return useSyncExternalStore(connectivity.subscribe, () => connectivity.getSnapshot().online);
 }
 
+/** Reachable, but slow or answering only in part (docs/unstable-connection FR-259). */
+export function useUnstable() {
+  return useSyncExternalStore(connectivity.subscribe, () => connectivity.getSnapshot().unstable);
+}
+
 export type Theme = 'system' | 'light' | 'dark';
 const THEME_KEY = 'todoness.theme';
 
