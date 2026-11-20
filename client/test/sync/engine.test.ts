@@ -483,3 +483,56 @@ describe('timeouts and abort (offline → online speed)', () => {
     });
   });
 });
+
+describe('link samples (docs/unstable-connection FR-257)', () => {
+  const samples = () => {
+    const list: { ok: boolean; ms: number }[] = [];
+    return { list, onSample: (s: { ok: boolean; ms: number }) => list.push(s) };
+  };
+
+  it('reports a good sample for an answered request', async () => {
+    const { db } = await withPendingTodos(1);
+    const s = samples();
+    const f = fakeFetch((call) => acceptAll(call as never));
+    await createSyncEngine({ db, fetch: f, onSample: s.onSample }).push();
+    expect(s.list).toHaveLength(1);
+    expect(s.list[0]!.ok).toBe(true);
+  });
+
+  it('reports a bad sample when the body of an answer is cut off (partial response)', async () => {
+    const { db } = await withPendingTodos(1);
+    const s = samples();
+    const f = fakeFetch(() => new Response('{"accepted":["a', { status: 200 }));
+    const result = await createSyncEngine({ db, fetch: f, onSample: s.onSample }).sync();
+    expect(result).toMatchObject({ ok: false, kind: 'server' });
+    expect(s.list.filter((x) => !x.ok)).toHaveLength(1);
+  });
+
+  it('reports a bad sample for a request that gets no answer, and for a failed network', async () => {
+    const db = testDb();
+    await seedInbox(db);
+    const s = samples();
+    const f = fakeFetch(() => 'network-error' as never);
+    await createSyncEngine({ db, fetch: f, onSample: s.onSample }).sync();
+    expect(s.list.some((x) => !x.ok)).toBe(true);
+  });
+
+  it('a connection check is a sample too', async () => {
+    const db = testDb();
+    const s = samples();
+    const f = fakeFetch(() => json(200, {}));
+    expect(await createSyncEngine({ db, fetch: f, onSample: s.onSample }).ping()).toBe(true);
+    expect(s.list).toHaveLength(1);
+    expect(s.list[0]!.ok).toBe(true);
+  });
+
+  it('a failed check is a bad sample', async () => {
+    const db = testDb();
+    const s = samples();
+    const f = (async () => {
+      throw new TypeError('network');
+    }) as never;
+    expect(await createSyncEngine({ db, fetch: f, onSample: s.onSample }).ping()).toBe(false);
+    expect(s.list[0]!.ok).toBe(false);
+  });
+});

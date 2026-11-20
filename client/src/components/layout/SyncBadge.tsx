@@ -1,6 +1,6 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { countPending } from '../../data/queries';
-import { useDataComparison, useOnline, useSyncStatus } from '../../app/hooks';
+import { useDataComparison, useOnline, useSyncStatus, useUnstable } from '../../app/hooks';
 import { db } from '../../app/container';
 import { SyncDiagnostics } from './SyncDiagnostics';
 import { syncSummary } from './syncSummary';
@@ -11,8 +11,9 @@ export function SyncBadge({ admin = false }: { admin?: boolean }) {
   const online = useOnline();
   const pending = useLiveQuery(() => countPending(db), [], 0);
   const comparing = useDataComparison();
+  const unstable = useUnstable();
 
-  const { text, tone } = syncSummary({ online, state: status.state, pending, comparing });
+  const { text, tone } = syncSummary({ online, state: status.state, pending, comparing, unstable });
 
   return (
     <>

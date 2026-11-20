@@ -35,6 +35,27 @@ describe('syncSummary', () => {
     expect(s({ state: 'auth_required' }).tone).toBe('warn');
   });
 
+  describe('unstable connection (docs/unstable-connection FR-259)', () => {
+    it('has its own text and a warning tone, with the pending count', () => {
+      expect(s({ unstable: true })).toEqual({ text: 'Connection unstable', tone: 'warn' });
+      expect(s({ unstable: true, pending: 2 }).text).toBe(
+        'Connection unstable · 2 changes pending',
+      );
+    });
+
+    it('wins over syncing, pending, comparing and saved', () => {
+      expect(s({ unstable: true, state: 'syncing' }).text).toBe('Connection unstable');
+      expect(s({ unstable: true, comparing: true }).text).toBe('Connection unstable');
+    });
+
+    it('offline, a sync problem and a needed login still show first', () => {
+      expect(s({ unstable: true, online: false }).text).toBe('Offline');
+      expect(s({ unstable: true, state: 'offline' }).text).toBe('Offline');
+      expect(s({ unstable: true, state: 'error' }).text).toBe('Sync problem, retrying');
+      expect(s({ unstable: true, state: 'auth_required' }).text).toBe('login needed');
+    });
+  });
+
   describe('data comparison (docs/recovery-upload FR-172)', () => {
     it('has its own text and tone', () => {
       expect(s({ comparing: true })).toEqual({ text: 'Data comparison', tone: 'compare' });

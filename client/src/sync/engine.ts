@@ -12,6 +12,7 @@ import type { PublicOp, TodonessDB } from '../data/db';
 import { overlayListPage, overlayNotes } from '../data/publicOverlay';
 import { applyChanges } from './apply-changes';
 import type { SyncDiagnostics } from './diagnostics';
+import type { LinkSample } from './linkQuality';
 
 export type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -63,6 +64,8 @@ export interface EngineOptions {
   pingTimeoutMs?: number;
   /** Records timings for the admin diagnostics. */
   diag?: SyncDiagnostics;
+  /** Called for every request and connection check: how it went (docs/unstable-connection). */
+  onSample?: (sample: LinkSample) => void;
 }
 
 const JSON_HEADERS = { 'content-type': 'application/json' };
@@ -78,6 +81,7 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
     degradedTimeoutMs = 2000,
     pingTimeoutMs = 2000,
     diag,
+    onSample,
   } = opts;
 
   let status: SyncStatus = { state: 'idle', lastSyncAt: null };
@@ -121,21 +125,35 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
       .replace('/api/sync/', '')
       .replace(/^\/api\/public\/(lists|notes)\/[^/]+\/push$/, 'public $1 push');
     const id = diag?.requestStart(what) ?? 0;
+    const t0 = now();
     try {
       res = await Promise.race([fetch(url, { ...init, signal: controller.signal }), gaveUp]);
     } catch {
       diag?.requestEnd(id, how === 'aborted' ? 'aborted' : 'no answer (timeout)');
+      // An abort is our own decision (the connection changed), not a sign of a weak link.
+      if (how !== 'aborted') onSample?.({ ok: false, ms: now() - t0 });
       throw new SyncError('offline', 'Cannot reach the server');
     } finally {
       clearTimeout(timer);
       waiting.delete(abort);
     }
     diag?.requestEnd(id, `answered ${res.status}`);
+    onSample?.({ ok: true, ms: now() - t0 });
     if (res.status === 401) throw new SyncError('auth', 'Login required');
     if (res.status >= 500 || res.status === 408 || res.status === 429) {
       throw new SyncError('server', `Server answered ${res.status}`);
     }
     return res;
+  }
+
+  /** The body of an answer; a body that is cut off or not JSON is a partial answer (a bad sample). */
+  async function readJson(res: Response): Promise<unknown> {
+    try {
+      return await res.json();
+    } catch {
+      onSample?.({ ok: false, ms: 0 });
+      return undefined;
+    }
   }
 
   async function ensureClientId(): Promise<string> {
@@ -207,7 +225,7 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
         continue;
       }
 
-      const parsed = pushResponseSchema.safeParse(await res.json().catch(() => undefined));
+      const parsed = pushResponseSchema.safeParse(await readJson(res));
       if (!parsed.success) {
         await markAttempt(ops);
         throw new SyncError('server', 'Unexpected answer to push');
@@ -309,7 +327,7 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
         continue;
       }
 
-      const parsed = pushResponseSchema.safeParse(await res.json().catch(() => undefined));
+      const parsed = pushResponseSchema.safeParse(await readJson(res));
       if (!parsed.success || parsed.data.accepted.length + parsed.data.rejected.length === 0) {
         await markPublicAttempt(ops);
         throw new SyncError('server', 'Unexpected answer to a public push');
@@ -342,7 +360,7 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
       );
       if (!res.ok) throw new SyncError('server', `Server answered ${res.status}`);
 
-      const parsed = pullResponseSchema.safeParse(await res.json().catch(() => undefined));
+      const parsed = pullResponseSchema.safeParse(await readJson(res));
       if (!parsed.success) throw new SyncError('server', 'Unexpected answer to pull');
 
       applied += await applyChanges(db, parsed.data.changes, parsed.data.nextSeq, now);
@@ -390,13 +408,16 @@ export function createSyncEngine(opts: EngineOptions): SyncEngine {
           reject(new Error('timeout'));
         }, pingTimeoutMs);
       });
+      const t0 = now();
       try {
         await Promise.race([
           fetch('/api/health', { signal: controller.signal, cache: 'no-store' }),
           timedOut,
         ]);
+        onSample?.({ ok: true, ms: now() - t0 });
         return true;
       } catch {
+        onSample?.({ ok: false, ms: now() - t0 });
         return false;
       } finally {
         clearTimeout(timer);

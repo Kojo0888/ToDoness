@@ -2,6 +2,7 @@
 import { TodonessDB } from '../data/db';
 import { createRepo } from '../data/repo';
 import { createConnectivity } from '../sync/connectivity';
+import { createLinkQuality } from '../sync/linkQuality';
 import { createSyncDiagnostics } from '../sync/diagnostics';
 import { createSyncEngine } from '../sync/engine';
 import { browserEnv, createSyncRunner } from '../sync/runner';
@@ -38,7 +39,14 @@ export const connectivity = createConnectivity(navigator.onLine);
 
 /** What the sync does and how long it takes; shown to admins (see SyncBadge). */
 export const syncDiag = createSyncDiagnostics();
-export const engine = createSyncEngine({ db, fetch: request, diag: syncDiag });
+/** Slow, partial or missing answers make the connection "unstable" (docs/unstable-connection). */
+const linkQuality = createLinkQuality();
+export const engine = createSyncEngine({
+  db,
+  fetch: request,
+  diag: syncDiag,
+  onSample: (sample) => connectivity.reportUnstable(linkQuality.record(sample)),
+});
 
 export const runner = createSyncRunner({
   engine,

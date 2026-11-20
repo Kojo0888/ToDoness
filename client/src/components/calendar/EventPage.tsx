@@ -21,6 +21,7 @@ import { getCalendars, getEventById } from '../../data/queries';
 import { RepoError } from '../../data/repo';
 import { db, repo } from '../../app/container';
 import { t } from '../../app/strings';
+import { useSubmitGuard } from '../../lib/submitGuard';
 import { AppBar } from '../common/icons';
 import { AttachmentsSection } from '../lists/Attachments';
 import { InfoTip } from '../common/InfoTip';
@@ -92,6 +93,7 @@ function EventForm({
   const [repeatUntil, setRepeatUntil] = useState(event?.repeatUntil ?? '');
   const [reminders, setReminders] = useState<EventRemind[]>(event?.reminders ?? []);
   const [error, setError] = useState(false);
+  const guard = useSubmitGuard();
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -113,9 +115,11 @@ function EventForm({
       reminders,
     };
     try {
-      if (event) await repo.updateEvent(event.id, fields);
-      else await repo.createEvent(fields);
-      navigate(CALENDAR_PATH);
+      // One press, one event (docs/unstable-connection FR-255).
+      const result = await guard.run(() =>
+        event ? repo.updateEvent(event.id, fields) : repo.createEvent(fields),
+      );
+      if (result.ran) navigate(CALENDAR_PATH);
     } catch (err) {
       if (!(err instanceof RepoError)) throw err;
       setError(true);
@@ -327,7 +331,7 @@ function EventForm({
           <Link href={CALENDAR_PATH} className="btn">
             {t.calendar.cancel}
           </Link>
-          <button type="submit" className="primary">
+          <button type="submit" className="primary" disabled={guard.busy} aria-busy={guard.busy}>
             {t.calendar.save}
           </button>
         </div>

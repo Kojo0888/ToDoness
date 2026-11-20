@@ -567,6 +567,8 @@ export const t = {
 
   sync: {
     offline: 'Offline',
+    /** docs/unstable-connection FR-259. */
+    unstable: 'Connection unstable',
     syncing: 'Syncing…',
     saved: 'All changes saved',
     pending: (n: number) => `${n} change${n === 1 ? '' : 's'} pending`,

@@ -5,6 +5,8 @@
  * Every 5 seconds it also asks the server whether it can be reached, because the browser's
  * online flag is only a hint (it can be wrong both ways). After a failure it retries: every second while the connection is down, with growing
  * delays (up to 5 s) for server errors.
+ * While the connection is unstable (slow or partial answers, docs/unstable-connection) the app
+ * works offline-first: all of the above are throttled to one try per `unstableIntervalMs`.
  */
 import { nextDelay } from './backoff';
 import type { Connectivity } from './connectivity';
@@ -39,6 +41,8 @@ export interface RunnerOptions {
   connectivity?: Connectivity;
   /** How often to ask the server whether it can be reached. */
   probeIntervalMs?: number;
+  /** While the connection is unstable: at most one sync try per this time. */
+  unstableIntervalMs?: number;
 }
 
 /** While the connection is down, try again this often (a failed try itself takes <= 2 s). */
@@ -54,6 +58,7 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
     diag,
     connectivity,
     probeIntervalMs = 5000,
+    unstableIntervalMs = 15_000,
   } = opts;
 
   let started = false;
@@ -68,6 +73,10 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
   let intervalTimer: ReturnType<typeof setInterval> | undefined;
   let probeTimer: ReturnType<typeof setInterval> | undefined;
   let probing = false;
+  /** When the last sync started, and the one deferred try waiting for the unstable interval. */
+  let lastRunAt: number | undefined;
+  let deferTimer: ReturnType<typeof setTimeout> | undefined;
+  let wasUnstable = false;
   /** Bumped on every browser `online` event, so older failed checks can be ignored. */
   let onlineEpoch = 0;
   const unsubscribe: (() => void)[] = [];
@@ -123,6 +132,7 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
     }
     clearRetry();
     running = true;
+    lastRunAt = Date.now();
     try {
       let reason = why;
       do {
@@ -164,7 +174,7 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
           report(result.kind !== 'offline', result.message); // a server error still means: reachable
           diag?.runEnd(false, `${result.kind}: ${result.message}`);
           diag?.retryScheduled(delay, attempt);
-          retryTimer = setTimeout(() => void run('retry'), delay);
+          retryTimer = setTimeout(() => throttled('retry'), delay);
         }
       } while (again);
     } finally {
@@ -172,9 +182,30 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
     }
   }
 
-  const runIfAllowed = (why: string) => {
-    if (!blocked) void run(why);
-  };
+  /**
+   * Like `run`, but while the connection is unstable at most one try per `unstableIntervalMs`:
+   * the app keeps working locally and pushes from time to time (FR-260).
+   */
+  function throttled(why: string) {
+    if (!started || blocked) return;
+    const unstable = connectivity?.getSnapshot().unstable ?? false;
+    const wait =
+      unstable && lastRunAt !== undefined ? lastRunAt + unstableIntervalMs - Date.now() : 0;
+    if (wait <= 0) {
+      clearTimeout(deferTimer);
+      deferTimer = undefined;
+      void run(why);
+      return;
+    }
+    if (deferTimer !== undefined) return; // one deferred try is enough
+    diag?.log('trigger', `${why} (connection unstable: next try in ${Math.ceil(wait / 1000)} s)`);
+    deferTimer = setTimeout(() => {
+      deferTimer = undefined;
+      throttled('unstable connection: scheduled try');
+    }, wait);
+  }
+
+  const runIfAllowed = (why: string) => throttled(why);
 
   return {
     start() {
@@ -204,6 +235,22 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
         }),
         env.on('visible', () => runIfAllowed('tab became visible')),
       );
+      wasUnstable = connectivity?.getSnapshot().unstable ?? false;
+      if (connectivity) {
+        unsubscribe.push(
+          connectivity.subscribe(() => {
+            const unstable = connectivity.getSnapshot().unstable;
+            if (unstable === wasUnstable) return;
+            wasUnstable = unstable;
+            diag?.log('connection', unstable ? 'unstable' : 'stable again');
+            if (!unstable) {
+              clearTimeout(deferTimer);
+              deferTimer = undefined;
+              runIfAllowed('connection is stable again'); // FR-261
+            }
+          }),
+        );
+      }
       diag?.nextRunAt(Date.now() + intervalMs);
       intervalTimer = setInterval(() => {
         diag?.nextRunAt(Date.now() + intervalMs);
@@ -217,6 +264,8 @@ export function createSyncRunner(opts: RunnerOptions): Runner {
       started = false;
       clearRetry();
       clearTimeout(debounceTimer);
+      clearTimeout(deferTimer);
+      deferTimer = undefined;
       clearInterval(intervalTimer);
       clearInterval(probeTimer);
       diag?.nextRunAt(null);
